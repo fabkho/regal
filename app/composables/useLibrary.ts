@@ -1,13 +1,13 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import demoLibraryCsv from '~/assets/data/demo-library.csv?raw'
 import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importLibrary'
 import type { Book } from '#shared/types/book'
 
-/** Bump this if the stored shape ever changes incompatibly. */
-const STORAGE_KEY = 'bookshelf:library:v1'
-const STORAGE_VERSION = 1
+/** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
+export const LIBRARY_STORAGE_KEY = 'bookshelf:library:v1'
+export const LIBRARY_STORAGE_VERSION = 1
 
-interface StoredLibrary {
+export interface StoredLibrary {
   version: number
   books: Book[]
 }
@@ -18,38 +18,55 @@ export interface LibrarySummary {
   counts: Record<string, number>
 }
 
-// Module-scoped singleton state: every `useLibrary()` call shares the same
-// reactive Library, so components mount/unmount without losing state and a
-// second component sees the same books.
-const stored = useLocalStorage<StoredLibrary>(STORAGE_KEY, { version: STORAGE_VERSION, books: [] })
-const warnings = ref<string[]>([])
-const error = ref<string | null>(null)
-
-const books = computed<Book[]>(() => stored.value?.books ?? [])
-
-function setBooks(newBooks: Book[]) {
-  stored.value = { version: STORAGE_VERSION, books: newBooks }
+function booksState() {
+  // useState: per-request on the server, shared across components on the
+  // client. No module-scope reactive state, so nothing leaks between SSR
+  // requests and nothing reads localStorage before hydration.
+  return useState<Book[]>('library:books', () => [])
 }
 
-const summary = computed<LibrarySummary>(() => {
-  const counts: Record<string, number> = {}
-  for (const book of books.value) {
-    counts[book.status] = (counts[book.status] ?? 0) + 1
-  }
-  return { total: books.value.length, counts }
-})
+function warningsState() {
+  return useState<string[]>('library:warnings', () => [])
+}
 
-function applyResult(result: { books: Book[], warnings: string[] }) {
-  setBooks(result.books)
-  warnings.value = result.warnings
-  error.value = null
+function errorState() {
+  return useState<string | null>('library:error', () => null)
+}
+
+/**
+ * True once the client has attempted to restore a Library from localStorage
+ * after hydration. Useful for UI that wants to avoid flashing the empty
+ * state before restore completes.
+ */
+export function useLibraryRestored() {
+  return useState<boolean>('library:restored', () => false)
 }
 
 /**
  * Reactive Library store, shared across every component that calls it.
- * Persisted to `localStorage` under `bookshelf:library:v1` (client only).
+ * Persisted to `localStorage` under `bookshelf:library:v1` by the
+ * `library-persistence.client` plugin, which restores it after hydration
+ * to avoid SSR/client hydration mismatches.
  */
 export function useLibrary() {
+  const books = booksState()
+  const warnings = warningsState()
+  const error = errorState()
+
+  const summary = computed<LibrarySummary>(() => {
+    const counts: Record<string, number> = {}
+    for (const book of books.value) {
+      counts[book.status] = (counts[book.status] ?? 0) + 1
+    }
+    return { total: books.value.length, counts }
+  })
+
+  function applyResult(result: { books: Book[], warnings: string[] }) {
+    books.value = result.books
+    warnings.value = result.warnings
+    error.value = null
+  }
+
   async function importFile(file: File) {
     try {
       const text = await file.text()
@@ -78,7 +95,7 @@ export function useLibrary() {
   }
 
   function clear() {
-    setBooks([])
+    books.value = []
     warnings.value = []
     error.value = null
   }

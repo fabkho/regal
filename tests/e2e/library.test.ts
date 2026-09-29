@@ -45,4 +45,31 @@ describe('library upload', async () => {
 
     await page.close()
   })
+
+  it('restores the Library after a reload without hydration mismatches', async () => {
+    const page = await createPage('/')
+
+    const consoleMessages: string[] = []
+    page.on('console', (msg) => {
+      consoleMessages.push(msg.text())
+    })
+
+    await page.getByRole('button', { name: 'Try demo library' }).click()
+
+    const list = page.getByRole('list', { name: 'Your books' })
+    await list.locator('li').first().waitFor()
+    expect(await list.locator('li').count()).toBe(43)
+
+    await page.reload({ waitUntil: 'networkidle' })
+    // Restore happens post-hydration (app:mounted); give it a tick.
+    await list.locator('li').first().waitFor()
+
+    expect(await list.locator('li').count()).toBe(43)
+    expect(await page.getByRole('status').textContent()).toContain('43 books')
+
+    const hydrationMessages = consoleMessages.filter(text => /hydration/i.test(text))
+    expect(hydrationMessages).toEqual([])
+
+    await page.close()
+  })
 })
