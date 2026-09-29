@@ -24,6 +24,11 @@ export default defineNuxtConfig({
   },
 
   css: ['~/assets/css/main.css'],
+
+  runtimeConfig: {
+    /** Optional: enables the Google Books Cover source (NUXT_GOOGLE_BOOKS_API_KEY). */
+    googleBooksApiKey: '',
+  },
   compatibilityDate: '2026-09-01',
 
   eslint: {
