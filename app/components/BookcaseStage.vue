@@ -1,14 +1,18 @@
 <script setup lang="ts">
 // The 3D Bookcase stage. WebGL only runs in the browser, so the canvas is
 // client-only and the server renders the fallback below it.
-// Books (#4) go in through the default slot, which lands inside the scene's
-// "books" group.
+// The Library is laid out onto the Shelves here; extra scene content can
+// still come in through the default slot, which lands in the "books" group.
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
 import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
+import { layoutLibrary } from '~/utils/bookcase/layout'
 
 const route = useRoute()
 /** Dev-only: ?debug=slots draws a box on every measured ShelfSlot. */
 const debugSlots = computed(() => String(route.query.debug ?? '').split(',').includes('slots'))
+
+const { books } = useLibrary()
+const layout = computed(() => layoutLibrary(books.value))
 
 const isReady = ref(false)
 </script>
@@ -17,6 +21,8 @@ const isReady = ref(false)
   <section
     class="stage"
     aria-label="Bookcase"
+    :data-book-count="layout.placements.length"
+    :data-bookcase-count="layout.bookcaseCount"
   >
     <ClientOnly>
       <TresCanvas
@@ -32,8 +38,10 @@ const isReady = ref(false)
       >
         <BookcaseScene
           :debug-slots="debugSlots"
+          :bookcase-count="layout.bookcaseCount"
           @loaded="isReady = true"
         >
+          <BookcaseBooks :placements="layout.placements" />
           <slot />
         </BookcaseScene>
       </TresCanvas>

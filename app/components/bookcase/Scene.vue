@@ -4,6 +4,7 @@
 import type { DirectionalLight } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { BOOKCASE_SIZE } from '~/utils/bookcase/shelves'
+import { BOOKCASE_SPACING } from '~/utils/bookcase/layout'
 import {
   AMBIENT_LIGHT,
   BOUNCE_LIGHT,
@@ -15,7 +16,15 @@ import {
   TARGET_BOUNDS,
 } from '~/utils/bookcase/scene'
 
-const props = defineProps<{ debugSlots?: boolean }>()
+const props = withDefaults(defineProps<{ debugSlots?: boolean, bookcaseCount?: number }>(), {
+  debugSlots: false,
+  bookcaseCount: 1,
+})
+
+/** Extra Bookcases stand to the right of the first one. */
+const bookcaseOffsets = computed(() =>
+  Array.from({ length: Math.max(1, props.bookcaseCount) }, (_, index) => index * BOOKCASE_SPACING),
+)
 
 const emit = defineEmits<{ loaded: [] }>()
 
@@ -47,8 +56,9 @@ const clamp = (value: number, [min, max]: [number, number]) => Math.min(max, Mat
 /** Keep panning on the Bookcase: the target may never leave its bounding box. */
 function clampTarget(controls: OrbitControlsImpl) {
   const { target } = controls
+  const extraWidth = (Math.max(1, props.bookcaseCount) - 1) * BOOKCASE_SPACING
   target.set(
-    clamp(target.x, TARGET_BOUNDS.x),
+    clamp(target.x, [TARGET_BOUNDS.x[0], TARGET_BOUNDS.x[1] + extraWidth]),
     clamp(target.y, TARGET_BOUNDS.y),
     clamp(target.z, TARGET_BOUNDS.z),
   )
@@ -101,7 +111,12 @@ function clampTarget(controls: OrbitControlsImpl) {
     :position="BOUNCE_LIGHT.position"
   />
 
-  <BookcaseModel @loaded="emit('loaded')" />
+  <BookcaseModel
+    v-for="(offset, index) in bookcaseOffsets"
+    :key="index"
+    :x="offset"
+    @loaded="index === 0 && emit('loaded')"
+  />
 
   <!-- Books are added here by #4; the stage passes them through as children. -->
   <TresGroup name="books">

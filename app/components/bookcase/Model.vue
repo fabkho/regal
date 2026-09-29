@@ -6,6 +6,7 @@ import { useGLTF } from '@tresjs/cientos'
 import { BOOKCASE_SCALE } from '~/utils/bookcase/shelves'
 import { WOOD_MATERIAL } from '~/utils/bookcase/scene'
 
+const props = withDefaults(defineProps<{ x?: number }>(), { x: 0 })
 const emit = defineEmits<{ loaded: [] }>()
 
 const { state: gltf } = useGLTF('/models/bookcase.glb')
@@ -29,13 +30,23 @@ watch(gltf, (loaded) => {
   })
   emit('loaded')
 }, { immediate: true })
+
+// The first Bookcase uses the loaded scene; extra ones share its geometry and
+// materials through a clone.
+const object = computed(() => {
+  if (!gltf.value) return null
+  return props.x === 0 ? gltf.value.scene : gltf.value.scene.clone(true)
+})
 </script>
 
 <template>
-  <TresGroup :scale="BOOKCASE_SCALE">
+  <TresGroup
+    :position="[props.x, 0, 0]"
+    :scale="BOOKCASE_SCALE"
+  >
     <primitive
-      v-if="gltf"
-      :object="gltf.scene"
+      v-if="object"
+      :object="object"
     />
   </TresGroup>
 </template>
