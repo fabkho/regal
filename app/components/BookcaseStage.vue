@@ -41,7 +41,10 @@ const isReady = ref(false)
           :bookcase-count="layout.bookcaseCount"
           @loaded="isReady = true"
         >
-          <BookcaseBooks :placements="layout.placements" />
+          <BookcaseBooks
+            :placements="layout.placements"
+            :books="books"
+          />
           <slot />
         </BookcaseScene>
       </TresCanvas>

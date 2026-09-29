@@ -1,62 +1,115 @@
 <script setup lang="ts">
-// The Books on the Shelves. One mesh per Book, all sharing a unit box that is
-// scaled per Placement, and a small set of shared materials (one per cloth
-// colour + one for the page block).
-import { BoxGeometry, MeshPhysicalMaterial, MeshStandardMaterial } from 'three'
+// The Books on the Shelves. One mesh per Book, all sharing a unit box scaled
+// per Placement. Each Book gets its own cover / spine / back materials so the
+// real Cover can be applied as soon as it loads; until then it wears the
+// deterministic cloth colour from the Layout.
+import { BoxGeometry, Color, MeshPhysicalMaterial, MeshStandardMaterial } from 'three'
 import type { Material } from 'three'
+import type { Book } from '#shared/types/book'
 import type { Placement } from '~/utils/bookcase/layout'
+import { loadCover } from '~/utils/covers/coverTextures'
 
-const props = defineProps<{ placements: Placement[] }>()
+const props = defineProps<{ placements: Placement[], books: Book[] }>()
 
-/** Brightness multiplier on cloth colours, see cloth(). */
+/**
+ * The scene lighting is tuned for the dark wood, so full-strength colours read
+ * as pastels at the front of the Shelf. Real book cloth and printed covers
+ * reflect much less light than their nominal colour suggests.
+ */
 const CLOTH_ALBEDO = 0.3
+const COVER_ALBEDO = 0.55
 
 const geometry = new BoxGeometry(1, 1, 1)
 const pages = new MeshStandardMaterial({ color: '#CFC3A8', roughness: 0.92, metalness: 0, envMapIntensity: 0.35 })
-const clothByColor = new Map<string, MeshPhysicalMaterial>()
+
+interface BookMaterials {
+  /** BoxGeometry face order: +x (front cover), -x (back), +y, -y, +z (spine, facing the room), -z (fore-edge). */
+  faces: Material[]
+  cover: MeshPhysicalMaterial
+  back: MeshPhysicalMaterial
+  spine: MeshPhysicalMaterial
+}
+
+const materialsByBook = new Map<string, BookMaterials>()
 
 function cloth(color: string): MeshPhysicalMaterial {
-  let material = clothByColor.get(color)
-  if (!material) {
-    // Book cloth: mostly matte with a faint varnish. Kept dark in the
-    // environment reflection; a white sheen or strong env light washes the
-    // deep cloth colours out to pastels.
-    material = new MeshPhysicalMaterial({
-      color,
-      roughness: 0.72,
-      metalness: 0,
-      clearcoat: 0.12,
-      clearcoatRoughness: 0.6,
-      envMapIntensity: 0.35,
-    })
-    // The scene lighting is tuned for the dark wood, so full-strength cloth
-    // colours read as pastels at the front of the Shelf. Real book cloth
-    // reflects much less light than its nominal colour suggests.
-    material.color.multiplyScalar(CLOTH_ALBEDO)
-    clothByColor.set(color, material)
-  }
+  // Mostly matte with a faint varnish, dark in the environment reflection.
+  const material = new MeshPhysicalMaterial({
+    roughness: 0.72,
+    metalness: 0,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.6,
+    envMapIntensity: 0.35,
+  })
+  setCloth(material, color)
   return material
 }
 
-// BoxGeometry face order: +x, -x, +y (top), -y (bottom), +z (spine, facing the
-// room), -z (fore-edge, against the back of the Shelf).
-const materialsByColor = new Map<string, Material[]>()
-function materialsFor(color: string): Material[] {
-  let materials = materialsByColor.get(color)
-  if (!materials) {
-    const cover = cloth(color)
-    materials = [cover, cover, pages, pages, cover, pages]
-    materialsByColor.set(color, materials)
-  }
-  return materials
+function setCloth(material: MeshPhysicalMaterial, color: string) {
+  material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
 }
+
+function materialsFor(placement: Placement): Material[] {
+  let entry = materialsByBook.get(placement.bookId)
+  if (!entry) {
+    const cover = cloth(placement.color)
+    const back = cloth(placement.color)
+    const spine = cloth(placement.color)
+    entry = { cover, back, spine, faces: [cover, back, pages, pages, spine, pages] }
+    materialsByBook.set(placement.bookId, entry)
+  }
+  return entry.faces
+}
+
+const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
+
+/** Puts the real Cover on a Book once it has loaded. */
+async function applyCover(bookId: string) {
+  const book = booksById.value.get(bookId)
+  if (!book) return
+  const loaded = await loadCover(book)
+  const entry = materialsByBook.get(bookId)
+  if (!loaded || !entry) return
+
+  entry.cover.map = loaded.texture
+  entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
+  // Printed covers are smoother and glossier than cloth.
+  entry.cover.roughness = 0.5
+  entry.cover.clearcoat = 0.35
+  entry.cover.clearcoatRoughness = 0.35
+  entry.cover.needsUpdate = true
+
+  setCloth(entry.spine, loaded.color)
+  setCloth(entry.back, loaded.color)
+}
+
+watch(() => props.placements, (placements) => {
+  const current = new Set(placements.map(p => p.bookId))
+  for (const [bookId, entry] of materialsByBook) {
+    if (current.has(bookId)) continue
+    // Textures stay cached in loadCover; only the per-Book materials go.
+    entry.cover.dispose()
+    entry.back.dispose()
+    entry.spine.dispose()
+    materialsByBook.delete(bookId)
+  }
+  for (const placement of placements) {
+    if (!materialsByBook.has(placement.bookId)) {
+      materialsFor(placement)
+      applyCover(placement.bookId)
+    }
+  }
+}, { immediate: true })
 
 onBeforeUnmount(() => {
   geometry.dispose()
   pages.dispose()
-  for (const material of clothByColor.values()) material.dispose()
-  clothByColor.clear()
-  materialsByColor.clear()
+  for (const entry of materialsByBook.values()) {
+    entry.cover.dispose()
+    entry.back.dispose()
+    entry.spine.dispose()
+  }
+  materialsByBook.clear()
 })
 </script>
 
@@ -68,7 +121,7 @@ onBeforeUnmount(() => {
       :name="`book:${placement.bookId}`"
       :user-data="{ bookId: placement.bookId }"
       :geometry="geometry"
-      :material="materialsFor(placement.color)"
+      :material="materialsFor(placement)"
       :position="[placement.x, placement.y, placement.z]"
       :rotation="[0, placement.yaw, 0]"
       :scale="[placement.thickness, placement.height, placement.depth]"
