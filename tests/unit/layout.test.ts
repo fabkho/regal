@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { importLibrary } from '../../shared/library/importLibrary'
 import type { Book } from '../../shared/types/book'
-import { BOOKCASE_SPACING, bookDimensions, HEADROOM, layoutLibrary, sortForShelves } from '../../app/utils/bookcase/layout'
+import { BOOKCASE_SPACING, bookDimensions, HEADROOM, layoutLibrary, MAX_THICKNESS, sortForShelves } from '../../app/utils/bookcase/layout'
 import { SHELF_SLOTS } from '../../app/utils/bookcase/shelves'
 
 const demo = importLibrary(readFileSync(new URL('../../app/assets/data/demo-library.csv', import.meta.url), 'utf8')).books
@@ -117,6 +117,11 @@ describe('bookDimensions', () => {
     const thin = bookDimensions(makeBook('x', { pages: 120 }), 0.3, 0.14)
     const thick = bookDimensions(makeBook('x', { pages: 1100 }), 0.3, 0.14)
     expect(thick.thickness).toBeGreaterThan(thin.thickness)
+  })
+
+  it('caps box sets and omnibus editions at a believable thickness', () => {
+    const boxSet = bookDimensions(makeBook('x', { pages: 3800 }), 0.3, 0.14)
+    expect(boxSet.thickness).toBe(MAX_THICKNESS)
   })
 
   it('uses a default page count when pages are unknown', () => {

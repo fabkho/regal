@@ -30,7 +30,8 @@ function next() {
   start()
 }
 
-function schedule<T>(task: () => Promise<T>): Promise<T> {
+/** Runs upstream-bound work a few at a time. */
+export function schedule<T>(task: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     queue.push(() => {
       task().then(resolve, reject).finally(() => {

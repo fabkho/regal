@@ -32,6 +32,7 @@ import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
 import { drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
 import { loadCover } from '~/utils/covers/coverTextures'
+import { loadDescription } from '~/utils/covers/descriptions'
 import type { LoadedCover } from '~/utils/covers/coverTextures'
 import { fromHex, readableOn } from '~/utils/covers/palette'
 
@@ -84,6 +85,8 @@ interface BookMaterials {
   spine: MeshPhysicalMaterial
   spineTexture: CanvasTexture
   backTexture: CanvasTexture
+  /** Last loaded Cover (null until/unless there is one), reused for redraws. */
+  loaded: LoadedCover | null
 }
 
 interface Motion {
@@ -139,7 +142,7 @@ function faceTexture(canvas: HTMLCanvasElement) {
 
 const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
 
-function faceInput(pose: BookPose, loaded: LoadedCover | null): FaceInput | null {
+function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null): FaceInput | null {
   const book = booksById.value.get(pose.bookId)
   if (!book) return null
   const background = fromHex(pose.color)
@@ -152,6 +155,7 @@ function faceInput(pose: BookPose, loaded: LoadedCover | null): FaceInput | null
     palette: loaded?.palette ?? { background, text, accent: text },
     cover: loaded?.image,
     seed: hashString(book.id),
+    description,
   }
 }
 
@@ -164,7 +168,7 @@ function materialsFor(pose: BookPose): Material[] {
     const backTexture = faceTexture(input ? drawBack(input) : document.createElement('canvas'))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    entry = { cover, back, spine, spineTexture, backTexture, faces: [cover, back, pages, pages, spine, pages] }
+    entry = { cover, back, spine, spineTexture, backTexture, loaded: null, faces: [cover, back, pages, pages, spine, pages] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -186,9 +190,11 @@ function motionFor(bookId: string): Motion {
 async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
+  const description = loadDescription(book)
   const [loaded] = await Promise.all([loadCover(book), spineFontsReady()])
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
+  entry.loaded = loaded
 
   if (loaded) {
     entry.cover.map = loaded.texture
@@ -205,6 +211,15 @@ async function applyCover(pose: BookPose) {
   entry.spineTexture.needsUpdate = true
   entry.backTexture.image = drawBack(input)
   entry.backTexture.needsUpdate = true
+
+  // The blurb arrives separately; set it on the back when it does.
+  const blurb = await description
+  const current = materialsByBook.get(pose.bookId)
+  if (!blurb || !current) return
+  const withBlurb = faceInput(pose, current.loaded, blurb)
+  if (!withBlurb) return
+  current.backTexture.image = drawBack(withBlurb)
+  current.backTexture.needsUpdate = true
 }
 
 function disposeEntry(entry: BookMaterials) {

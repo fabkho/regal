@@ -52,7 +52,7 @@ export function coverCacheKey(query: CoverQuery): string {
   ].join('|')
 }
 
-async function getJson<T>(url: string, options: ResolveOptions): Promise<T | null> {
+export async function getJson<T>(url: string, options: Pick<ResolveOptions, 'fetch' | 'timeoutMs'>): Promise<T | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 4000)
   try {

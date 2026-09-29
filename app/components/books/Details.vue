@@ -1,14 +1,21 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
+import { loadDescription } from '~/utils/covers/descriptions'
+
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
 
 const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
 const showSpoiler = ref(false)
-watch(pickedId, () => {
+const description = ref<string | null>(null)
+watch(book, async (current) => {
   showSpoiler.value = false
-})
+  description.value = null
+  if (!current) return
+  const text = await loadDescription(current)
+  if (book.value?.id === current.id) description.value = text
+}, { immediate: true })
 
 const STATUS_LABELS: Record<string, string> = {
   'read': 'Read',
@@ -91,6 +98,18 @@ const meta = computed(() => {
         </blockquote>
       </template>
 
+      <section
+        v-if="description"
+        class="details__about"
+      >
+        <h3 class="details__label">
+          About
+        </h3>
+        <p class="details__description">
+          {{ description }}
+        </p>
+      </section>
+
       <div class="details__actions">
         <button
           type="button"
@@ -168,6 +187,28 @@ const meta = computed(() => {
   font-size: var(--text-sm);
   max-height: 8rem;
   overflow: auto;
+}
+
+.details__about {
+  margin-top: 0.7rem;
+}
+
+.details__label {
+  margin: 0 0 0.25rem;
+  color: var(--color-ink-muted);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.details__description {
+  margin: 0;
+  max-height: 6.5rem;
+  overflow: auto;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-line;
 }
 
 .details__spoiler {
