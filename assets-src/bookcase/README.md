@@ -5,7 +5,7 @@
 **Obtained without a Sketchfab account** via the Objaverse mirror (Allen AI, Hugging Face):
 `https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-009/75aa9519195647d99cf1e2d4863dbe87.glb` (5.6 MB)
 
-**Processing** (`strip.mjs`, gltf-transform 4 + sharp):
+**Processing** (`strip.mjs`, gltf-transform 4.5.1 + sharp 0.35.5):
 1. Removed the 24 bundled `book-stacks` meshes and their material/textures.
 2. prune + dedup.
 3. Textures → WebP (`EXT_texture_webp`), max 2048², quality 85.

@@ -1,7 +1,7 @@
 // Strips the bundled books from the Objaverse copy of the bookcase and
 // compresses textures. Run from a scratch dir with the source file:
 //   curl -L -o antique.glb https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-009/75aa9519195647d99cf1e2d4863dbe87.glb
-//   npm i @gltf-transform/core@4 @gltf-transform/extensions@4 @gltf-transform/functions@4 sharp
+//   pnpm add @gltf-transform/core@latest @gltf-transform/extensions@latest @gltf-transform/functions@latest sharp@latest   (built with 4.5.1 / sharp 0.35.5)
 //   node strip.mjs   # → bookcase.glb
 import { NodeIO } from '@gltf-transform/core'
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions'

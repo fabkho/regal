@@ -17,3 +17,12 @@
 ## Page structure
 
 `app/pages/index.vue` is the shell. The 3D scene lives in `BookcaseStage` and its children; upload, summary and list view live in `LibraryPanel` and its children. Keep features inside their own component trees so parallel tickets don't collide.
+
+## Dependencies
+
+- Before installing any npm package, look up the latest version with pnpm (`pnpm view <pkg> version`; check `pnpm view <pkg> peerDependencies` when compatibility matters) and install that exact latest: `pnpm add <pkg>@<latest>`. Applies to one-off tooling too (use `pnpm dlx` / pnpm in scratch dirs, not npm/npx with guessed versions).
+- Only pin below latest for a verified incompatibility, and record it here.
+
+Pinned below latest:
+
+- `typescript` 6.x (latest 7.x): TS 7 ships no JS compiler API (`ts.createProgram` is undefined), which `vue-tsc` needs, and `typescript-eslint` peer range is `<6.1.0`. Re-check when either supports 7.
