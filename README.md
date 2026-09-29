@@ -9,7 +9,7 @@ Built with Nuxt 4 and [TresJS](https://tresjs.org) (three.js for Vue).
 ## What it does
 
 - Drop your Goodreads export (or try the demo) and your Books stand on an antique Bookcase — sized by page count and binding, grouped by Reading status.
-- Real Covers, found by ISBN (Open Library; Google Books with a key). Spines and backs are generated from each Cover: colour from its left edge, title and author typeset along the Spine, a real ISBN barcode on the back.
+- Real Covers, found by ISBN (Open Library; Google Books with a key). Spines and backs are generated from each Cover: colour from its left edge, title and author typeset along the Spine, the real blurb and ISBN barcode on the back.
 - Hover a Book: it eases forward and catches the light. Click: it comes out to you showing its Cover; click again for the back, again to put it away. Drag to spin it.
 - **Stack** view: the whole Library as one pile you scroll through smoothly.
 

@@ -40,6 +40,8 @@ export interface FaceInput {
   cover?: CanvasImageSource & { width: number, height: number }
   /** Deterministic style choice. */
   seed: number
+  /** The book's blurb, typeset on the back cover when known. */
+  description?: string | null
 }
 
 const rgba = ([r, g, b]: RGB, alpha = 1) => `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`
@@ -184,11 +186,29 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
     context.fillText(ellipsize(context, book.author, width - margin * 2), width / 2, height * 0.08 + titleSize * 1.4)
   }
 
-  // Faux blurb lines: suggest text without inventing any.
-  context.fillStyle = rgba(palette.text, 0.18)
-  for (let line = 0; line < 9; line++) {
-    const lineWidth = (width - margin * 2) * (line % 4 === 3 ? 0.62 : 1)
-    context.fillRect(margin, height * 0.26 + line * height * 0.034, lineWidth, Math.max(1, height * 0.009))
+  const blurbTop = height * 0.25
+  const blurbBottom = height * 0.74
+  if (input.description) {
+    // The real blurb, wrapped to the back cover's measure.
+    const size = Math.max(9, Math.min(13, width / 27))
+    const lineHeight = size * 1.38
+    context.font = `400 ${size}px ${SERIF}`
+    context.fillStyle = rgba(palette.text, 0.9)
+    context.textAlign = 'left'
+    context.textBaseline = 'top'
+    const lines = wrapText(context, input.description, width - margin * 2)
+    const fit = Math.floor((blurbBottom - blurbTop) / lineHeight)
+    const shown = lines.slice(0, fit)
+    if (lines.length > fit && shown.length) shown[shown.length - 1] = ellipsize(context, `${shown.at(-1)}…`, width - margin * 2)
+    shown.forEach((line, index) => context.fillText(line, margin, blurbTop + index * lineHeight))
+  }
+  else {
+    // Placeholder lines: suggest text without inventing any.
+    context.fillStyle = rgba(palette.text, 0.18)
+    for (let line = 0; line < 9; line++) {
+      const lineWidth = (width - margin * 2) * (line % 4 === 3 ? 0.62 : 1)
+      context.fillRect(margin, height * 0.26 + line * height * 0.034, lineWidth, Math.max(1, height * 0.009))
+    }
   }
 
   // Barcode panel, bottom right.
@@ -211,4 +231,24 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   }
 
   return element
+}
+
+/** Greedy word wrap; paragraph breaks become an empty line. */
+function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = []
+  for (const paragraph of text.split(/\n+/)) {
+    let line = ''
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word
+      if (context.measureText(candidate).width <= maxWidth || !line) line = candidate
+      else {
+        lines.push(line)
+        line = word
+      }
+    }
+    if (line) lines.push(line)
+    lines.push('')
+  }
+  while (lines.at(-1) === '') lines.pop()
+  return lines
 }

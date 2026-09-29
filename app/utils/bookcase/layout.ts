@@ -39,6 +39,8 @@ export const BOOK_GAP = 0.0015
 export const SECTION_GAP = 0.03
 /** Headroom kept between a Book and the board above. */
 export const HEADROOM = 0.012
+/** Thickest Book we draw; box sets and omnibus page counts would otherwise become bricks. */
+export const MAX_THICKNESS = 0.085
 /** Pages assumed when the export has no page count. */
 export const DEFAULT_PAGES = 300
 /** Distance between neighbouring Bookcases. */
@@ -101,7 +103,7 @@ function isHardcover(binding: string | null): boolean {
 export function bookDimensions(book: Pick<Book, 'id' | 'pages' | 'binding'>, clearance: number, shelfDepth: number): BookDimensions {
   const pages = book.pages && book.pages > 0 ? book.pages : DEFAULT_PAGES
   const board = isHardcover(book.binding) ? 0.006 : 0.002
-  const thickness = Math.max(0.008, pages * 0.00007 + board)
+  const thickness = Math.min(MAX_THICKNESS, Math.max(0.008, pages * 0.00007 + board))
   const jitter = 1 + (random01(book.id, 'height') - 0.5) * 0.12
   const height = Math.min(baseHeight(book.binding) * jitter, clearance - HEADROOM)
   const depth = Math.min(height * 0.67, shelfDepth - 0.006)
