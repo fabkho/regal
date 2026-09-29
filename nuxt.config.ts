@@ -38,6 +38,9 @@ export default defineNuxtConfig({
   fonts: {
     families: [
       { name: 'IBM Plex Mono', weights: [400, 500, 600, 700] },
+      // Spine typography (drawn on canvas, so it must be registered globally).
+      { name: 'Patua One', weights: [400], global: true },
+      { name: 'Antonio', weights: [400, 700], global: true },
     ],
   },
 })

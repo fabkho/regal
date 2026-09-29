@@ -3,11 +3,16 @@
 // per Placement. Each Book gets its own cover / spine / back materials so the
 // real Cover can be applied as soon as it loads; until then it wears the
 // deterministic cloth colour from the Layout.
-import { BoxGeometry, Color, MeshPhysicalMaterial, MeshStandardMaterial } from 'three'
+import { BoxGeometry, CanvasTexture, Color, MeshPhysicalMaterial, MeshStandardMaterial, SRGBColorSpace } from 'three'
 import type { Material } from 'three'
 import type { Book } from '#shared/types/book'
+import { hashString } from '~/utils/bookcase/layout'
 import type { Placement } from '~/utils/bookcase/layout'
+import { drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
+import type { FaceInput } from '~/utils/covers/bookFaces'
 import { loadCover } from '~/utils/covers/coverTextures'
+import type { LoadedCover } from '~/utils/covers/coverTextures'
+import { fromHex, readableOn } from '~/utils/covers/palette'
 
 const props = defineProps<{ placements: Placement[], books: Book[] }>()
 
@@ -18,6 +23,8 @@ const props = defineProps<{ placements: Placement[], books: Book[] }>()
  */
 const CLOTH_ALBEDO = 0.3
 const COVER_ALBEDO = 0.55
+/** Generated Spine/back textures carry their colour in the texture. */
+const FACE_ALBEDO = 0.42
 
 const geometry = new BoxGeometry(1, 1, 1)
 const pages = new MeshStandardMaterial({ color: '#CFC3A8', roughness: 0.92, metalness: 0, envMapIntensity: 0.35 })
@@ -28,6 +35,8 @@ interface BookMaterials {
   cover: MeshPhysicalMaterial
   back: MeshPhysicalMaterial
   spine: MeshPhysicalMaterial
+  spineTexture: CanvasTexture
+  backTexture: CanvasTexture
 }
 
 const materialsByBook = new Map<string, BookMaterials>()
@@ -49,54 +58,107 @@ function setCloth(material: MeshPhysicalMaterial, color: string) {
   material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
 }
 
+const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
+
+function faceInput(placement: Placement, loaded: LoadedCover | null): FaceInput | null {
+  const book = booksById.value.get(placement.bookId)
+  if (!book) return null
+  const background = fromHex(placement.color)
+  const text = readableOn(background)
+  return {
+    book,
+    thickness: placement.thickness,
+    height: placement.height,
+    depth: placement.depth,
+    palette: loaded?.palette ?? { background, text, accent: text },
+    cover: loaded?.image,
+    seed: hashString(book.id),
+  }
+}
+
+function faceTexture(canvas: HTMLCanvasElement) {
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  texture.anisotropy = 8
+  return texture
+}
+
+function printed(texture: CanvasTexture): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    map: texture,
+    color: new Color(1, 1, 1).multiplyScalar(FACE_ALBEDO),
+    roughness: 0.68,
+    metalness: 0,
+    clearcoat: 0.15,
+    clearcoatRoughness: 0.55,
+    envMapIntensity: 0.35,
+  })
+}
+
 function materialsFor(placement: Placement): Material[] {
   let entry = materialsByBook.get(placement.bookId)
   if (!entry) {
+    const input = faceInput(placement, null)
     const cover = cloth(placement.color)
-    const back = cloth(placement.color)
-    const spine = cloth(placement.color)
-    entry = { cover, back, spine, faces: [cover, back, pages, pages, spine, pages] }
+    const spineTexture = faceTexture(input ? drawSpine(input) : document.createElement('canvas'))
+    const backTexture = faceTexture(input ? drawBack(input) : document.createElement('canvas'))
+    const spine = printed(spineTexture)
+    const back = printed(backTexture)
+    entry = { cover, back, spine, spineTexture, backTexture, faces: [cover, back, pages, pages, spine, pages] }
     materialsByBook.set(placement.bookId, entry)
   }
   return entry.faces
 }
 
-const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
-
-/** Puts the real Cover on a Book once it has loaded. */
-async function applyCover(bookId: string) {
-  const book = booksById.value.get(bookId)
+/**
+ * Puts the real Cover on a Book once it has loaded, and redraws Spine and back
+ * (from the Cover when there is one) once the Spine fonts are available.
+ */
+async function applyCover(placement: Placement) {
+  const book = booksById.value.get(placement.bookId)
   if (!book) return
-  const loaded = await loadCover(book)
-  const entry = materialsByBook.get(bookId)
-  if (!loaded || !entry) return
+  const [loaded] = await Promise.all([loadCover(book), spineFontsReady()])
+  const entry = materialsByBook.get(placement.bookId)
+  if (!entry) return
 
-  entry.cover.map = loaded.texture
-  entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
-  // Printed covers are smoother and glossier than cloth.
-  entry.cover.roughness = 0.5
-  entry.cover.clearcoat = 0.35
-  entry.cover.clearcoatRoughness = 0.35
-  entry.cover.needsUpdate = true
+  if (loaded) {
+    entry.cover.map = loaded.texture
+    entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
+    // Printed covers are smoother and glossier than cloth.
+    entry.cover.roughness = 0.5
+    entry.cover.clearcoat = 0.35
+    entry.cover.clearcoatRoughness = 0.35
+    entry.cover.needsUpdate = true
+  }
 
-  setCloth(entry.spine, loaded.color)
-  setCloth(entry.back, loaded.color)
+  const input = faceInput(placement, loaded)
+  if (!input) return
+  entry.spineTexture.image = drawSpine(input)
+  entry.spineTexture.needsUpdate = true
+  entry.backTexture.image = drawBack(input)
+  entry.backTexture.needsUpdate = true
+}
+
+function disposeEntry(entry: BookMaterials) {
+  // Cover textures stay cached in loadCover; everything per-Book goes.
+  entry.cover.dispose()
+  entry.back.dispose()
+  entry.spine.dispose()
+  entry.spineTexture.dispose()
+  entry.backTexture.dispose()
 }
 
 watch(() => props.placements, (placements) => {
   const current = new Set(placements.map(p => p.bookId))
   for (const [bookId, entry] of materialsByBook) {
     if (current.has(bookId)) continue
-    // Textures stay cached in loadCover; only the per-Book materials go.
-    entry.cover.dispose()
-    entry.back.dispose()
-    entry.spine.dispose()
+    disposeEntry(entry)
     materialsByBook.delete(bookId)
   }
   for (const placement of placements) {
     if (!materialsByBook.has(placement.bookId)) {
       materialsFor(placement)
-      applyCover(placement.bookId)
+      applyCover(placement)
     }
   }
 }, { immediate: true })
@@ -104,11 +166,7 @@ watch(() => props.placements, (placements) => {
 onBeforeUnmount(() => {
   geometry.dispose()
   pages.dispose()
-  for (const entry of materialsByBook.values()) {
-    entry.cover.dispose()
-    entry.back.dispose()
-    entry.spine.dispose()
-  }
+  for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
 })
 </script>

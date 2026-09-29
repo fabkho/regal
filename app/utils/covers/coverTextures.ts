@@ -6,11 +6,14 @@ import { SRGBColorSpace, TextureLoader } from 'three'
 import type { Texture } from 'three'
 import { coverUrl } from './coverUrl'
 import type { CoverBook } from './coverUrl'
+import { spinePalette } from './palette'
+import type { SpinePalette } from './palette'
 
 export interface LoadedCover {
   texture: Texture
-  /** Average colour of the Cover as a CSS hex string. */
-  color: string
+  image: HTMLImageElement
+  /** Spine colours derived from the Cover (left edge + palette). */
+  palette: SpinePalette
 }
 
 const MAX_IN_FLIGHT = 6
@@ -39,27 +42,16 @@ function schedule<T>(task: () => Promise<T>): Promise<T> {
   })
 }
 
-/** Average colour of an image, sampled on a small canvas. */
-export function averageColor(image: CanvasImageSource): string {
-  const size = 16
+/** Spine palette of a Cover image, sampled on a small canvas. */
+function paletteOf(image: CanvasImageSource): SpinePalette {
+  const width = 48
+  const height = 72
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) return '#6B5A45'
-  context.drawImage(image, 0, 0, size, size)
-  const { data } = context.getImageData(0, 0, size, size)
-  let r = 0
-  let g = 0
-  let b = 0
-  const pixels = data.length / 4
-  for (let i = 0; i < data.length; i += 4) {
-    r += data[i]!
-    g += data[i + 1]!
-    b += data[i + 2]!
-  }
-  const hex = (value: number) => Math.round(value / pixels).toString(16).padStart(2, '0')
-  return `#${hex(r)}${hex(g)}${hex(b)}`
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d', { willReadFrequently: true })!
+  context.drawImage(image, 0, 0, width, height)
+  return spinePalette(context.getImageData(0, 0, width, height).data, width, height)
 }
 
 /** Loads a Book's Cover once per URL; resolves null when there is none. */
@@ -71,7 +63,8 @@ export function loadCover(book: CoverBook): Promise<LoadedCover | null> {
       .then((texture) => {
         texture.colorSpace = SRGBColorSpace
         texture.anisotropy = 4
-        return { texture, color: averageColor(texture.image as CanvasImageSource) }
+        const image = texture.image as HTMLImageElement
+        return { texture, image, palette: paletteOf(image) }
       })
       .catch(() => null)
     cache.set(url, pending)
