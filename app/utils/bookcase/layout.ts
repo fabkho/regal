@@ -2,6 +2,7 @@
 // Pure and deterministic (seeded by Book Id), no three.js dependency.
 // Units are world metres, same origin as SHELF_SLOTS.
 import type { Book } from '#shared/types/book'
+import type { BookPose } from '~/utils/books/pose'
 import type { ShelfSlot } from './shelves'
 import { BOOKCASE_SIZE, SHELF_COUNT, SHELF_SLOTS } from './shelves'
 
@@ -13,22 +14,12 @@ export interface BookDimensions {
   depth: number
 }
 
-export interface Placement extends BookDimensions {
-  bookId: string
+/** A Book on a Shelf: its pose plus where in the Bookcase it sits. */
+export interface Placement extends BookPose {
   /** 0 = first Bookcase; more are added to the right when a Library overflows. */
   bookcase: number
   /** Index into SHELF_SLOTS. */
   slot: number
-  /** Centre of the Book, world metres. */
-  x: number
-  y: number
-  z: number
-  /** Small deterministic twist around the vertical axis, radians. */
-  yaw: number
-  /** Deterministic cloth colour. */
-  color: string
-  /** Section the Book belongs to (its Reading status). */
-  section: string
 }
 
 export interface LayoutResult {
@@ -86,7 +77,7 @@ export function hashString(value: string): number {
 }
 
 /** Deterministic number in [0, 1) for a Book Id and a purpose. */
-function random01(id: string, salt: string): number {
+export function random01(id: string, salt: string): number {
   return hashString(`${salt}:${id}`) / 0x1_0000_0000
 }
 
@@ -210,7 +201,7 @@ export function layoutLibrary(books: Book[], options: LayoutOptions = {}): Layou
       y: slot.y + dims.height / 2,
       // Flush with the front of the Shelf, like books pulled forward.
       z: slot.zFront - 0.004 - dims.depth / 2,
-      yaw: (random01(book.id, 'yaw') - 0.5) * 0.02,
+      rotation: [0, (random01(book.id, 'yaw') - 0.5) * 0.02, 0],
       color: CLOTH_COLORS[hashString(book.id) % CLOTH_COLORS.length]!,
       section: book.status,
     })

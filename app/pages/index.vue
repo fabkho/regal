@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Page shell. Scene and Library UI live in their own components so tickets
 // can evolve them independently:
-// - BookcaseStage: 3D scene (#2, #4, #5, #6)
+// - LibraryStage: 3D Bookcase / Stack views, Pick interaction
 // - LibraryPanel: upload, summary, list view (#3)
 </script>
 
@@ -17,7 +17,7 @@
     </header>
 
     <main class="page__main">
-      <BookcaseStage class="page__stage" />
+      <LibraryStage class="page__stage" />
       <LibraryPanel class="page__panel" />
     </main>
 

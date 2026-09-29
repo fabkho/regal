@@ -60,7 +60,8 @@ describe('library upload', async () => {
     await list.locator('li').first().waitFor()
     expect(await list.locator('li').count()).toBe(43)
 
-    await page.reload({ waitUntil: 'networkidle' })
+    // Covers keep loading in the background; the page itself is what matters.
+    await page.reload({ waitUntil: 'load' })
     // Restore happens post-hydration (app:mounted); give it a tick.
     await list.locator('li').first().waitFor()
 
