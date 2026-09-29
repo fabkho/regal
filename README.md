@@ -6,7 +6,7 @@ Built with Nuxt 4 and [TresJS](https://tresjs.org) (three.js for Vue).
 
 ## Status
 
-Planning. See the spec issue for scope and milestones.
+Planning. Spec: [#1](https://github.com/fabkho/bookshelf-3d/issues/1).
 
 ## Getting your Goodreads export
 
