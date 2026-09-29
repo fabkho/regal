@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import demoLibraryCsv from '~/assets/data/demo-library.csv?raw'
+import sunEaterCsv from '~/assets/data/sun-eater.csv?raw'
 import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importLibrary'
 import type { Book } from '#shared/types/book'
 
@@ -84,9 +85,10 @@ export function useLibrary() {
     }
   }
 
-  function loadDemo() {
+  /** 'classics' is the public Demo library; 'sun-eater' is a dev test Library (one series, one design). */
+  function loadDemo(name: 'classics' | 'sun-eater' = 'classics') {
     try {
-      const result = importLibrary(demoLibraryCsv)
+      const result = importLibrary(name === 'sun-eater' ? sunEaterCsv : demoLibraryCsv)
       applyResult(result)
     }
     catch (caught) {
