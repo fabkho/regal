@@ -16,7 +16,7 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'en' },
-      title: 'Bookshelf — your Goodreads library in 3D',
+      title: 'Regal — your Goodreads library as a bookcase',
       meta: [
         { name: 'description', content: 'Upload your Goodreads library export and browse it as a 3D bookcase.' },
       ],

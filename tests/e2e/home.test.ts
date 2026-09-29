@@ -9,7 +9,7 @@ describe('home page', async () => {
 
   it('renders the shell with model credit', async () => {
     const html = await $fetch<string>('/')
-    expect(html).toContain('Bookshelf')
+    expect(html).toContain('Regal')
     expect(html).toContain('Lorenzo Drago')
   })
 })

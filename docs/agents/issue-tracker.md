@@ -1,6 +1,6 @@
 # Issue tracker
 
-GitHub Issues on `fabkho/bookshelf-3d`. Use the `gh` CLI.
+GitHub Issues on `fabkho/regal`. Use the `gh` CLI.
 
 - Specs/PRDs: one issue each, label `spec`.
 - Triage labels: `ready-for-agent` (fully specified, an agent can pick it up), `needs-triage`, `needs-info`.

@@ -4,7 +4,7 @@ import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importL
 import type { Book } from '#shared/types/book'
 
 /** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
-export const LIBRARY_STORAGE_KEY = 'bookshelf:library:v1'
+export const LIBRARY_STORAGE_KEY = 'regal:library:v1'
 export const LIBRARY_STORAGE_VERSION = 1
 
 export interface StoredLibrary {
@@ -44,7 +44,7 @@ export function useLibraryRestored() {
 
 /**
  * Reactive Library store, shared across every component that calls it.
- * Persisted to `localStorage` under `bookshelf:library:v1` by the
+ * Persisted to `localStorage` under `regal:library:v1` by the
  * `library-persistence.client` plugin, which restores it after hydration
  * to avoid SSR/client hydration mismatches.
  */

@@ -9,7 +9,7 @@
   <div class="page">
     <header class="page__header">
       <h1 class="page__title">
-        Bookshelf
+        Regal
       </h1>
       <p class="page__tagline">
         Your Goodreads library, as a bookcase.
