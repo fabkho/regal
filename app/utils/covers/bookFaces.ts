@@ -42,6 +42,34 @@ export interface FaceInput {
   seed: number
   /** The book's blurb, typeset on the back cover when known. */
   description?: string | null
+  /** Real or AI-made Spine artwork (asset set); our typography goes on top. */
+  spineArt?: CanvasImageSource & { width: number, height: number }
+  /** Real or AI-made back artwork (asset set). */
+  backArt?: CanvasImageSource & { width: number, height: number }
+}
+
+type Art = CanvasImageSource & { width: number, height: number }
+
+/** Average colour of a region of an image (fractions of its size). */
+export function averageColor(image: Art, x = 0, y = 0, w = 1, h = 1): RGB {
+  const { element, context } = canvas(8, 8)
+  context.drawImage(image, image.width * x, image.height * y, image.width * w, image.height * h, 0, 0, 8, 8)
+  const data = context.getImageData(0, 0, 8, 8).data
+  const sum: RGB = [0, 0, 0]
+  for (let i = 0; i < data.length; i += 4) {
+    sum[0] += data[i]!
+    sum[1] += data[i + 1]!
+    sum[2] += data[i + 2]!
+  }
+  element.width = 0
+  return sum.map(channel => channel / 64) as RGB
+}
+
+/** A soft halo so text stays readable on busy artwork. */
+function textHalo(context: CanvasRenderingContext2D, text: RGB, blur: number) {
+  const dark = text[0] < 128
+  context.shadowColor = dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.65)'
+  context.shadowBlur = blur
 }
 
 const rgba = ([r, g, b]: RGB, alpha = 1) => `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`
@@ -81,23 +109,32 @@ export function spineTextColor([r, g, b]: RGB): RGB {
  * author in one line running top to bottom.
  */
 export function drawSpine(input: FaceInput): HTMLCanvasElement {
-  const height = SPINE_HEIGHT_PX
-  const width = Math.round(Math.min(200, Math.max(28, height * input.thickness / input.height)))
+  const art = input.spineArt
+  // Artwork gets twice the resolution; `k` scales every size below.
+  const k = art ? 2 : 1
+  const height = SPINE_HEIGHT_PX * k
+  const width = Math.round(Math.min(200 * k, Math.max(28 * k, height * input.thickness / input.height)))
   const { element, context } = canvas(width, height)
   const { palette, book } = input
-  const text = spineTextColor(palette.background)
+  const text = spineTextColor(art ? averageColor(art, 0.15, 0.2, 0.7, 0.6) : palette.background)
 
-  context.fillStyle = rgba(palette.background)
-  context.fillRect(0, 0, width, height)
+  if (art) {
+    context.drawImage(art, 0, 0, width, height)
+  }
+  else {
+    context.fillStyle = rgba(palette.background)
+    context.fillRect(0, 0, width, height)
+  }
 
-  // Sheen across the Spine, darker at the hinges.
+  // Sheen across the Spine, darker at the hinges (subtler on artwork, which has its own light).
   const sheen = context.createLinearGradient(0, 0, width, 0)
-  sheen.addColorStop(0, 'rgba(0,0,0,0.28)')
-  sheen.addColorStop(0.2, 'rgba(255,255,255,0.1)')
-  sheen.addColorStop(0.8, 'rgba(255,255,255,0.1)')
-  sheen.addColorStop(1, 'rgba(0,0,0,0.3)')
+  sheen.addColorStop(0, `rgba(0,0,0,${art ? 0.22 : 0.28})`)
+  sheen.addColorStop(0.2, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
+  sheen.addColorStop(0.8, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
+  sheen.addColorStop(1, `rgba(0,0,0,${art ? 0.24 : 0.3})`)
   context.fillStyle = sheen
   context.fillRect(0, 0, width, height)
+  if (art) textHalo(context, text, 6 * k)
 
   context.fillStyle = rgba(text)
   context.textAlign = 'center'
@@ -107,13 +144,13 @@ export function drawSpine(input: FaceInput): HTMLCanvasElement {
   const number = seriesNumber(book.seriesTitle)
   const head = number ? height * 0.1 : height * 0.04
   if (number) {
-    context.font = `${Math.min(width * 0.42, 22)}px ${SPINE_AUTHOR_FONT}`
+    context.font = `${Math.min(width * 0.42, 22 * k)}px ${SPINE_AUTHOR_FONT}`
     context.fillText(number, width / 2, height * 0.05)
   }
 
   // Title and author on one line, top to bottom: rotate so +x runs down the Spine.
   const available = height - head - height * 0.05
-  const maxSize = Math.min(width * 0.62, 34)
+  const maxSize = Math.min(width * 0.62, 34 * k)
   const author = book.author ?? ''
   const measure = (size: number) => {
     context.font = `${size}px ${SPINE_TITLE_FONT}`
@@ -122,7 +159,7 @@ export function drawSpine(input: FaceInput): HTMLCanvasElement {
     const authorWidth = author ? context.measureText(author).width + size * 1.2 : 0
     return titleWidth + authorWidth
   }
-  const size = Math.max(9, Math.min(maxSize, maxSize * available / Math.max(1, measure(maxSize))))
+  const size = Math.max(9 * k, Math.min(maxSize, maxSize * available / Math.max(1, measure(maxSize))))
   const titleText = ellipsizeWith(context, book.title, `${size}px ${SPINE_TITLE_FONT}`, available * (author ? 0.72 : 1))
   context.font = `${size}px ${SPINE_TITLE_FONT}`
   const titleWidth = context.measureText(titleText).width
@@ -156,16 +193,22 @@ function ellipsizeWith(context: CanvasRenderingContext2D, text: string, font: st
 
 /** The back cover: Cover-coloured, title at the head, a real EAN-13 barcode from the ISBN. */
 export function drawBack(input: FaceInput): HTMLCanvasElement {
-  const height = SPINE_HEIGHT_PX
+  const art = input.backArt
+  const k = art ? 2 : 1
+  const height = SPINE_HEIGHT_PX * k
   const width = Math.round(height * input.depth / input.height)
   const { element, context } = canvas(width, height)
   const { book } = input
-  const palette = { ...input.palette, text: spineTextColor(input.palette.background) }
+  const palette = { ...input.palette, text: spineTextColor(art ? averageColor(art, 0.1, 0.05, 0.8, 0.7) : input.palette.background) }
 
-  // A soft, blurred echo of the front Cover under the background colour.
+  // Artwork as is; otherwise a soft, blurred echo of the front Cover under the background colour.
   context.fillStyle = rgba(palette.background)
   context.fillRect(0, 0, width, height)
-  if (input.cover) {
+  if (art) {
+    context.drawImage(art, 0, 0, width, height)
+    textHalo(context, palette.text, 5 * k)
+  }
+  else if (input.cover) {
     context.filter = 'blur(10px)'
     context.globalAlpha = 0.35
     context.drawImage(input.cover, 0, 0, width, height)
@@ -177,7 +220,7 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   context.fillStyle = rgba(palette.text)
   context.textAlign = 'center'
   context.textBaseline = 'top'
-  const titleSize = fitFont(context, book.title, SERIF, '600', width - margin * 2, 22, 9)
+  const titleSize = fitFont(context, book.title, SERIF, '600', width - margin * 2, 22 * k, 9 * k)
   context.font = `600 ${titleSize}px ${SERIF}`
   context.fillText(ellipsize(context, book.title, width - margin * 2), width / 2, height * 0.08)
   if (book.author) {
@@ -190,7 +233,7 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   const blurbBottom = height * 0.74
   if (input.description) {
     // The real blurb, wrapped to the back cover's measure.
-    const size = Math.max(9, Math.min(13, width / 27))
+    const size = Math.max(9 * k, Math.min(13 * k, width / 27))
     const lineHeight = size * 1.38
     context.font = `400 ${size}px ${SERIF}`
     context.fillStyle = rgba(palette.text, 0.9)
@@ -211,7 +254,9 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
     }
   }
 
-  // Barcode panel, bottom right.
+  // Barcode panel, bottom right (printed flat: no halo).
+  context.shadowColor = 'transparent'
+  context.shadowBlur = 0
   const modules = ean13Modules(book.isbn13)
   if (modules) {
     const moduleWidth = Math.max(1, Math.floor((width * 0.46) / 95))
@@ -225,7 +270,7 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
     for (let i = 0; i < 95; i++) {
       if (modules[i] === '1') context.fillRect(panelX + moduleWidth * (6 + i), panelY + height * 0.012, moduleWidth, barsHeight)
     }
-    context.font = `400 ${Math.max(7, moduleWidth * 7)}px ${SANS}`
+    context.font = `400 ${Math.max(7 * k, moduleWidth * 7)}px ${SANS}`
     context.textAlign = 'center'
     context.fillText(book.isbn13!.replace(/\D/g, ''), panelX + (barsWidth + moduleWidth * 12) / 2, panelY + barsHeight + height * 0.016)
   }

@@ -55,9 +55,8 @@ function paletteOf(image: CanvasImageSource): SpinePalette {
   return spinePalette(context.getImageData(0, 0, width, height).data, width, height)
 }
 
-/** Loads a Book's Cover once per URL; resolves null when there is none. */
-export function loadCover(book: CoverBook): Promise<LoadedCover | null> {
-  const url = coverUrl(book)
+/** Loads a Book's Cover once per URL; resolves null when there is none. `url` overrides the resolver (asset set). */
+export function loadCover(book: CoverBook, url = coverUrl(book)): Promise<LoadedCover | null> {
   let pending = cache.get(url)
   if (!pending) {
     pending = schedule(() => loader.loadAsync(url))

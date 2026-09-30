@@ -29,12 +29,17 @@ import type { Book } from '#shared/types/book'
 import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
 import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
-import { drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
+import { averageColor, drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
 import { loadCover } from '~/utils/covers/coverTextures'
+import { loadAssets } from '~/utils/covers/bookAssets'
+import type { LoadedAssets } from '~/utils/covers/bookAssets'
+import { drawPageEdges, pageEdgePlan } from '~/utils/books/pageEdges'
+import type { PageEdgePlan } from '~/utils/books/pageEdges'
 import { loadDescription } from '~/utils/covers/descriptions'
 import type { LoadedCover } from '~/utils/covers/coverTextures'
 import { fromHex, readableOn } from '~/utils/covers/palette'
+import type { RGB } from '~/utils/covers/palette'
 
 const props = defineProps<{ poses: BookPose[], books: Book[] }>()
 
@@ -49,6 +54,11 @@ const CLOTH_ALBEDO = 0.3
 const COVER_ALBEDO = 0.55
 /** Generated Spine/back textures carry their colour in the texture. */
 const FACE_ALBEDO = 0.42
+/** Page edges: the paper colour lives in the texture; the head collects a little dust. */
+const PAPER_ALBEDO = 0.78
+const HEAD_DUST = 0.9
+/** How strongly the sheet lines catch the light. */
+const PAGE_BUMP = 0.5
 
 interface Gloss { clearcoat: number, clearcoatRoughness: number, envMapIntensity: number }
 const CLOTH_GLOSS: Gloss = { clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 }
@@ -75,7 +85,6 @@ const FLIP_SECONDS = 0.7
 const SPIN_PER_PX = 0.01
 
 const geometry = new BoxGeometry(1, 1, 1)
-const pages = new MeshStandardMaterial({ color: '#CFC3A8', roughness: 0.92, metalness: 0, envMapIntensity: 0.35 })
 
 interface BookMaterials {
   /** BoxGeometry face order: +x (front cover), -x (back), +y, -y, +z (spine, facing the room), -z (fore-edge). */
@@ -85,6 +94,10 @@ interface BookMaterials {
   spine: MeshPhysicalMaterial
   spineTexture: CanvasTexture
   backTexture: CanvasTexture
+  /** Page edges: one canvas, three views of it (head, tail, fore-edge). */
+  edges: { plan: PageEdgePlan, canvas: HTMLCanvasElement, textures: CanvasTexture[], materials: MeshStandardMaterial[] }
+  /** Asset set faces (real or AI), when the Book has any. */
+  assets: LoadedAssets | null
   /** Last loaded Cover (null until/unless there is one), reused for redraws. */
   loaded: LoadedCover | null
 }
@@ -142,7 +155,63 @@ function faceTexture(canvas: HTMLCanvasElement) {
 
 const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
 
-function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null): FaceInput | null {
+/**
+ * The page edges of a Book. The canvas runs across the thickness (u on the
+ * box's top, bottom and fore-edge alike) with the Spine's board along its
+ * bottom rows: the head shows it as is, the tail mirrored, and the fore-edge
+ * samples only the middle so no Spine board shows there.
+ */
+function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
+  const book = booksById.value.get(pose.bookId)
+  const plan = pageEdgePlan(book ?? { id: pose.bookId, pages: null, binding: null }, pose.thickness, pose.depth)
+  const canvas = drawPageEdges(plan, board, pose.bookId)
+  const head = faceTexture(canvas)
+  const tail = head.clone()
+  tail.repeat.set(1, -1)
+  tail.offset.set(0, 1)
+  const fore = head.clone()
+  fore.repeat.set(1, 0.5)
+  fore.offset.set(0, 0.25)
+  const textures = [head, tail, fore]
+  const materials = textures.map((texture, index) => new MeshStandardMaterial({
+    map: texture,
+    bumpMap: texture,
+    bumpScale: PAGE_BUMP,
+    color: new Color(1, 1, 1).multiplyScalar(PAPER_ALBEDO * (index === 0 ? HEAD_DUST : 1)),
+    roughness: 0.93,
+    metalness: 0,
+    envMapIntensity: 0.3,
+  }))
+  return { plan, canvas, textures, materials }
+}
+
+/**
+ * Puts a freshly drawn Spine or back canvas on its material. three.js
+ * allocates texture storage once, so a canvas of a new size (artwork is drawn
+ * at twice the resolution) needs a new texture rather than an update.
+ */
+function setFace(entry: BookMaterials, face: 'spine' | 'back', image: HTMLCanvasElement) {
+  const key = face === 'spine' ? 'spineTexture' : 'backTexture'
+  const current = entry[key]
+  const old = current.image as HTMLCanvasElement
+  if (old.width === image.width && old.height === image.height) {
+    current.image = image
+    current.needsUpdate = true
+    return
+  }
+  const texture = faceTexture(image)
+  entry[key] = texture
+  entry[face].map = texture
+  entry[face].needsUpdate = true
+  current.dispose()
+}
+
+function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
+  drawPageEdges(entry.edges.plan, board, bookId, entry.edges.canvas)
+  for (const texture of entry.edges.textures) texture.needsUpdate = true
+}
+
+function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null, assets: LoadedAssets | null = null): FaceInput | null {
   const book = booksById.value.get(pose.bookId)
   if (!book) return null
   const background = fromHex(pose.color)
@@ -156,6 +225,8 @@ function faceInput(pose: BookPose, loaded: LoadedCover | null, description: stri
     cover: loaded?.image,
     seed: hashString(book.id),
     description,
+    spineArt: assets?.spine,
+    backArt: assets?.back,
   }
 }
 
@@ -168,7 +239,9 @@ function materialsFor(pose: BookPose): Material[] {
     const backTexture = faceTexture(input ? drawBack(input) : document.createElement('canvas'))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    entry = { cover, back, spine, spineTexture, backTexture, loaded: null, faces: [cover, back, pages, pages, spine, pages] }
+    const edges = pageEdgesFor(pose, fromHex(pose.color))
+    const [head, tail, fore] = edges.materials as [Material, Material, Material]
+    entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -191,10 +264,14 @@ async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
   const description = loadDescription(book)
-  const [loaded] = await Promise.all([loadCover(book), spineFontsReady()])
+  // Asset set first (its own front, spine and back), then the Cover resolver.
+  const assets = await loadAssets(book)
+  const cover = async () => (assets?.frontUrl ? await loadCover(book, assets.frontUrl) : null) ?? loadCover(book)
+  const [loaded] = await Promise.all([cover(), spineFontsReady()])
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
   entry.loaded = loaded
+  entry.assets = assets
 
   if (loaded) {
     entry.cover.map = loaded.texture
@@ -205,21 +282,21 @@ async function applyCover(pose: BookPose) {
     entry.cover.needsUpdate = true
   }
 
-  const input = faceInput(pose, loaded)
+  const input = faceInput(pose, loaded, null, assets)
   if (!input) return
-  entry.spineTexture.image = drawSpine(input)
-  entry.spineTexture.needsUpdate = true
-  entry.backTexture.image = drawBack(input)
-  entry.backTexture.needsUpdate = true
+  // The cover boards seen on the page edges take the Spine's colour.
+  const board = assets?.spine ? averageColor(assets.spine) : loaded?.palette.background ?? fromHex(pose.color)
+  redrawPageEdges(entry, board, pose.bookId)
+  setFace(entry, 'spine', drawSpine(input))
+  setFace(entry, 'back', drawBack(input))
 
   // The blurb arrives separately; set it on the back when it does.
   const blurb = await description
   const current = materialsByBook.get(pose.bookId)
   if (!blurb || !current) return
-  const withBlurb = faceInput(pose, current.loaded, blurb)
+  const withBlurb = faceInput(pose, current.loaded, blurb, current.assets)
   if (!withBlurb) return
-  current.backTexture.image = drawBack(withBlurb)
-  current.backTexture.needsUpdate = true
+  setFace(current, 'back', drawBack(withBlurb))
 }
 
 function disposeEntry(entry: BookMaterials) {
@@ -229,6 +306,8 @@ function disposeEntry(entry: BookMaterials) {
   entry.spine.dispose()
   entry.spineTexture.dispose()
   entry.backTexture.dispose()
+  for (const texture of entry.edges.textures) texture.dispose()
+  for (const material of entry.edges.materials) material.dispose()
 }
 
 watch(() => props.poses, (poses) => {
@@ -492,7 +571,6 @@ onBeforeUnmount(() => {
   if (controls.value) (controls.value as { enabled: boolean }).enabled = true
   for (const motion of motionByBook.values()) gsap.killTweensOf([motion.pick, motion.flip, motion.spin, motion.glint])
   geometry.dispose()
-  pages.dispose()
   for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
 })
