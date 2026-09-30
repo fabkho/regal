@@ -206,6 +206,15 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   context.fillRect(0, 0, width, height)
   if (art) {
     context.drawImage(art, 0, 0, width, height)
+    // A soft scrim behind the text, as printed backs do on busy artwork.
+    const dark = palette.text[0] > 128
+    const tone = dark ? '0, 0, 0' : '255, 255, 255'
+    const scrim = context.createLinearGradient(0, 0, 0, height)
+    scrim.addColorStop(0, `rgba(${tone}, ${dark ? 0.3 : 0.26})`)
+    scrim.addColorStop(0.72, `rgba(${tone}, ${dark ? 0.26 : 0.22})`)
+    scrim.addColorStop(0.82, `rgba(${tone}, 0)`)
+    context.fillStyle = scrim
+    context.fillRect(0, 0, width, height)
     textHalo(context, palette.text, 5 * k)
   }
   else if (input.cover) {
@@ -242,6 +251,8 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
     const lines = wrapText(context, input.description, width - margin * 2)
     const fit = Math.floor((blurbBottom - blurbTop) / lineHeight)
     const shown = lines.slice(0, fit)
+    // Don't end on a paragraph break: the ellipsis belongs to the last words.
+    while (shown.length > 1 && shown.at(-1) === '') shown.pop()
     if (lines.length > fit && shown.length) shown[shown.length - 1] = ellipsize(context, `${shown.at(-1)}…`, width - margin * 2)
     shown.forEach((line, index) => context.fillText(line, margin, blurbTop + index * lineHeight))
   }

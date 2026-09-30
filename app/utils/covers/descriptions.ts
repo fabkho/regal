@@ -5,8 +5,11 @@ import { schedule } from './coverTextures'
 
 const cache = new Map<string, Promise<string | null>>()
 
+/** Bump when the resolver changes, so browsers drop blurbs (and misses) they cached. */
+const RESOLVER_VERSION = '3'
+
 export function descriptionUrl(book: CoverBook): string {
-  const params = new URLSearchParams()
+  const params = new URLSearchParams({ v: RESOLVER_VERSION })
   if (book.isbn13) params.set('isbn13', book.isbn13)
   if (book.isbn10) params.set('isbn10', book.isbn10)
   if (book.title) params.set('title', book.title)

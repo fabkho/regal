@@ -4,7 +4,8 @@ import type { CoverQuery, Fetcher } from '../utils/covers'
 import { coverCacheKey, isEmptyQuery } from '../utils/covers'
 import { resolveDescription } from '../utils/descriptions'
 
-const DAY = 60 * 60 * 24
+const HOUR = 60 * 60
+const DAY = HOUR * 24
 
 const lookupDescription = defineCachedFunction(
   async (_key: string, query: CoverQuery) => {
@@ -34,6 +35,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Give an ISBN or a title' })
   }
   const resolved = await lookupDescription(coverCacheKey(query), query)
-  setResponseHeader(event, 'Cache-Control', `public, max-age=${resolved ? 7 * DAY : DAY}`)
+  setResponseHeader(event, 'Cache-Control', `public, max-age=${resolved ? 7 * DAY : HOUR}`)
   return { description: resolved?.description ?? null, source: resolved?.source ?? null }
 })
