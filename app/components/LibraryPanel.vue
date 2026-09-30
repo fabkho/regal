@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { books, summary, warnings, error, importFile, loadDemo, clear } = useLibrary()
+const { books, summary, warnings, error, importFile, loadDemo, loadUrl, clear } = useLibrary()
 /** Dev-only test Libraries. */
 const isDev = import.meta.dev
 
@@ -36,6 +36,14 @@ function onFile(file: File) {
             @click="loadDemo('sun-eater')"
           >
             Sun Eater (dev)
+          </button>
+          <button
+            v-if="isDev"
+            type="button"
+            class="btn"
+            @click="loadUrl('/book-assets/library.json')"
+          >
+            My latest (dev)
           </button>
         </template>
       </LibraryDropzone>

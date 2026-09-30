@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import type { Book } from '#shared/types/book'
+import { importReadingTracker, looksLikeJson } from './importReadingTracker'
 
 /**
  * Thrown when the given CSV text doesn't look like a Goodreads Library export
@@ -82,10 +83,9 @@ function splitList(raw: string | undefined): string[] {
   return raw.split(',').map(s => s.trim()).filter(Boolean)
 }
 
-function clampRating(n: number | null): 0 | 1 | 2 | 3 | 4 | 5 {
+function clampRating(n: number | null): number {
   if (!n || n < 0) return 0
-  if (n > 5) return 5
-  return n as 0 | 1 | 2 | 3 | 4 | 5
+  return Math.min(5, n)
 }
 
 function rowToBook(row: GoodreadsRow): Book {
@@ -119,12 +119,15 @@ function rowToBook(row: GoodreadsRow): Book {
 }
 
 /**
- * Parses a Goodreads Library export CSV (already read as text) into normalized Books.
+ * Parses a Library export (already read as text) into normalized Books: a
+ * Goodreads Library export CSV, or reading-tracker JSON (`reading list --json`).
  * Pure: no DOM or Node APIs, safe to run in the browser or in tests.
  *
- * @throws {NotAGoodreadsExportError} when required headers are missing.
+ * @throws {NotAGoodreadsExportError} when a CSV misses required headers.
+ * @throws {NotAReadingTrackerExportError} when JSON isn't a reading-tracker export.
  */
 export function importLibrary(csvText: string): ImportLibraryResult {
+  if (looksLikeJson(csvText)) return importReadingTracker(csvText)
   // Strip a leading UTF-8 BOM, which some Goodreads exports include.
   const text = csvText.replace(/^\uFEFF/, '')
 

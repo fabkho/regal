@@ -59,7 +59,7 @@ function onDragLeave() {
     <input
       ref="fileInput"
       type="file"
-      accept=".csv,text/csv"
+      accept=".csv,text/csv,.json,application/json"
       class="sr-only"
       @change="onInputChange"
     >

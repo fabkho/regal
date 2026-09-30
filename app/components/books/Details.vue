@@ -43,6 +43,13 @@ const meta = computed(() => {
     book.value.binding,
   ].filter(Boolean) as string[]
 })
+
+/** Goodreads Book Ids are numeric; other sources (Fable via the reading tracker) get a Goodreads search. */
+function goodreadsUrl(current: { id: string, isbn13: string | null, title: string, author: string | null }) {
+  if (/^\d+$/.test(current.id)) return `https://www.goodreads.com/book/show/${current.id}`
+  const query = current.isbn13 ?? [current.title, current.author].filter(Boolean).join(' ')
+  return `https://www.goodreads.com/search?q=${encodeURIComponent(query)}`
+}
 </script>
 
 <template>
@@ -74,7 +81,14 @@ const meta = computed(() => {
         class="details__rating"
         :aria-label="`Rated ${book.rating} out of 5`"
       >
-        <span aria-hidden="true">{{ '★'.repeat(book.rating) }}<span class="details__rating-rest">{{ '★'.repeat(5 - book.rating) }}</span></span>
+        <span
+          class="details__stars"
+          aria-hidden="true"
+        >★★★★★<span
+          class="details__stars-fill"
+          :style="{ width: `${book.rating / 5 * 100}%` }"
+        >★★★★★</span></span>
+        <span class="details__rating-value">{{ book.rating.toFixed(book.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
       </p>
 
       <p class="details__meta">
@@ -127,7 +141,7 @@ const meta = computed(() => {
         </button>
         <a
           class="details__link"
-          :href="`https://www.goodreads.com/book/show/${book.id}`"
+          :href="goodreadsUrl(book)"
           target="_blank"
           rel="noopener"
         >Goodreads ↗</a>
@@ -176,8 +190,26 @@ const meta = computed(() => {
   letter-spacing: 0.1em;
 }
 
-.details__rating-rest {
+/* Quarter stars: an accent layer clipped to the rating over a grey row. */
+.details__stars {
+  position: relative;
+  display: inline-block;
   color: var(--color-line);
+  white-space: nowrap;
+}
+
+.details__stars-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  overflow: hidden;
+  color: var(--color-accent);
+}
+
+.details__rating-value {
+  margin-left: 0.5em;
+  color: var(--color-ink-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
 }
 
 .details__review {

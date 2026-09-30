@@ -17,7 +17,9 @@ export function descriptionUrl(book: CoverBook): string {
   return `/api/description?${params}`
 }
 
-export function loadDescription(book: CoverBook): Promise<string | null> {
+export function loadDescription(book: CoverBook & { description?: string | null }): Promise<string | null> {
+  // The Library source's own blurb (Fable) wins; it is the edition's text.
+  if (book.description?.trim()) return Promise.resolve(book.description.trim())
   const url = descriptionUrl(book)
   let pending = cache.get(url)
   if (!pending) {

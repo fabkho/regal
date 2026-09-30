@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import demoLibraryCsv from '~/assets/data/demo-library.csv?raw'
 import sunEaterCsv from '~/assets/data/sun-eater.csv?raw'
 import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importLibrary'
+import { NotAReadingTrackerExportError } from '#shared/library/importReadingTracker'
 import type { Book } from '#shared/types/book'
 
 /** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
@@ -79,6 +80,9 @@ export function useLibrary() {
       if (caught instanceof NotAGoodreadsExportError) {
         error.value = 'That doesn\'t look like a Goodreads library export CSV. Export it from Goodreads → My Books → Import and export → Export Library.'
       }
+      else if (caught instanceof NotAReadingTrackerExportError) {
+        error.value = 'That JSON isn\'t a reading-tracker export. Create one with `reading list --json > library.json`.'
+      }
       else {
         error.value = 'Could not read that file. Please try again.'
       }
@@ -96,6 +100,18 @@ export function useLibrary() {
     }
   }
 
+  /** Loads a Library export from a URL (dev: the asset pipeline's /book-assets/library.json). */
+  async function loadUrl(url: string) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`${url}: ${response.status}`)
+      applyResult(importLibrary(await response.text()))
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : 'Could not load that library.'
+    }
+  }
+
   function clear() {
     books.value = []
     warnings.value = []
@@ -109,6 +125,7 @@ export function useLibrary() {
     error,
     importFile,
     loadDemo,
+    loadUrl,
     clear,
   }
 }
