@@ -84,6 +84,9 @@ export const assetUrl = (path: string) => (/^(https?:)?\//.test(path) ? path : `
 function loadImage(src: string): Promise<HTMLImageElement | undefined> {
   return schedule(() => new Promise<HTMLImageElement | undefined>((resolve) => {
     const image = new Image()
+    // Asset sets may live on another origin (e.g. a CDN bucket): without CORS the
+    // image would taint the canvas the Spine/back textures are drawn on.
+    image.crossOrigin = 'anonymous'
     image.decoding = 'async'
     image.onload = () => resolve(image)
     image.onerror = () => resolve(undefined)
