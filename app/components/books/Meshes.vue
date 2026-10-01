@@ -110,7 +110,13 @@ interface BookMaterials {
   spineTexture: CanvasTexture
   backTexture: CanvasTexture
   /** Page edges: one canvas, three views of it (head, tail, fore-edge). */
-  edges: { plan: PageEdgePlan, canvas: HTMLCanvasElement, textures: CanvasTexture[], materials: MeshStandardMaterial[] }
+  edges: {
+    plan: PageEdgePlan
+    canvas: HTMLCanvasElement
+    textures: CanvasTexture[]
+    /** Head, tail and fore edge. */
+    materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
+  }
   /** Asset set faces (real or AI), when the Book has any. */
   assets: LoadedAssets | null
   /** The blurb once it has arrived, for redraws. */
@@ -201,17 +207,16 @@ function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
   const fore = head.clone()
   fore.repeat.set(1, 0.5)
   fore.offset.set(0, 0.25)
-  const textures = [head, tail, fore]
-  const materials = textures.map((texture, index) => new MeshStandardMaterial({
+  const edge = (texture: CanvasTexture, dust = 1) => new MeshStandardMaterial({
     map: texture,
     bumpMap: texture,
     bumpScale: PAGE_BUMP,
-    color: new Color(1, 1, 1).multiplyScalar(PAPER_ALBEDO * (index === 0 ? HEAD_DUST : 1)),
+    color: new Color(1, 1, 1).multiplyScalar(PAPER_ALBEDO * dust),
     roughness: 0.93,
     metalness: 0,
     envMapIntensity: 0.3,
-  }))
-  return { plan, canvas, textures, materials }
+  })
+  return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
 }
 
 /**
@@ -275,7 +280,7 @@ function materialsFor(pose: BookPose): Material[] {
     const spine = printed(spineTexture)
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
-    const [head, tail, fore] = edges.materials as [Material, Material, Material]
+    const [head, tail, fore] = edges.materials
     entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }

@@ -13,6 +13,9 @@
 - `pnpm lint` / `pnpm lint:fix` (ESLint stylistic: 2 spaces, no semicolons, single quotes, trailing commas)
 - `pnpm test` (all), `pnpm test:unit`, `pnpm test:e2e`
 - Test layout: `tests/unit` (pure modules, node env), `tests/nuxt` (Nuxt runtime env), `tests/e2e` (`@nuxt/test-utils/e2e`, builds the app)
+- `pnpm typecheck` (vue-tsc via `nuxt typecheck`; CI runs it, don't run it locally unless needed)
+- `pnpm check:privacy` fails on tracked real data or publisher images (Goodreads exports, `public/book-assets/`, `.data/`, databases, CSV/images outside fixtures/docs); `--staged` checks only what a commit adds
+- CI (`.github/workflows/ci.yml`, PRs and `main`): privacy check, lint, typecheck, unit tests. The e2e suite stays local (WebGL in a browser; overkill for CI). Never run `assets:build` in CI
 
 ## Page structure
 

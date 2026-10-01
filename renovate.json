@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>nuxt/renovate-config-nuxt"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "TypeScript is pinned to 6.x (see AGENTS.md)",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    }
+  ],
+  "postUpdateOptions": ["pnpmDedupe"]
+}
