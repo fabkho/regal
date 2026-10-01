@@ -539,8 +539,8 @@ const smooth = (t: number) => t * t * (3 - 2 * t)
 // they never pass through each other (see utils/stack/shuffle.ts).
 
 let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = null
-/** The last re-sort: how many Books moved and which style ran (shown in the dev choices). */
-const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
+/** The last re-sort: how many Books moved, which style ran (dev choices) and when it ends (Stack separators). */
+const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
 /** A re-sort that arrived while another was running; starts when that one ends. */
 let queued: BookPose[] | null = null
 let shuffleTime = 0
@@ -550,7 +550,7 @@ function startShuffle(from: BookPose[], to: BookPose[]) {
   const moves = countMoves(from, to)
   const style = chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
   const plan = planShuffle(from, to, style)
-  lastShuffle.value = { moves, style }
+  lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }
   running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
 }
 

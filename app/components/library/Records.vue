@@ -1,13 +1,17 @@
 <script setup lang="ts">
 // The Stack's Books as plain text records (same order and filters as the 3D
 // Stack). Hovering a record lifts its Book in 3D; clicking takes it out.
-import { applyStackView } from '~/utils/stack/view'
+// Year / month headers match the Stack's date separators.
+import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
 
 const { books } = useLibrary()
 const { view } = useStackView()
 const { pickedId, pick, putAway } = useBookPick()
 const hovered = useState<string | null>('books:hovered', () => null)
 const shown = computed(() => applyStackView(books.value, view.value))
+/** First Book of each date group → its header. */
+const headers = computed(() => new Map(stackGroups(shown.value, resolveGrouping(view.value))
+  .map(group => [group.bookIds[0]!, { label: group.label, count: group.bookIds.length }])))
 
 function toggle(bookId: string) {
   if (pickedId.value === bookId) putAway()
@@ -24,29 +28,39 @@ const formatDate = (iso: string | null) => (iso
     <div class="records__count">
       {{ shown.length }} {{ shown.length === 1 ? 'book' : 'books' }}
     </div>
-    <button
+    <template
       v-for="book in shown"
       :key="book.id"
-      type="button"
-      class="records__item"
-      :aria-pressed="pickedId === book.id"
-      @pointerenter="hovered = book.id"
-      @pointerleave="hovered = hovered === book.id ? null : hovered"
-      @click="toggle(book.id)"
     >
-      <span class="records__title">{{ book.title }}</span>
-      <span class="records__meta">
-        {{ book.author }}<template v-if="book.dateRead"> · {{ formatDate(book.dateRead) }}</template>
-      </span>
-      <span
-        v-if="book.rating"
-        class="records__stars"
-        :aria-label="`Rated ${book.rating} out of 5`"
-      >★★★★★<span
-        class="records__stars-fill"
-        :style="{ width: `${book.rating / 5 * 100}%` }"
-      >★★★★★</span></span>
-    </button>
+      <div
+        v-if="headers.has(book.id)"
+        class="records__group"
+      >
+        <span>{{ headers.get(book.id)!.label }}</span>
+        <span class="records__group-count">{{ headers.get(book.id)!.count }}</span>
+      </div>
+      <button
+        type="button"
+        class="records__item"
+        :aria-pressed="pickedId === book.id"
+        @pointerenter="hovered = book.id"
+        @pointerleave="hovered = hovered === book.id ? null : hovered"
+        @click="toggle(book.id)"
+      >
+        <span class="records__title">{{ book.title }}</span>
+        <span class="records__meta">
+          {{ book.author }}<template v-if="book.dateRead"> · {{ formatDate(book.dateRead) }}</template>
+        </span>
+        <span
+          v-if="book.rating"
+          class="records__stars"
+          :aria-label="`Rated ${book.rating} out of 5`"
+        >★★★★★<span
+          class="records__stars-fill"
+          :style="{ width: `${book.rating / 5 * 100}%` }"
+        >★★★★★</span></span>
+      </button>
+    </template>
   </div>
 </template>
 
@@ -57,6 +71,23 @@ const formatDate = (iso: string | null) => (iso
   font-size: var(--text-xs, 0.7rem);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.records__group {
+  display: flex;
+  justify-content: space-between;
+  margin: 1rem 0 0.2rem;
+  padding: 0 0.5rem 0.3rem;
+  color: var(--color-ink, #2C2C2A);
+  font-size: var(--text-xs, 0.7rem);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--color-ink, #2C2C2A);
+}
+
+.records__group-count {
+  color: var(--color-accent, #B93E2E);
+  font-weight: 400;
 }
 
 .records__item {

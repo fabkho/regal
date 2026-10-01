@@ -8,7 +8,8 @@ import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
 import { layoutLibrary } from '~/utils/bookcase/layout'
 import { justDragged } from '~/utils/books/dragGuard'
 import { layoutStack } from '~/utils/stack/layout'
-import { applyStackView } from '~/utils/stack/view'
+import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
+import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '~/utils/stack/separators'
 import type { ShuffleStyle } from '~/utils/stack/shuffle'
 import type { ViewMode } from '~/composables/useBookPick'
 
@@ -42,10 +43,17 @@ watch(mode, (value) => {
 const shelves = computed(() => layoutLibrary(books.value))
 const { view: stackView } = useStackView()
 const stackBooks = computed(() => applyStackView(books.value, stackView.value))
-const stack = computed(() => layoutStack(stackBooks.value, { keepOrder: true }))
-
 // The decided look; Regal's dev server previews open options (components/dev/Choices.vue).
 const look = useLook()
+/** Date separators (year / month) between the Books when sorted by date read. */
+const stackGrouping = computed(() => resolveGrouping(stackView.value))
+const stack = computed(() => layoutStack(stackBooks.value, {
+  keepOrder: true,
+  groups: stackGroups(stackBooks.value, stackGrouping.value),
+  separatorThickness: SEPARATOR_THICKNESS[look.value.separatorStyle],
+}))
+/** Looks with the date beside the pile need a wider view on narrow stages. */
+const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
 /** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones. */
 const shuffleStyle = computed(() => look.value.shuffleFancy as ShuffleStyle)
 const shuffleThreshold = computed(() => look.value.shuffleThreshold)
@@ -106,8 +114,14 @@ watch(books, (list) => {
         <StackScene
           v-else
           :stack-height="stack.height"
+          :fit-width="stackFitWidth"
           @ready="isReady = true"
         >
+          <StackSeparators
+            :separators="stack.separators"
+            :look="look.separatorStyle"
+            :stack-height="stack.height"
+          />
           <BooksMeshes
             :poses="poses"
             :books="books"

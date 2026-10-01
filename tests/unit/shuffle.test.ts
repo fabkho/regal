@@ -3,7 +3,7 @@ import { Euler, Matrix4, Vector3 } from 'three'
 import type { Book } from '../../shared/types/book'
 import type { BookPose } from '../../app/utils/books/pose'
 import { layoutStack } from '../../app/utils/stack/layout'
-import { applyStackView, DEFAULT_STACK_VIEW } from '../../app/utils/stack/view'
+import { applyStackView, DEFAULT_STACK_VIEW, stackGroups } from '../../app/utils/stack/view'
 import type { ShufflePlan, ShuffleStyle } from '../../app/utils/stack/shuffle'
 import { planShuffle, sampleTrack, SHUFFLE_STYLES } from '../../app/utils/stack/shuffle'
 
@@ -214,6 +214,33 @@ describe('planShuffle keeps Books apart', () => {
       expect(findCollision(plan, poseMap(from, to))).toBeNull()
     })
   }
+})
+
+describe('planShuffle with date separators in the pile', () => {
+  const grouped = (books: Book[], grouping: 'off' | 'year' | 'month'): BookPose[] =>
+    layoutStack(books, { keepOrder: true, groups: stackGroups(books, grouping), separatorThickness: 0.014 }).poses
+  const byDate = (books: Book[]) => applyStackView(books, DEFAULT_STACK_VIEW)
+
+  for (const style of STYLES) {
+    it(`${style}: grouped by date ↔ sorted by rating (gaps open and close)`, () => {
+      const books = library(24)
+      const from = grouped(byDate(books), 'month')
+      const to = grouped(applyStackView(books, { ...DEFAULT_STACK_VIEW, sort: 'rating' }), 'off')
+      for (const [a, b] of [[from, to], [to, from]] as const) {
+        const plan = planShuffle(a, b, style)
+        expect(findCollision(plan, poseMap(a, b))).toBeNull()
+      }
+    })
+  }
+
+  it('settles the Books when only the grouping changes (same order, new gaps)', () => {
+    const books = byDate(library(16))
+    const from = grouped(books, 'year')
+    const to = grouped(books, 'month')
+    const plan = planShuffle(from, to, 'hand')
+    expect(findCollision(plan, poseMap(from, to))).toBeNull()
+    for (const pose of to) expect(sampleTrack(plan.tracks.get(pose.bookId)!, plan.duration).position).toEqual([pose.x, pose.y, pose.z])
+  })
 })
 
 describe('planShuffle lands on the target poses', () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sort & filter for the Stack (#27): 'chips' (a row over the 3D), 'stacked'
 // (one group per line, for a sidebar) or 'menu' (one button, popover).
-import { readYears, STACK_SORTS } from '~/utils/stack/view'
+import { readYears, STACK_GROUPINGS, STACK_SORTS } from '~/utils/stack/view'
 
 const props = defineProps<{ variant: 'chips' | 'stacked' | 'menu' }>()
 
@@ -16,6 +16,7 @@ const summary = computed(() => {
   const parts = [sort]
   if (view.value.year) parts.push(String(view.value.year))
   if (view.value.minRating) parts.push(`★ ${view.value.minRating}+`)
+  if (view.value.sort === 'date' && view.value.group !== 'auto') parts.push(`by ${view.value.group}`)
   return parts.join(' · ')
 })
 </script>
@@ -53,6 +54,26 @@ const summary = computed(() => {
             class="controls__chip"
             :aria-pressed="view.sort === option.value"
             @click="set({ sort: option.value })"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+      <div
+        v-if="view.sort === 'date'"
+        class="controls__group"
+        role="group"
+        aria-label="Date separators"
+      >
+        <span class="controls__label">Group</span>
+        <div class="controls__options">
+          <button
+            v-for="option in STACK_GROUPINGS"
+            :key="option.value"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.group === option.value"
+            @click="set({ group: option.value })"
           >
             {{ option.label }}
           </button>

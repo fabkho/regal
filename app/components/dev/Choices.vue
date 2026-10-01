@@ -4,6 +4,7 @@
 // hover label change the app right away. Picks are saved to
 // .data/choices.json. Decided points are listed at the top.
 import type { StackSort } from '~/utils/stack/view'
+import { SEPARATOR_STYLES } from '~/utils/stack/separators'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
@@ -32,7 +33,7 @@ const DECIDED = [
 ]
 
 // --- 2. Re-sort animation ---------------------------------------------------
-const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
+const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
 const SORT_CYCLE: StackSort[] = ['date', 'rating', 'author', 'title']
 
 function shuffleNow() {
@@ -155,6 +156,33 @@ onMounted(async () => {
         >
           Last re-sort: {{ lastShuffle.moves }} {{ lastShuffle.moves === 1 ? 'book' : 'books' }} moved → {{ lastShuffle.style === 'hand' ? 'by hand' : lastShuffle.style }}
         </p>
+      </section>
+
+      <!-- Date separators -->
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Stack date separators
+        </h3>
+        <p class="choices__hint">
+          Under each year (each month when one year is filtered) while sorted by date read. Grouping: Stack controls → Group.
+        </p>
+        <label
+          v-for="option in SEPARATOR_STYLES"
+          :key="option.value"
+          class="choices__option"
+          :data-on="choices.separatorStyle === option.value"
+        >
+          <input
+            type="radio"
+            name="separator-style"
+            :checked="choices.separatorStyle === option.value"
+            @change="set('separatorStyle', option.value); showStack()"
+          >
+          <span>
+            <strong>{{ option.title }}{{ option.value === 'numerals' ? ' (recommended)' : '' }}</strong>
+            <small>{{ option.text }}</small>
+          </span>
+        </label>
       </section>
 
       <!-- Tools -->

@@ -80,7 +80,7 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_MODE=embed`, `NUXT_PUBLIC_REGAL_
 - **`RegalBooksStage`**: the 3D Stack only (no Bookcase/Stack switch), the picked Book's details card over it. Give it a height (it fills its box; `min-height: 24rem`). Prop `controls` (default `false`) adds the sort & filter chips over the 3D.
 - **`RegalBooksSidebar`**: the count of read Books, the Stack's sort/year/rating filters and the Books as records (hover lifts the Book in the 3D, click takes it out). Props: `heading` (`'Bookshelf'`, `''` hides it), `countLabel` (`'Books read'`), `filters` (`true`), `list` (`true`). Fills the height it gets; the records scroll.
 
-Both load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML) and share it, the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
+Both load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML) and share it, the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year, by month inside one year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
 
 The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; classic back covers; title and stars in the hover label.
 
@@ -93,7 +93,7 @@ Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfi
 Put both under the host's `public/` (any path; point `librarySrc` and `assetsBase` at them):
 
 - `library.json`: the reading-tracker CLI's `reading list --json` output (`{ "books": [...] }`). A Goodreads CSV export works as well.
-- `manifest.json` under `assetsBase`: Book key (ISBN-13, else the Book id) → `{ "front": "<key>/front.webp", "spine": "<key>/spine.webp", "back": "<key>/back.webp", ... }`, paths relative to `assetsBase`; the images next to it as `<key>/{front,spine,back}.webp`. `pnpm assets:build` writes exactly this to `public/book-assets/` (copy it over). Books without an entry get a Cover from the Cover resolver (`/api/cover`, part of the layer) and drawn Spines/backs.
+- `manifest.json` under `assetsBase`: Book key (ISBN-13, else the Book id) → `{ "front": "<key>/front.webp", "spine": "<key>/spine.webp", "back": "<key>/back.webp", ... }`, paths relative to `assetsBase`; the images next to it as `<key>/{front,spine,back}.webp`. `pnpm assets:build` writes exactly this to `public/book-assets/` (copy it over); `pnpm assets:build --limit all --no-ai --no-model` covers the whole Read shelf (undated Books last) with free fronts and generated Spines/backs, no Gemini call. Books without an entry get a Cover from the Cover resolver (`/api/cover`, part of the layer) and drawn Spines/backs.
 
 `nuxt dev` note: a `public/books/` folder next to a `/books` page makes the dev server redirect `/books` to `/books/` (the page still renders). Production builds don't.
 

@@ -8,7 +8,11 @@ import { MathUtils } from 'three'
 import { markDragEnd } from '~/utils/books/dragGuard'
 import { FLOOR_SHADOW } from '~/utils/bookcase/scene'
 
-const props = defineProps<{ stackHeight: number }>()
+const props = defineProps<{
+  stackHeight: number
+  /** Width (metres) the view must fit; wider when dates stand beside the pile. */
+  fitWidth?: number
+}>()
 const emit = defineEmits<{ ready: [] }>()
 
 /** Camera distance from the pile and how far above the viewed point it sits. */
@@ -145,7 +149,7 @@ onBeforeRender(({ delta }) => {
   if (cam) {
     // Narrow views (a portfolio sidebar) step back until the pile fits the width.
     const halfWidth = Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) * (cam.aspect || 1)
-    const distance = Math.max(CAMERA_DISTANCE, FIT_WIDTH / 2 / halfWidth)
+    const distance = Math.max(CAMERA_DISTANCE, (props.fitWidth ?? FIT_WIDTH) / 2 / halfWidth)
     const scale = distance / CAMERA_DISTANCE
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
