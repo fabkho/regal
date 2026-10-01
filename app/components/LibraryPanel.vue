@@ -44,7 +44,7 @@ function onFile(file: File) {
             class="btn"
             @click="loadUrl(`${assetsBase}library.json`)"
           >
-            My latest (dev)
+            My library (dev)
           </button>
         </template>
       </LibraryDropzone>

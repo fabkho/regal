@@ -4,8 +4,10 @@
 //
 //   pnpm assets:build                     # latest 10 read Books from `reading list --json`
 //   pnpm assets:build --limit 3 --dry-run # what would happen, and what it would cost
+//   pnpm assets:build --limit all --no-ai --no-model  # the whole Read shelf, undated too, $0
 //   pnpm assets:build --from library.json # a Library export instead of the CLI
 //   pnpm assets:build --no-ai             # fronts + blurbs only (free)
+//   pnpm assets:build --no-model          # no Gemini call at all: blurbs cut by rules, no quotes
 //   pnpm assets:build --force             # rebuild even if a Book is done
 //   pnpm assets:build --recrop            # re-cut spine/back from stored jackets (free)
 //   pnpm assets:build --refresh-text      # blurb, quotes, genre, publisher only (text model, free)
@@ -45,6 +47,7 @@ import type { Quote } from './backText'
 import { mapGenre, resolvePublisher, resolveQuotes } from './backText'
 import { resolveBlurb } from './blurb'
 import { findApple, resolveFront } from './front'
+import { parseLimit, selectBooks } from './select'
 import { BATCH_COST_USD, BATCH_INLINE_LIMIT, getImageBatch, IMAGE_COST_USD, IMAGE_MODEL, submitImageBatch } from './gemini'
 import type { ImageRequest } from './gemini'
 import type { PhotoFace } from './photos'
@@ -60,6 +63,7 @@ const { values: args } = parseArgs({
     'out': { type: 'string', default: 'public/book-assets' },
     'dry-run': { type: 'boolean', default: false },
     'no-ai': { type: 'boolean', default: false },
+    'no-model': { type: 'boolean', default: false },
     'force': { type: 'boolean', default: false },
     'recrop': { type: 'boolean', default: false },
     'refresh-text': { type: 'boolean', default: false },
@@ -111,7 +115,7 @@ function readManifest(): Record<string, ManifestEntry> {
 const writeManifest = (manifest: Record<string, ManifestEntry>) =>
   writeFileSync(join(OUT, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`)
 
-/** The selected Books as a Library export for Regal (dev button "My latest"), blurbs cleaned. */
+/** The selected Books as a Library export for Regal (dev button "My library"), blurbs cleaned. */
 function writeLibrary(raw: ReadingTrackerBook[] | null, selected: Book[], manifest: Record<string, ManifestEntry>) {
   if (!raw) return
   const ids = new Set(selected.map(book => book.id))
@@ -140,8 +144,9 @@ interface TextExtras {
  * two JSON lookups only — no image is ever generated here.
  */
 async function textExtras(book: Book, appleDescription: string | null, appleGenres: string[], knownPublisher: string | null): Promise<TextExtras> {
-  const blurb = await resolveBlurb(appleDescription, book.description)
-  const quotes = await resolveQuotes(appleDescription ?? book.description)
+  const useModel = !args['no-model']
+  const blurb = await resolveBlurb(appleDescription, book.description, useModel)
+  const quotes = useModel ? await resolveQuotes(appleDescription ?? book.description) : []
   const genre = mapGenre(appleGenres)
   const publisher = await resolvePublisher(knownPublisher, book.isbn13)
   const entry: ManifestEntry = {
@@ -271,11 +276,10 @@ async function submitQueued(queue: { request: ImageRequest, book: PendingBook }[
 
 async function main() {
   const { raw, books } = loadSource()
-  const selected = books
-    .filter(book => book.status === args.shelf && book.dateRead)
-    .sort((a, b) => (a.dateRead! < b.dateRead! ? 1 : -1))
-    .slice(0, Number(args.limit))
+  const selected = selectBooks(books, args.shelf!, parseLimit(args.limit))
   if (!selected.length) throw new Error(`No finished Books on shelf "${args.shelf}"`)
+  const undated = selected.filter(book => !book.dateRead).length
+  if (undated) console.log(`${selected.length} Books (${undated} without a finish date, last).`)
 
   mkdirSync(OUT, { recursive: true })
   const manifest = readManifest()
@@ -301,7 +305,7 @@ async function main() {
   if (args['refresh-text']) {
     for (const book of selected) {
       const key = keyOf(book)
-      console.log(`→ ${book.dateRead}  ${book.title}`)
+      console.log(`→ ${book.dateRead ?? 'undated'}  ${book.title}`)
       const apple = await findApple(book)
       const extras = await textExtras(book, apple?.description ?? null, apple?.genres ?? [], publisherOf(raw, book))
       manifest[key] = mergeText(manifest[key], extras)
@@ -324,7 +328,7 @@ async function main() {
     const dir = join(OUT, key)
     const existing = manifest[key]
     if (waiting.has(key) && existing?.front && !args.force) {
-      console.log(`… ${book.dateRead}  ${book.title} (AI back/spine waiting in a batch job)`)
+      console.log(`… ${book.dateRead ?? 'undated'}  ${book.title} (AI back/spine waiting in a batch job)`)
       continue
     }
     if (args.recrop) {
@@ -342,7 +346,7 @@ async function main() {
     const newPhotos = drops.some(face => !(existing?.photoFaces ?? []).includes(face))
     const done = !newPhotos && existing?.front && existing.description !== undefined
       && (args['no-ai'] || photoPair || (existing.back && existing.meta?.promptVersion === PROMPT_VERSION))
-    const label = `${book.dateRead}  ${book.title}`
+    const label = `${book.dateRead ?? 'undated'}  ${book.title}`
     if (done && !args.force) {
       console.log(`✓ ${label} (cached)`)
       report.push({ book: book.title, cached: true })

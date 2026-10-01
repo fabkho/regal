@@ -41,4 +41,4 @@ Pinned below latest:
 
 ## Asset pipeline
 
-`pnpm assets:build` builds asset sets (front, blurb, AI back/spine) for the latest N finished Books from the reading-tracker CLI (`~/code/reading-tracker-cli`, override with `READING_TRACKER_CLI`) or `--from <export>`. Always `--dry-run` first: it prints the Gemini cost. Needs `GEMINI_API_KEY` (billing on). Output goes to `public/book-assets/` (gitignored: derived from publisher covers and personal data). `--recrop` re-cuts stored jackets for free; `--no-ai` does fronts and blurbs only.
+`pnpm assets:build` builds asset sets (front, blurb, AI back/spine) for the latest N finished Books from the reading-tracker CLI (`~/code/reading-tracker-cli`, override with `READING_TRACKER_CLI`) or `--from <export>`. Always `--dry-run` first: it prints the Gemini cost. Needs `GEMINI_API_KEY` (billing on). Output goes to `public/book-assets/` (gitignored: derived from publisher covers and personal data). `--recrop` re-cuts stored jackets for free; `--no-ai` does fronts and blurbs only; `--no-model` skips the Gemini text model too (blurbs cut by rules, no quotes); `--limit all` takes the whole shelf, undated Books last.
