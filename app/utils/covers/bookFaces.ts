@@ -35,9 +35,6 @@ export interface FaceQuote {
   source: string
 }
 
-/** 'classic': a printed paperback back. 'clean': title, author, blurb, barcode. */
-export type BackStyle = 'classic' | 'clean'
-
 export interface FaceInput {
   book: FaceBook
   /** World-space size of the Book, used for the canvas aspect ratio. */
@@ -55,14 +52,12 @@ export interface FaceInput {
   spineArt?: CanvasImageSource & { width: number, height: number }
   /** Real or AI-made back artwork (asset set). */
   backArt?: CanvasImageSource & { width: number, height: number }
-  /** Up to two praise quotes with their attribution, printed above the blurb ('classic'). */
+  /** Up to two praise quotes with their attribution, printed above the blurb. */
   quotes?: FaceQuote[] | null
   /** Shelf category, printed as a small letter-spaced label: 'SCIENCE FICTION'. */
   genre?: string | null
   /** Publisher imprint, printed small and uppercase at the foot of the back. */
   publisher?: string | null
-  /** Back-cover design: a printed paperback ('classic', default) or just the blurb ('clean'). */
-  backStyle?: BackStyle
   /** The back art is a photo of the real Book: draw it as is, it carries its own text. */
   backIsPhoto?: boolean
   /** The Spine art is a photo of the real Book: draw it as is, it carries its own text. */
@@ -637,51 +632,6 @@ function drawClassicBack(context: CanvasRenderingContext2D, input: FaceInput, wi
   if (panel) drawBarcodePanel(context, panel)
 }
 
-/** The plainer back: title and author at the head, the blurb set to fill the measure. */
-function drawCleanBack(context: CanvasRenderingContext2D, input: FaceInput, width: number, height: number, color: RGB, k: number) {
-  const { book } = input
-  const margin = width * 0.1
-  const inner = width - margin * 2
-  context.fillStyle = rgba(color)
-  context.textAlign = 'center'
-  context.textBaseline = 'top'
-  const titleSize = fitFont(context, book.title, SERIF, '600', inner, 22 * k, 9 * k)
-  context.font = `600 ${titleSize}px ${SERIF}`
-  context.fillText(ellipsize(context, book.title, inner), width / 2, height * 0.08)
-  if (book.author) {
-    context.font = `400 ${titleSize * 0.7}px ${SERIF}`
-    context.fillStyle = rgba(color, 0.8)
-    context.fillText(ellipsize(context, book.author, inner), width / 2, height * 0.08 + titleSize * 1.4)
-  }
-
-  const blurbTop = height * 0.25
-  const blurbBottom = height * 0.74
-  if (input.description) {
-    const styles: BlockStyle[] = [{ font: size => `400 ${size}px ${SERIF}`, alpha: 0.9 }]
-    const fitted = fitTextBlocks([{ text: input.description }], {
-      measure: canvasMeasure(context, styles),
-      maxWidth: inner,
-      maxHeight: blurbBottom - blurbTop,
-      min: 7 * k,
-      max: Math.min(18 * k, Math.max(10 * k, width * 0.06)),
-      lineHeight: 1.38,
-    })
-    const last = fitted.lines.at(-1)
-    if (fitted.overflow && last) {
-      context.font = styles[last.block]!.font(last.size)
-      last.text = ellipsize(context, `${last.text}…`, inner)
-    }
-    drawFitted(context, fitted, styles, color, margin, blurbTop)
-  }
-  else {
-    drawPlaceholderLines(context, color, margin, height * 0.26, inner, blurbBottom, k)
-  }
-
-  // Barcode panel, bottom right (printed flat: no halo).
-  const panel = barcodePanel(input, width, height, margin, k)
-  if (panel) drawBarcodePanel(context, panel)
-}
-
 /**
  * The back cover: the asset artwork or a Cover-coloured ground, our typography
  * on top, and a real EAN-13 barcode from the ISBN. A photographed back is left
@@ -702,7 +652,6 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
 
   const color = spineTextColor(art ? averageColor(art, 0.1, 0.05, 0.8, 0.7) : input.palette.background)
   paintBackGround(context, input, width, height, color, k)
-  if ((input.backStyle ?? 'classic') === 'clean') drawCleanBack(context, input, width, height, color, k)
-  else drawClassicBack(context, input, width, height, color, k)
+  drawClassicBack(context, input, width, height, color, k)
   return element
 }

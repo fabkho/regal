@@ -31,7 +31,7 @@ import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
 import { planShuffle, presenceAt, sampleTrack } from '~/utils/stack/shuffle'
 import { chooseShuffle, countMoves } from '~/utils/stack/moves'
-import type { EntranceStyle, ShufflePlan, ShuffleStyle, ShuffleView } from '~/utils/stack/shuffle'
+import type { EntranceStyle, ShufflePlan, ShuffleView } from '~/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
 import { fullCoverTexture, loadCover, releaseFullCover } from '~/utils/covers/coverTextures'
@@ -49,19 +49,12 @@ const props = withDefaults(defineProps<{
   books: Book[]
   /** Move a picked Book left of centre, clear of a details card on the right. */
   aside?: boolean
-  /** How a re-sorted Stack moves (collision-free plans); 'instant' jumps. */
-  shuffle?: ShuffleStyle | 'instant'
-  /** Up to this many moved Books a re-sort uses the calm 'hand' style; null = always 'hand'. */
-  shuffleThreshold?: number | null
+  /** How a re-sorted Stack moves: 'animate' plays a collision-free plan (by hand or carousel), 'instant' jumps. */
+  shuffle?: 'animate' | 'instant'
   /** How Books new to the Stack appear during a re-sort (leaving Books mirror it). */
   entrance?: EntranceStyle
-}>(), { aside: true, shuffle: 'instant', shuffleThreshold: null, entrance: 'fade' })
+}>(), { aside: true, shuffle: 'instant', entrance: 'fade' })
 
-// --- Look: decided picks (dev server: live previews of open options) --------
-
-/** Back cover typography: 'classic' paperback (decided) or 'clean' (dev preview). */
-const look = useLook()
-const backStyle = computed(() => look.value.backStyle)
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
 
@@ -242,15 +235,6 @@ function setFace(entry: BookMaterials, face: 'spine' | 'back', image: HTMLCanvas
   current.dispose()
 }
 
-// Switching the back style redraws every back with what each Book already has.
-watch(backStyle, () => {
-  for (const pose of props.poses) {
-    const entry = materialsByBook.get(pose.bookId)
-    const input = entry && faceInput(pose, entry.loaded, entry.description ?? null, entry.assets)
-    if (entry && input) setFace(entry, 'back', drawBack(input))
-  }
-})
-
 function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
   drawPageEdges(entry.edges.plan, board, bookId, entry.edges.canvas)
   for (const texture of entry.edges.textures) texture.needsUpdate = true
@@ -278,7 +262,6 @@ function faceInput(pose: BookPose, loaded: LoadedCover | null, description: stri
     publisher: assets?.entry.publisher,
     backIsPhoto: isPhotoFace(assets?.entry, 'back'),
     spineIsPhoto: isPhotoFace(assets?.entry, 'spine'),
-    backStyle: backStyle.value,
   }
 }
 
@@ -632,7 +615,7 @@ function startShuffle(from: BookPose[], to: BookPose[]) {
     return
   }
   const moves = countMoves(from, to)
-  const style = chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
+  const style = chooseShuffle(moves)
   const view = viewBand(camera.value as PerspectiveCamera | undefined)
   const plan = planShuffle(from, to, style, { entrance: props.entrance, view })
   lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }

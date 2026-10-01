@@ -9,7 +9,6 @@ import { layoutLibrary } from '~/utils/bookcase/layout'
 import { layoutStack } from '~/utils/stack/layout'
 import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '~/utils/stack/separators'
-import type { ShuffleStyle } from '~/utils/stack/shuffle'
 import type { ViewMode } from '~/composables/useBookPick'
 
 const props = withDefaults(defineProps<{
@@ -56,9 +55,6 @@ const stack = computed(() => layoutStack(stackBooks.value, {
 }))
 /** Looks with the date beside the pile need a wider view on narrow stages. */
 const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
-/** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones. */
-const shuffleStyle = computed(() => look.value.shuffleFancy as ShuffleStyle)
-const shuffleThreshold = computed(() => look.value.shuffleThreshold)
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
@@ -123,8 +119,7 @@ watch(books, (list) => {
             :poses="poses"
             :books="books"
             :aside="props.showDetails"
-            :shuffle="shuffleStyle"
-            :shuffle-threshold="shuffleThreshold"
+            shuffle="animate"
             :entrance="look.entrance"
           />
         </StackScene>
@@ -175,7 +170,7 @@ watch(books, (list) => {
       No books match these filters
     </p>
 
-    <BooksHoverLabel :variant="look.label" />
+    <BooksHoverLabel />
 
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"

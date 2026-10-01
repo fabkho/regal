@@ -5,7 +5,7 @@ import type { BookPose } from '../../app/utils/books/pose'
 import { layoutStack } from '../../app/utils/stack/layout'
 import { applyStackView, DEFAULT_STACK_VIEW, stackGroups } from '../../app/utils/stack/view'
 import type { ShufflePlan, ShuffleStyle } from '../../app/utils/stack/shuffle'
-import { ENTRANCE_STYLES, planShuffle, presenceAt, sampleTrack, SHUFFLE_STYLES } from '../../app/utils/stack/shuffle'
+import { ENTRANCE_STYLES, planShuffle, presenceAt, sampleTrack } from '../../app/utils/stack/shuffle'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,
@@ -180,15 +180,12 @@ const stack = (books: Book[]): BookPose[] => layoutStack(books, { keepOrder: tru
 
 // --------------------------------------------------------------------- cases
 
-const STYLES: ShuffleStyle[] = ['hand', 'carousel', 'spin', 'helix', 'fan']
+const STYLES: ShuffleStyle[] = ['hand', 'carousel']
 const SIZES = [2, 10, 40]
 /** Seconds a plan may take, per Style, for ten and for forty Books. */
 const BUDGET: Record<ShuffleStyle, [number, number]> = {
   hand: [4, 8],
   carousel: [3.5, 4],
-  spin: [3.5, 4],
-  helix: [3.5, 4],
-  fan: [3.5, 4],
 }
 const ORDERS: { name: string, reorder: (books: Book[]) => Book[] }[] = [
   { name: 'reversed', reorder: books => [...books].reverse() },
@@ -425,7 +422,7 @@ describe('Books new to the view', () => {
     expect(Math.max(...starts)).toBeGreaterThanOrEqual(0.5)
   })
 
-  for (const style of ['hand', 'carousel', 'fan'] as ShuffleStyle[]) {
+  for (const style of STYLES) {
     it(`${style}: with 'drop' a new Book comes down onto its spot while it appears`, () => {
       const books = library(30)
       const from = shown(books, 5)
@@ -489,50 +486,6 @@ describe('the entrance list', () => {
   it('describes every entrance once', () => {
     expect(ENTRANCES).toEqual(['fade', 'pop', 'drop'])
     for (const entry of ENTRANCE_STYLES) expect(entry.text.length).toBeGreaterThan(20)
-  })
-})
-
-describe('the Style list', () => {
-  it('describes every Style exactly once', () => {
-    expect(SHUFFLE_STYLES.map(entry => entry.value)).toEqual(STYLES)
-    for (const entry of SHUFFLE_STYLES) {
-      expect(entry.title.length).toBeGreaterThan(2)
-      expect(entry.text.length).toBeGreaterThan(20)
-    }
-  })
-})
-
-describe('turning rings keep their steps small', () => {
-  // A turning ring is sampled as chords, so a Book may only turn a little
-  // between two keyframes while its height moves; otherwise it would cut across
-  // the slots beside it. Height changes and wide turns therefore never share a
-  // segment in any Style.
-  for (const style of STYLES) {
-    it(`${style}: no segment both lifts a Book and turns it far`, () => {
-      const books = library(24)
-      const plan = planShuffle(stack(books), stack(shuffled(books, 5)), style)
-      for (const track of plan.tracks.values()) {
-        for (let i = 1; i < track.length; i++) {
-          const lift = Math.abs(track[i]!.position[1] - track[i - 1]!.position[1])
-          const turn = Math.abs(track[i]!.rotation[1] - track[i - 1]!.rotation[1])
-          if (lift > 1e-9) expect(turn).toBeLessThanOrEqual(0.35)
-        }
-      }
-    })
-  }
-
-  it('spin and helix really turn the ring the long way round', () => {
-    const books = library(12)
-    const from = stack(books)
-    const to = stack([...books].reverse())
-    for (const style of ['spin', 'helix'] as ShuffleStyle[]) {
-      const plan = planShuffle(from, to, style)
-      const swings = [...plan.tracks.values()].map((track) => {
-        const angles = track.map(keyframe => keyframe.rotation[1])
-        return Math.max(...angles) - Math.min(...angles)
-      })
-      expect(Math.min(...swings)).toBeGreaterThan((200 * Math.PI) / 180)
-    }
   })
 })
 

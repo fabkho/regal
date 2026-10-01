@@ -1,8 +1,7 @@
 <script setup lang="ts">
 // The rating on hover: a small label next to the pointer with the hovered
-// Book's stars (quarter steps) and, optionally, its title. Only for hovers
-// in the 3D view, not for hovering a record in the Book list.
-const props = withDefaults(defineProps<{ variant?: 'stars-title' | 'stars' }>(), { variant: 'stars-title' })
+// Book's title and stars (quarter steps). Only for hovers in the 3D view, not
+// for hovering a record in the Book list.
 
 const hovered = useState<string | null>('books:hovered', () => null)
 const { books } = useLibrary()
@@ -27,10 +26,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
       class="hover-label"
       :style="{ left: `${position.x + 14}px`, top: `${position.y + 14}px` }"
     >
-      <span
-        v-if="props.variant === 'stars-title'"
-        class="hover-label__title"
-      >{{ book.title }}</span>
+      <span class="hover-label__title">{{ book.title }}</span>
       <span
         v-if="book.rating"
         class="hover-label__stars"

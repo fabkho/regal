@@ -1,7 +1,7 @@
 // How many Books a re-sort really moves: everything outside the longest run
 // already in the right relative order (those can stay put), plus Books that
 // newly appear. The same count the 'hand' shuffle works with; used to pick a
-// calm animation for small re-sorts and a fancy one for big ones.
+// calm animation for small re-sorts and the carousel for big ones.
 import type { BookPose } from '../books/pose'
 
 /** Length of the longest strictly increasing subsequence (patience sorting, O(n log n)). */
@@ -32,7 +32,10 @@ export function countMoves(from: BookPose[], to: BookPose[]): number {
   return kept.length - longestIncreasing(kept) + appearing
 }
 
-/** The animation for a re-sort: 'hand' up to `threshold` moved Books, else the fancy style. */
-export function chooseShuffle<T extends string>(moves: number, threshold: number | null, fancy: T): T | 'hand' {
-  return threshold === null || moves <= threshold ? 'hand' : fancy
+/** Re-sorts moving up to this many Books use the calm 'hand' style. */
+export const HAND_MAX_MOVES = 3
+
+/** The animation for a re-sort: 'hand' up to HAND_MAX_MOVES moved Books, else 'carousel'. */
+export function chooseShuffle(moves: number): 'hand' | 'carousel' {
+  return moves <= HAND_MAX_MOVES ? 'hand' : 'carousel'
 }

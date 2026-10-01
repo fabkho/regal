@@ -2,83 +2,61 @@
 // app. Saved in localStorage and, through a dev-only API, to
 // .data/choices.json so they can be read back outside the browser.
 //
-// Decided (no longer choices): Regal becomes a Nuxt layer for a separate
-// portfolio page; ratings show as a hover label (plus the details card);
-// covers default to the best automatic image + Gemini back/spine, with
-// photos for a few special editions.
+// Saved choices of earlier panel versions load too: keys that are no longer
+// choices (settled decisions) are ignored.
+//
+// Decided (no longer choices): Regal is a Nuxt layer for a separate portfolio
+// page; ratings show as a hover label (plus the details card); covers default
+// to the best automatic image + Gemini back/spine (Batch API), with photos for
+// a few special editions.
 
 import type { SeparatorStyle } from '~/utils/stack/separators'
 import type { PickOutside } from '~/utils/books/pick'
 
-export type PageLayout = 'sidebar-all' | 'sidebar-list' | 'sidebar-filters'
-/** Fancy re-sort for big changes (more variants arrive from utils/stack/shuffle.ts). */
-export type FancyShuffle = string
 /** How Books new to the Stack appear and leaving ones vanish (see ENTRANCE_STYLES in utils/stack/shuffle.ts). */
 export type Entrance = 'fade' | 'pop' | 'drop'
 
+/** The open decisions plus the tools; settled ones live in DECIDED_LOOK, not here. */
 export interface DevChoices {
-  /** Preview the portfolio page (/books): 3D in the body, text in the sidebar. */
-  pagePreview: boolean
-  pageLayout: PageLayout
-  /** Where a picked Book's details go on that page. */
-  details: 'overlay' | 'sidebar'
-  /** Big re-sorts (more than `shuffleThreshold` Books move) use this; small ones 'hand'. */
-  shuffleFancy: FancyShuffle
-  /** Moved Books up to which 'hand' is used; null = always 'hand'. */
-  shuffleThreshold: number | null
   /** How Books new to the Stack appear (open: previewed in the panel). */
   entrance: Entrance
-  /** Back cover typography. */
-  backStyle: 'classic' | 'clean'
-  /** Hover label content. */
-  label: 'stars-title' | 'stars'
   /** Date separators in the Stack (open: recommended 'numerals'). */
   separatorStyle: SeparatorStyle
   /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
   pickOutside: PickOutside
-  ai: 'standard' | 'batch' | null
   /** Optional cover overrides: asset key → chosen cover URL. */
   editionPicks: Record<string, string>
   notes: string
 }
 
-/** What the 3D looks like: the owner's decided picks, used everywhere outside the dev panel. */
+/** What the 3D looks like: the decided picks plus the open ones (the dev panel previews those). */
 export interface Look {
-  shuffleFancy: FancyShuffle
-  shuffleThreshold: number | null
   entrance: Entrance
-  backStyle: 'classic' | 'clean'
-  label: 'stars-title' | 'stars'
   separatorStyle: SeparatorStyle
   pickOutside: PickOutside
 }
 
 /**
- * Decided: 'hand' for re-sorts that move up to 3 Books, 'carousel' above; classic back; title + stars on hover.
- * Not decided yet, recommended defaults: 'numerals' date separators, the 'fade' entrance of new Books.
+ * Not decided yet, recommended defaults: 'numerals' date separators, the 'fade'
+ * entrance of new Books, a click next to a picked Book puts it back (even on the pile).
+ * Decided and hard-wired (no longer choices): the re-sort animation (utils/stack/moves.ts),
+ * the classic back cover and the title + stars hover label.
  */
 export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
-  shuffleFancy: 'carousel',
-  shuffleThreshold: 3,
   entrance: 'fade',
-  backStyle: 'classic',
-  label: 'stars-title',
   separatorStyle: 'numerals',
-  // Open (dev choices), recommended: a click next to a picked Book puts it back, even on the pile.
   pickOutside: 'put-back',
 })
 
 export const DEFAULT_CHOICES: DevChoices = {
-  pagePreview: false,
-  pageLayout: 'sidebar-all',
-  details: 'overlay',
   ...DECIDED_LOOK,
-  ai: null,
   editionPicks: {},
   notes: '',
 }
 
-const STORAGE_KEY = 'regal:dev-choices:v2'
+// v3: the settled choices (re-sort, back style, hover label, page preview, AI mode) are gone.
+const STORAGE_KEY = 'regal:dev-choices:v3'
+const LEGACY_STORAGE_KEY = 'regal:dev-choices:v2'
 
 export function useDevChoices() {
   const choices = useState<DevChoices>('dev-choices', () => ({ ...DEFAULT_CHOICES }))
@@ -111,7 +89,7 @@ export function useDevChoices() {
     if (import.meta.server) return
     let stored: Partial<DevChoices> | null = null
     try {
-      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
+      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY) ?? 'null')
     }
     catch {
       // Ignore a broken entry.
@@ -140,7 +118,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle, pickOutside } = choices.value
-    return { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle, pickOutside }
+    const { entrance, separatorStyle, pickOutside } = choices.value
+    return { entrance, separatorStyle, pickOutside }
   })
 }

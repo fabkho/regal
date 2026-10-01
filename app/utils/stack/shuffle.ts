@@ -14,14 +14,8 @@
 // mutually disjoint height intervals (the pile as it lies, or an
 // order-preserving vertical spread of it), ANY horizontal motion and any
 // rotation about the vertical axis is safe. Height changes are only safe while
-// the footprints are laterally disjoint (ring or helix slots), or while the
-// Books share a column and keep their order.
-//
-// One trap follows from the per-segment smoothstep in sampleTrack: positions
-// interpolate component-wise, so turning a ring is not a rotation, it is a set
-// of chords that cut inside the circle. A turning ring therefore gets
-// intermediate keyframes every ≤ 20°, and its slots are built for the shrunken
-// ring the chords pass through (see turnProgress and ringSlots' shrink).
+// the footprints are laterally disjoint (ring slots), or while the Books share
+// a column and keep their order.
 //
 // Books new to the view and Books leaving it follow one more rule: a Book that
 // is not shown cannot collide. A new Book waits unseen at its own spot (its
@@ -34,16 +28,7 @@
 import type { BookPose } from '../books/pose'
 import { hashString } from '../bookcase/layout'
 
-export type ShuffleStyle = 'hand' | 'carousel' | 'spin' | 'helix' | 'fan'
-
-/** Every Style, for the view settings UI. */
-export const SHUFFLE_STYLES: { value: ShuffleStyle, title: string, text: string }[] = [
-  { value: 'hand', title: 'Hand', text: 'Pulls a handful of Books out to the side and slides them back into the pile.' },
-  { value: 'carousel', title: 'Carousel', text: 'The whole pile swings out into a ring, finds its new heights and drops back in.' },
-  { value: 'spin', title: 'Spin', text: 'A Carousel whose ring turns most of a full circle while the Books change height.' },
-  { value: 'helix', title: 'Helix', text: 'The pile stretches into a spiral staircase that turns, then collapses back together.' },
-  { value: 'fan', title: 'Fan', text: 'Fans the pile out like a hand of cards, swaps the Books around and closes it again.' },
-]
+export type ShuffleStyle = 'hand' | 'carousel'
 
 /** How Books new to the view appear (leaving Books mirror it). */
 export type EntranceStyle = 'fade' | 'pop' | 'drop'
@@ -119,34 +104,6 @@ const HAND_SETTLE = 0.25
 const CAROUSEL_OUT = 0.5
 const CAROUSEL_LIFT = 0.6
 const CAROUSEL_IN = 0.5
-const SPIN_OUT = 0.5
-const SPIN_TURN = 1.3
-const SPIN_IN = 0.5
-/** How far the ring turns while the Books change height. */
-const SPIN_SWEEP = (250 * Math.PI) / 180
-const HELIX_SPREAD = 0.45
-const HELIX_SWING = 0.5
-const HELIX_TURN = 1.1
-const HELIX_IN = 0.45
-const HELIX_COLLAPSE = 0.5
-const HELIX_SWEEP = (200 * Math.PI) / 180
-/** Room between two steps of the spread-out column. */
-const SPREAD_GAP = 0.02
-/** How far out and how far behind its slot a Book swings on the way out. */
-const SWING_RADIUS = 0.55
-const SWING_LEAD = 0.5
-const FAN_OPEN = 0.45
-const FAN_OUT = 0.4
-const FAN_LIFT = 0.55
-const FAN_BACK = 0.4
-const FAN_CLOSE = 0.45
-/** Angle the whole fan covers, and the most any two neighbours may differ. */
-const FAN_SWEEP = (150 * Math.PI) / 180
-const FAN_STEP = 0.25
-/** Largest angle a turning ring may cover between two keyframes. */
-const TURN_MAX_STEP = 0.32
-/** Extra slot clearance for a turning ring, for the slight chord mis-twist. */
-const RING_TURN_MARGIN = 0.008
 const MIN_PHASE = 0.15
 /** Plans longer than this get their phases squeezed. */
 const TARGET_TOTAL = 6
@@ -246,13 +203,7 @@ export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyl
   }
   const plan = style === 'carousel'
     ? planCarousel(fromById, to, speed, entrance)
-    : style === 'spin'
-      ? planSpin(fromById, to, speed, entrance)
-      : style === 'helix'
-        ? planHelix(fromById, to, speed, entrance)
-        : style === 'fan'
-          ? planFan(fromById, to, speed, entrance)
-          : planHand(fromById, to, speed, entrance)
+    : planHand(fromById, to, speed, entrance)
   return dress(plan, leaving, entrance, speed)
 }
 
@@ -452,35 +403,6 @@ function staggerIn(timeline: ReturnType<typeof createTimeline>, target: BookPose
   return { duration, tracks: timeline.tracks }
 }
 
-/**
- * Eased 0 to 1 progress for a ring turn, in steps no wider than maxStep. The
- * sampler lerps positions, so each step is a chord: with small steps the ring
- * only ever shrinks a little, instead of books cutting across the circle.
- */
-function turnProgress(sweep: number, maxStep: number): number[] {
-  // Smoothstep is steepest in the middle, where it advances 1.5 times the average.
-  const steps = Math.max(1, Math.ceil((1.5 * Math.abs(sweep)) / maxStep))
-  return Array.from({ length: steps }, (_, index) => {
-    const u = (index + 1) / steps
-    return u * u * (3 - 2 * u)
-  })
-}
-
-/**
- * Worst radius factor the chords of a turn pass through. Halfway along a step
- * of angle d every Book sits at radius cos(d/2) with its angle kept, so the
- * whole ring is simply a smaller ring: build the slots for that one.
- */
-function turnShrink(sweep: number, progress: number[]): number {
-  let widest = 0
-  let previous = 0
-  for (const u of progress) {
-    widest = Math.max(widest, Math.abs(sweep) * (u - previous))
-    previous = u
-  }
-  return Math.cos(widest / 2)
-}
-
 /** Phase lengths, squeezed so even a long plan stays near TARGET_TOTAL seconds. */
 function phaseScale(raw: number): number {
   return raw > TARGET_TOTAL ? TARGET_TOTAL / raw : 1
@@ -614,34 +536,23 @@ interface RingSlot {
   angle: number
 }
 
-interface RingOptions {
-  /** Smallest radius factor the ring passes through while it turns. */
-  shrink?: number
-  /** Sideways room between neighbours. */
-  clearance?: number
-}
-
 /**
  * Slots on a ring around the pile, spread evenly from the front (angle 0).
  * A lap only takes as many Books as fit side by side; the rest go a lap out.
- * The slots stay disjoint at every radius from shrink to 1, because scaling a
- * ring up only ever widens the gaps between its slots. Slots never reach the
- * pile's own column either: their inner edge sits a full depth/2 + 5 cm beyond
- * a lying Book's half length.
+ * Slots never reach the pile's own column either: their inner edge sits a full
+ * depth/2 + 5 cm beyond a lying Book's half length.
  */
-function ringSlots(count: number, length: number, depth: number, options: RingOptions = {}): RingSlot[] {
-  const shrink = options.shrink ?? 1
-  const clearance = options.clearance ?? RING_CLEARANCE
+function ringSlots(count: number, length: number, depth: number): RingSlot[] {
   const slots: RingSlot[] = []
-  let radius = (length / 2 + depth + 0.05) / shrink
+  let radius = length / 2 + depth + 0.05
   while (slots.length < count) {
-    const inner = Math.max(radius * shrink - depth / 2, 0.01)
-    const minAngle = 2 * Math.atan2(length / 2 + clearance, inner)
+    const inner = Math.max(radius - depth / 2, 0.01)
+    const minAngle = 2 * Math.atan2(length / 2 + RING_CLEARANCE, inner)
     const capacity = Math.max(1, Math.floor((2 * Math.PI) / minAngle))
     const take = Math.min(capacity, count - slots.length)
     const step = (2 * Math.PI) / take
     for (let i = 0; i < take; i++) slots.push({ radius, angle: i * step })
-    radius += (depth + RING_LAP_GAP) / shrink
+    radius += depth + RING_LAP_GAP
   }
   return slots
 }
@@ -651,9 +562,6 @@ const ringNode = (slot: RingSlot, y: number, twist: number): Node => ({
   position: [slot.radius * Math.sin(slot.angle), y, slot.radius * Math.cos(slot.angle)],
   rotation: [0, twist + slot.angle, Math.PI / 2],
 })
-
-/** The same slot, turned by angle; used while a ring turns as a whole. */
-const turned = (slot: RingSlot, angle: number): RingSlot => ({ radius: slot.radius, angle: slot.angle + angle })
 
 /** Where a new Book waits in its ring slot: at its spot, raised for a 'drop'. */
 const spotNode = (slot: RingSlot, pose: BookPose, twist: number, entrance: Entrance): Node =>
@@ -712,254 +620,4 @@ function planCarousel(fromById: Map<string, BookPose>, to: BookPose[], speed: nu
   const plan = staggerIn(timeline, target, span(CAROUSEL_IN), (stagger * scale) / speed)
   // Leaving Books slide out while the pile swings out, at unchanged heights.
   return { ...plan, exitEnd: liftStart, windows }
-}
-
-/** Slot per Book: the pile keeps its bottom-to-top order, new Books follow it. */
-function slotOrder(fromById: Map<string, BookPose>, target: BookPose[]): { present: string[], slotOf: Map<string, number> } {
-  const present = target
-    .filter(pose => fromById.has(pose.bookId))
-    .map(pose => pose.bookId)
-    .sort((a, b) => fromById.get(a)!.y - fromById.get(b)!.y)
-  const slotOf = new Map<string, number>(present.map((id, index) => [id, index]))
-  let next = present.length
-  for (const pose of target) {
-    if (!slotOf.has(pose.bookId)) slotOf.set(pose.bookId, next++)
-  }
-  return { present, slotOf }
-}
-
-/** Height part way through a lift; the last step lands exactly on the target. */
-const liftY = (from: number, to: number, u: number): number => (u >= 1 ? to : from + (to - from) * u)
-
-/**
- * Spin: a Carousel whose ring turns as a whole while the Books change height.
- * Turning is cut into small eased steps, because the sampler lerps positions
- * and a wide step would chord straight through the neighbouring slots.
- */
-function planSpin(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
-  const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth } = extents(target)
-  const progress = turnProgress(SPIN_SWEEP, TURN_MAX_STEP)
-  const slots = ringSlots(target.length, length, depth, {
-    shrink: turnShrink(SPIN_SWEEP, progress),
-    clearance: RING_CLEARANCE + RING_TURN_MARGIN,
-  })
-  const twist = twistMap(fromById, target)
-
-  const start = new Map<string, Node>()
-  target.forEach((pose, index) => {
-    const old = fromById.get(pose.bookId)
-    // New Books wait unseen in their own slot until it is safe to appear.
-    start.set(pose.bookId, old ? poseNode(old) : spotNode(slots[index]!, pose, twist.get(pose.bookId)!, entrance))
-  })
-
-  const timeline = createTimeline(start)
-  const stagger = staggerStep(target.length)
-  const raw = SPIN_OUT + SPIN_TURN + SPIN_IN + stagger * (target.length - 1)
-  const scale = phaseScale(raw)
-  const span = (base: number) => Math.max(MIN_PHASE, base * scale) / speed
-
-  // 1. Out: radially to the ring at the current height (heights are disjoint).
-  const out = new Map<string, Node>()
-  target.forEach((pose, index) => {
-    out.set(pose.bookId, ringNode(slots[index]!, timeline.state.get(pose.bookId)!.position[1], twist.get(pose.bookId)!))
-  })
-  timeline.phase(span(SPIN_OUT), out)
-  const turnStart = timeline.now()
-
-  // 2. Turn: the ring revolves while each Book rises or sinks inside its own
-  //    slot. The slots stay disjoint at every radius the chords pass through,
-  //    so the heights may cross each other freely.
-  const held = new Map(target.map(pose => [pose.bookId, timeline.state.get(pose.bookId)!.position[1]]))
-  const stepSpan = span(SPIN_TURN) / progress.length
-  for (const u of progress) {
-    const moves = new Map<string, Node>()
-    target.forEach((pose, index) => {
-      const y = liftY(held.get(pose.bookId)!, pose.y, u)
-      moves.set(pose.bookId, ringNode(turned(slots[index]!, SPIN_SWEEP * u), y, twist.get(pose.bookId)!))
-    })
-    timeline.phase(stepSpan, moves)
-  }
-
-  // A new Book above the old pile appears before the turn, the rest while they
-  // already turn with the ring (each in its own slot).
-  const windows = new Map<string, Window>()
-  for (const pose of target) {
-    if (fromById.has(pose.bookId)) continue
-    windows.set(pose.bookId, aboveOldPile(pose, entrance)
-      ? { start: 0, end: turnStart, moveFrom: turnStart }
-      : { start: turnStart, end: timeline.now(), moveFrom: null })
-  }
-
-  // 3. In: every height is final and disjoint, so the Books may slide in and
-  //    unwind the whole spin at once, cascading from the bottom.
-  const plan = staggerIn(timeline, target, span(SPIN_IN), (stagger * scale) / speed)
-  return { ...plan, exitEnd: turnStart, windows }
-}
-
-/**
- * Helix: the pile stretches into a spiral staircase, the staircase turns while
- * the Books swap steps, then the column collapses back into a pile.
- */
-function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
-  const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth } = extents(target)
-  const progress = turnProgress(HELIX_SWEEP, TURN_MAX_STEP)
-  const slots = ringSlots(target.length, length, depth, {
-    shrink: turnShrink(HELIX_SWEEP, progress),
-    clearance: RING_CLEARANCE + RING_TURN_MARGIN,
-  })
-  const twist = twistMap(fromById, target)
-  const { present, slotOf } = slotOrder(fromById, target)
-  const slotFor = (id: string) => slots[slotOf.get(id)!]!
-
-  // Two spread-out columns: the pile's own order on the way up, the new order
-  // on the way down. Both leave a clear step between any two Books, so a column
-  // phase only has to keep its order to stay safe.
-  const thicknessById = new Map(target.map(pose => [pose.bookId, pose.thickness]))
-  const spread = stackHeights(present, thicknessById, SPREAD_GAP)
-  const steps = stackHeights(target.map(pose => pose.bookId), thicknessById, SPREAD_GAP)
-
-  const start = new Map<string, Node>()
-  for (const pose of target) {
-    const old = fromById.get(pose.bookId)
-    // New Books wait unseen in their own slot until the turn.
-    start.set(pose.bookId, old ? poseNode(old) : spotNode(slotFor(pose.bookId), pose, twist.get(pose.bookId)!, entrance))
-  }
-
-  const timeline = createTimeline(start)
-  const raw = HELIX_SPREAD + HELIX_SWING + HELIX_TURN + HELIX_IN + HELIX_COLLAPSE + (entrance.leaving ? EXIT : 0)
-  const scale = phaseScale(raw)
-  const span = (base: number) => Math.max(MIN_PHASE, base * scale) / speed
-
-  // 0. Leaving Books slide out first: the spread changes heights right away.
-  if (entrance.leaving) timeline.phase(span(EXIT), new Map())
-  const exitEnd = timeline.now()
-
-  // 1. Spread: the pile stretches upwards, keeping its order, until every Book
-  //    stands on a step of its own.
-  const stretch = new Map<string, Node>()
-  for (const id of present) {
-    const node = timeline.state.get(id)!
-    stretch.set(id, { position: [node.position[0], spread.get(id)!, node.position[2]], rotation: node.rotation })
-  }
-  timeline.phase(span(HELIX_SPREAD), stretch)
-
-  // 2. Swing out: the heights hold still and are disjoint, so any path is safe;
-  //    trailing the slot halfway out reads as a swing rather than a slide.
-  const swingSpan = span(HELIX_SWING)
-  const swing = new Map<string, Node>()
-  for (const id of present) {
-    const slot = slotFor(id)
-    const halfway = { radius: slot.radius * SWING_RADIUS, angle: slot.angle - SWING_LEAD }
-    swing.set(id, ringNode(halfway, timeline.state.get(id)!.position[1], twist.get(id)!))
-  }
-  timeline.phase(swingSpan * 0.45, swing)
-  const arrive = new Map<string, Node>()
-  for (const id of present) arrive.set(id, ringNode(slotFor(id), timeline.state.get(id)!.position[1], twist.get(id)!))
-  timeline.phase(swingSpan * 0.55, arrive)
-
-  // 3. Turn: the staircase revolves while every Book climbs to the step its new
-  //    rank asks for; the slots keep the footprints apart while they cross.
-  const turnStart = timeline.now()
-  const held = new Map(target.map(pose => [pose.bookId, timeline.state.get(pose.bookId)!.position[1]]))
-  const stepSpan = span(HELIX_TURN) / progress.length
-  for (const u of progress) {
-    const moves = new Map<string, Node>()
-    for (const pose of target) {
-      const y = liftY(held.get(pose.bookId)!, steps.get(pose.bookId)!, u)
-      moves.set(pose.bookId, ringNode(turned(slotFor(pose.bookId), HELIX_SWEEP * u), y, twist.get(pose.bookId)!))
-    }
-    timeline.phase(stepSpan, moves)
-  }
-  // New Books appear while they turn with the staircase, each in its own slot.
-  const windows = new Map<string, Window>()
-  for (const pose of target) {
-    if (!fromById.has(pose.bookId)) windows.set(pose.bookId, { start: turnStart, end: timeline.now(), moveFrom: null })
-  }
-
-  // 4. In: the steps are already in the new order, so the Books come back to
-  //    the column together, at the height they will keep.
-  const back = new Map<string, Node>()
-  for (const pose of target) {
-    back.set(pose.bookId, { position: [pose.x, steps.get(pose.bookId)!, pose.z], rotation: vec(pose.rotation) })
-  }
-  timeline.phase(span(HELIX_IN), back)
-
-  // 5. Collapse: the column sinks into the pile, order preserved.
-  timeline.phase(span(HELIX_COLLAPSE), new Map(target.map(pose => [pose.bookId, poseNode(pose)])))
-  return { duration: timeline.now(), tracks: timeline.tracks, exitEnd, windows }
-}
-
-/**
- * Fan: the pile opens like a hand of cards about a pivot off one end, glides
- * out to the ring to swap heights, then closes back into a fan and a pile.
- * Every move but the one in the ring happens at unchanged, disjoint heights.
- */
-function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
-  const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth } = extents(target)
-  const slots = ringSlots(target.length, length, depth)
-  const twist = twistMap(fromById, target)
-  const { present, slotOf } = slotOrder(fromById, target)
-  const slotFor = (id: string) => slots[slotOf.get(id)!]!
-
-  // A lying Book runs along x, so the pivot sits just off one end of the pile.
-  const pivot = length / 2
-  const fanStep = Math.min(FAN_STEP, FAN_SWEEP / Math.max(1, target.length - 1))
-  /** Rigid turn about the shared vertical pivot: position and twist together. */
-  const fanned = (node: Node, angle: number): Node => {
-    const dx = node.position[0] - pivot
-    const dz = node.position[2]
-    return {
-      position: [
-        pivot + dx * Math.cos(angle) + dz * Math.sin(angle),
-        node.position[1],
-        dz * Math.cos(angle) - dx * Math.sin(angle),
-      ],
-      rotation: [node.rotation[0], node.rotation[1] + angle, node.rotation[2]],
-    }
-  }
-
-  const start = new Map<string, Node>()
-  for (const pose of target) {
-    const old = fromById.get(pose.bookId)
-    // New Books wait unseen in their own slot until it is safe to appear.
-    start.set(pose.bookId, old ? poseNode(old) : spotNode(slotFor(pose.bookId), pose, twist.get(pose.bookId)!, entrance))
-  }
-
-  const timeline = createTimeline(start)
-  const stagger = staggerStep(target.length)
-  const raw = FAN_OPEN + FAN_OUT + FAN_LIFT + FAN_BACK + FAN_CLOSE + stagger * (target.length - 1)
-  const scale = phaseScale(raw)
-  const span = (base: number) => Math.max(MIN_PHASE, base * scale) / speed
-
-  // 1. Open: each Book swings further round the pivot than the one below it,
-  //    all at their resting heights, which are disjoint.
-  const open = new Map<string, Node>()
-  present.forEach((id, index) => open.set(id, fanned(timeline.state.get(id)!, fanStep * index)))
-  timeline.phase(span(FAN_OPEN), open)
-  // Leaving Books slide out while the fan opens, at unchanged heights.
-  const exitEnd = timeline.now()
-
-  // 2. Out: from the fan to the ring, still without touching a height.
-  const out = new Map<string, Node>()
-  for (const id of present) out.set(id, ringNode(slotFor(id), timeline.state.get(id)!.position[1], twist.get(id)!))
-  timeline.phase(span(FAN_OUT), out)
-  const liftStart = timeline.now()
-
-  // 3. Lift: to the final height, each Book inside its own slot.
-  const lift = new Map<string, Node>()
-  for (const pose of target) lift.set(pose.bookId, ringNode(slotFor(pose.bookId), pose.y, twist.get(pose.bookId)!))
-  timeline.phase(span(FAN_LIFT), lift)
-  const windows = slotWindows(fromById, target, entrance, liftStart, timeline.now())
-
-  // 4. Back: into the fan again, now in the new order and at final heights.
-  const fan = new Map<string, Node>()
-  target.forEach((pose, rank) => fan.set(pose.bookId, fanned(poseNode(pose), fanStep * rank)))
-  timeline.phase(span(FAN_BACK), fan)
-
-  // 5. Close: the fan folds shut on the pile, bottom Book first.
-  const plan = staggerIn(timeline, target, span(FAN_CLOSE), (stagger * scale) / speed)
-  return { ...plan, exitEnd, windows }
 }

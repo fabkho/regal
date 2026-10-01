@@ -29,9 +29,10 @@ describe('countMoves', () => {
 })
 
 describe('chooseShuffle', () => {
-  it('stays calm up to the threshold', () => {
-    expect(chooseShuffle(5, 5, 'carousel')).toBe('hand')
-    expect(chooseShuffle(6, 5, 'carousel')).toBe('carousel')
-    expect(chooseShuffle(40, null, 'carousel')).toBe('hand')
+  it('goes by hand up to three moved Books, then swings the pile out', () => {
+    expect(chooseShuffle(0)).toBe('hand')
+    expect(chooseShuffle(3)).toBe('hand')
+    expect(chooseShuffle(4)).toBe('carousel')
+    expect(chooseShuffle(40)).toBe('carousel')
   })
 })

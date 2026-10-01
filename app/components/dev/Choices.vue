@@ -1,9 +1,8 @@
 <script setup lang="ts">
-// Dev-only drawer with the open design decisions, previewed live: the
-// portfolio Books page, the re-sort animation, the back cover style and the
-// hover label change the app right away. Picks are saved to
-// .data/choices.json. Decided points are listed at the top.
-import type { StackSort } from '~/utils/stack/view'
+// Dev-only drawer with the open design decisions, previewed live (click next
+// to a picked Book, date separators, new and leaving Books) plus two tools
+// (cover overrides, notes). Picks are saved to .data/choices.json. Decided
+// points are listed at the top.
 import { SEPARATOR_STYLES } from '~/utils/stack/separators'
 import { ENTRANCE_STYLES } from '~/utils/stack/shuffle'
 import type { Entrance } from '~/composables/useDevChoices'
@@ -41,17 +40,7 @@ const PICK_OUTSIDE: { value: PickOutside, title: string, text: string }[] = [
   { value: 'swap', title: 'Takes the clicked Book out', text: 'A click on another Book swaps straight to it; only empty space puts back. In the Stack the pile fills most of the space next to a picked Book.' },
 ]
 
-// --- 2. Re-sort animation ---------------------------------------------------
-const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
-const SORT_CYCLE: StackSort[] = ['date', 'rating', 'author', 'title']
-
-function shuffleNow() {
-  if (mode.value !== 'stack') showStack()
-  const next = SORT_CYCLE[(SORT_CYCLE.indexOf(stackView.value.sort) + 1) % SORT_CYCLE.length]!
-  setStackView({ sort: next })
-}
-
-// --- 3. New and leaving books -------------------------------------------------
+// --- 2. New and leaving books -------------------------------------------------
 const RECOMMENDED_ENTRANCE = 'fade'
 
 /** Flips the rating filter between ★ 4.5+ and all: many Books enter, then leave. */
@@ -139,27 +128,6 @@ onMounted(async () => {
         </ul>
       </section>
 
-      <!-- Preview -->
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          Books page preview
-        </h3>
-        <label
-          class="choices__option"
-          :data-on="choices.pagePreview"
-        >
-          <input
-            type="checkbox"
-            :checked="choices.pagePreview"
-            @change="set('pagePreview', !choices.pagePreview); showStack()"
-          >
-          <span>
-            <strong>Show the portfolio Books page</strong>
-            <small>Layout A: 3D Stack in the body, count + filters + list in the 320 px sidebar.</small>
-          </span>
-        </label>
-      </section>
-
       <section class="choices__section">
         <h3 class="choices__heading">
           Click next to a picked book
@@ -181,27 +149,6 @@ onMounted(async () => {
             <small>{{ option.text }}</small>
           </span>
         </label>
-      </section>
-
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          Try the re-sort
-        </h3>
-        <p class="choices__hint">
-          <button
-            type="button"
-            class="choices__link"
-            @click="shuffleNow"
-          >
-            Re-sort now ({{ stackView.sort }} → next)
-          </button>
-        </p>
-        <p
-          v-if="lastShuffle"
-          class="choices__hint choices__last"
-        >
-          Last re-sort: {{ lastShuffle.moves }} {{ lastShuffle.moves === 1 ? 'book' : 'books' }} moved → {{ lastShuffle.style === 'hand' ? 'by hand' : lastShuffle.style }}
-        </p>
       </section>
 
       <!-- Date separators -->
