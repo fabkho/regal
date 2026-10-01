@@ -1,5 +1,6 @@
 import { watch } from 'vue'
 import {
+  useLibrary,
   LIBRARY_STORAGE_KEY,
   LIBRARY_STORAGE_VERSION,
   useLibraryRestored,
@@ -29,7 +30,16 @@ export default defineNuxtPlugin((nuxtApp) => {
       return
     }
 
+    const hadStored = readStoredLibrary() !== null || wasClearedInDev()
     restoreFromStorage(books)
+
+    // Dev: a browser that has never stored a Library (fresh profile, another
+    // browser like Orca's) gets the asset pipeline's library.json, like the
+    // "My library (dev)" button. A deliberately cleared Library stays empty.
+    if (import.meta.dev && !hadStored) {
+      const { assetsBase } = useRegalConfig()
+      void useLibrary().loadUrl(`${assetsBase}library.json`)
+    }
     restored.value = true
 
     watch(
@@ -41,6 +51,18 @@ export default defineNuxtPlugin((nuxtApp) => {
     )
   })
 })
+
+/** Dev only: marks a Library the user cleared, so the dev auto-load doesn't refill it. */
+const DEV_CLEARED_KEY = `${LIBRARY_STORAGE_KEY}:dev-cleared`
+
+function wasClearedInDev(): boolean {
+  try {
+    return window.localStorage.getItem(DEV_CLEARED_KEY) === '1'
+  }
+  catch {
+    return false
+  }
+}
 
 function readStoredLibrary(): StoredLibrary | null {
   try {
@@ -71,8 +93,10 @@ function persistToStorage(currentBooks: Book[]) {
   try {
     if (currentBooks.length === 0) {
       window.localStorage.removeItem(LIBRARY_STORAGE_KEY)
+      if (import.meta.dev) window.localStorage.setItem(DEV_CLEARED_KEY, '1')
       return
     }
+    if (import.meta.dev) window.localStorage.removeItem(DEV_CLEARED_KEY)
     const payload: StoredLibrary = { version: LIBRARY_STORAGE_VERSION, books: currentBooks }
     window.localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(payload))
   }
