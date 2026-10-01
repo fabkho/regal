@@ -3,7 +3,6 @@
 // to a picked Book, date separators), links that play the decided re-sort
 // transitions, plus two tools (cover overrides, notes). Picks are saved to .data/choices.json. Settled
 // decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
-import { SEPARATOR_STYLES } from '#layers/regal/app/utils/stack/separators'
 import { readYears } from '#layers/regal/app/utils/stack/view'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
@@ -127,33 +126,6 @@ onMounted(async () => {
           >
           <span>
             <strong>{{ option.title }}</strong>
-            <small>{{ option.text }}</small>
-          </span>
-        </label>
-      </section>
-
-      <!-- Date separators -->
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          Stack date separators
-        </h3>
-        <p class="choices__hint">
-          Under each year (or month) while sorted by date read. Grouping: Stack controls → Group.
-        </p>
-        <label
-          v-for="option in SEPARATOR_STYLES"
-          :key="option.value"
-          class="choices__option"
-          :data-on="choices.separatorStyle === option.value"
-        >
-          <input
-            type="radio"
-            name="separator-style"
-            :checked="choices.separatorStyle === option.value"
-            @change="set('separatorStyle', option.value); showStack()"
-          >
-          <span>
-            <strong>{{ option.title }}{{ option.value === 'numerals' ? ' (recommended)' : '' }}</strong>
             <small>{{ option.text }}</small>
           </span>
         </label>
