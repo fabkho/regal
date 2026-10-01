@@ -35,7 +35,7 @@ export const DEFAULT_CHOICES: DevChoices = {
   pagePreview: false,
   pageLayout: 'sidebar-all',
   details: 'overlay',
-  shuffleFancy: 'carousel',
+  shuffleFancy: 'constellation',
   shuffleThreshold: 5,
   backStyle: 'classic',
   label: 'stars-title',
