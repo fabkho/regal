@@ -4,8 +4,8 @@ import type { Book } from '#layers/regal/shared/types/book'
 import { sortForShelves } from '../bookcase/layout'
 
 export type StackSort = 'date' | 'rating' | 'author' | 'title'
-/** Date separators between Books: 'auto' is by year, by month when one year is shown. */
-export type StackGrouping = 'auto' | 'off' | 'year' | 'month'
+/** Date separators between Books: under each year or month read, or none. */
+export type StackGrouping = 'year' | 'month' | 'off'
 
 export interface StackView {
   sort: StackSort
@@ -17,7 +17,7 @@ export interface StackView {
   group: StackGrouping
 }
 
-export const DEFAULT_STACK_VIEW: StackView = { sort: 'date', year: null, minRating: 0, group: 'auto' }
+export const DEFAULT_STACK_VIEW: StackView = { sort: 'date', year: null, minRating: 0, group: 'year' }
 export const STACK_SORTS: { value: StackSort, label: string }[] = [
   { value: 'date', label: 'Date read' },
   { value: 'rating', label: 'Rating' },
@@ -25,11 +25,15 @@ export const STACK_SORTS: { value: StackSort, label: string }[] = [
   { value: 'title', label: 'Title' },
 ]
 export const STACK_GROUPINGS: { value: StackGrouping, label: string }[] = [
-  { value: 'auto', label: 'Auto' },
   { value: 'year', label: 'Year' },
   { value: 'month', label: 'Month' },
   { value: 'off', label: 'Off' },
 ]
+
+/** A grouping from a URL; anything else (an old link's 'auto', say) is the default. */
+export function parseGrouping(value: unknown): StackGrouping {
+  return STACK_GROUPINGS.some(option => option.value === value) ? value as StackGrouping : DEFAULT_STACK_VIEW.group
+}
 
 const surname = (author: string | null) => (author ?? '').trim().split(/\s+/).at(-1) ?? ''
 
@@ -69,11 +73,9 @@ export interface StackGroup {
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
 
-/** The grouping in effect: none unless sorted by date read; 'auto' = month inside one year, else year. */
-export function resolveGrouping(view: Pick<StackView, 'sort' | 'year' | 'group'>): 'off' | 'year' | 'month' {
-  if (view.sort !== 'date') return 'off'
-  if (view.group === 'auto') return view.year ? 'month' : 'year'
-  return view.group
+/** The grouping in effect: none unless sorted by date read. */
+export function resolveGrouping(view: Pick<StackView, 'sort' | 'group'>): StackGrouping {
+  return view.sort === 'date' ? view.group : 'off'
 }
 
 /** The separator a Book falls under: its year or month read; other shelves and undated reads get their own. */

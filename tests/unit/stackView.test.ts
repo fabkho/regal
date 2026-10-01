@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Book } from '../../shared/types/book'
-import { applyStackView, DEFAULT_STACK_VIEW, groupOf, readYears, resolveGrouping, stackGroups } from '../../app/utils/stack/view'
+import { applyStackView, DEFAULT_STACK_VIEW, groupOf, parseGrouping, readYears, resolveGrouping, STACK_GROUPINGS, stackGroups } from '../../app/utils/stack/view'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,
@@ -48,15 +48,24 @@ describe('date separators', () => {
     book('nodate', { dateRead: null }),
   ]
 
-  it('groups by year by default, by month inside one year, never for other sorts', () => {
+  it('groups by year by default (one year shown too), never for other sorts', () => {
+    expect(DEFAULT_STACK_VIEW.group).toBe('year')
     expect(resolveGrouping(DEFAULT_STACK_VIEW)).toBe('year')
-    expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, year: 2026 })).toBe('month')
+    expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, year: 2026 })).toBe('year')
     expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, group: 'month' })).toBe('month')
     expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, year: 2026, group: 'year' })).toBe('year')
     expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, group: 'off' })).toBe('off')
     for (const sort of ['rating', 'author', 'title'] as const) {
       expect(resolveGrouping({ ...DEFAULT_STACK_VIEW, sort, group: 'year' })).toBe('off')
     }
+  })
+
+  it('offers Year, Month and Off; an old ?group=auto falls back to the default', () => {
+    expect(STACK_GROUPINGS.map(option => option.label)).toEqual(['Year', 'Month', 'Off'])
+    expect(parseGrouping('month')).toBe('month')
+    expect(parseGrouping('off')).toBe('off')
+    expect(parseGrouping('auto')).toBe('year')
+    expect(parseGrouping(undefined)).toBe('year')
   })
 
   it('labels years, English months, the reading pile and undated reads', () => {

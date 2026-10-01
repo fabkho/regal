@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sort & filter for the Stack (#27): 'chips' (a row over the 3D), 'stacked'
 // (one group per line, for a sidebar) or 'menu' (one button, popover).
-import { readYears, STACK_GROUPINGS, STACK_SORTS } from '#layers/regal/app/utils/stack/view'
+import { DEFAULT_STACK_VIEW, readYears, STACK_GROUPINGS, STACK_SORTS } from '#layers/regal/app/utils/stack/view'
 
 const props = defineProps<{ variant: 'chips' | 'stacked' | 'menu' }>()
 
@@ -16,7 +16,7 @@ const summary = computed(() => {
   const parts = [sort]
   if (view.value.year) parts.push(String(view.value.year))
   if (view.value.minRating) parts.push(`★ ${view.value.minRating}+`)
-  if (view.value.sort === 'date' && view.value.group !== 'auto') parts.push(`by ${view.value.group}`)
+  if (view.value.sort === 'date' && view.value.group !== DEFAULT_STACK_VIEW.group) parts.push(`by ${view.value.group}`)
   return parts.join(' · ')
 })
 </script>

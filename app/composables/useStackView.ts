@@ -1,8 +1,7 @@
-import type { StackGrouping, StackSort, StackView } from '#layers/regal/app/utils/stack/view'
-import { DEFAULT_STACK_VIEW } from '#layers/regal/app/utils/stack/view'
+import type { StackSort, StackView } from '#layers/regal/app/utils/stack/view'
+import { DEFAULT_STACK_VIEW, parseGrouping } from '#layers/regal/app/utils/stack/view'
 
 const SORTS: StackSort[] = ['date', 'rating', 'author', 'title']
-const GROUPINGS: StackGrouping[] = ['auto', 'off', 'year', 'month']
 
 /**
  * Stack view settings (sort, year, minimum rating, date separators), shared
@@ -16,7 +15,7 @@ export function useStackView() {
     const sort = SORTS.includes(query.sort as StackSort) ? query.sort as StackSort : DEFAULT_STACK_VIEW.sort
     const year = Number(query.year) || null
     const minRating = Number(query.min) || 0
-    const group = GROUPINGS.includes(query.group as StackGrouping) ? query.group as StackGrouping : DEFAULT_STACK_VIEW.group
+    const group = parseGrouping(query.group)
     return { sort, year, minRating, group }
   })
 
