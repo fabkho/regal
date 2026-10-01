@@ -4,6 +4,7 @@ import {
   bell,
   easeRate,
   FOCUS,
+  focusLine,
   lineDistance,
   liftFor,
   nearestBook,
@@ -131,5 +132,28 @@ describe('liftFor', () => {
     for (const { value } of SCROLL_HIGHLIGHTS) {
       expect(liftFor(value, 1, true, lift())).toEqual({ out: 0, slide: 0, tilt: 0, yaw: 0, shine: 1 })
     }
+  })
+})
+
+describe('focusLine', () => {
+  const bounds = [0.3, 2] as const
+  const ends = [0.015, 2.04] as const
+  it('is the middle of the view away from the ends', () => {
+    expect(focusLine(1, bounds, ends)).toBe(1)
+  })
+  it('reaches the end Books at the scroll bounds', () => {
+    expect(focusLine(0.3, bounds, ends)).toBeCloseTo(0.015)
+    expect(focusLine(2, bounds, ends)).toBeCloseTo(2.04)
+  })
+  it('rises with the view, so scrolling passes every Book in order', () => {
+    let last = -Infinity
+    for (let y = 0.3; y <= 2; y += 0.01) {
+      const line = focusLine(y, bounds, ends)
+      expect(line).toBeGreaterThan(last)
+      last = line
+    }
+  })
+  it('leaves a pile shorter than the view alone', () => {
+    expect(focusLine(0.3, [0.3, 0.3], ends)).toBe(0.3)
   })
 })

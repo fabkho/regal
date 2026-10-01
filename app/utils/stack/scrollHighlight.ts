@@ -121,6 +121,25 @@ export function liftFor(variant: ScrollHighlight, amount: number, reduced: boole
   return into
 }
 
+/** Over this much scroll (m) before either end, the focus line slides out to the end Book. */
+export const END_RAMP = 0.25
+
+/**
+ * Where the focus line sits for a view at `centre` scrolled within `bounds`:
+ * the middle of the view, except near either end, where the camera stops
+ * before the first or last Book reaches the middle (the pile's bottom rests
+ * low in the view). There the line slides on to `ends` (the end Books'
+ * centres), so every Book can be focused. Continuous and rising with `centre`.
+ */
+export function focusLine(centre: number, bounds: readonly [number, number], ends: readonly [number, number]): number {
+  const [low, high] = bounds
+  const ramp = Math.min(END_RAMP, Math.max(0, (high - low) / 2))
+  if (ramp <= 0) return centre
+  const below = Math.max(0, 1 - (centre - low) / ramp)
+  const above = Math.max(0, 1 - (high - centre) / ramp)
+  return centre + Math.min(0, ends[0] - low) * below + Math.max(0, ends[1] - high) * above
+}
+
 /** How far (m) the focus line passes from a Book: 0 when it crosses it. */
 export function lineDistance(pose: { y: number, thickness: number }, focusY: number): number {
   return Math.max(0, Math.abs(pose.y - focusY) - pose.thickness / 2)

@@ -36,16 +36,17 @@ export interface Look {
 }
 
 /**
- * Not decided yet, recommended defaults: 'numerals' date separators, a click
- * next to a picked Book puts it back (even on the pile), the 'focus' line
- * highlight while scrolling.
- * Decided and hard-wired (no longer choices): the re-sort animation (utils/stack/moves.ts),
+ * Not decided yet, recommended default: the 'focus' line highlight while scrolling.
+ * Decided and hard-wired (no longer choices): a click on another Book while
+ * one is out swaps them ('swap'), the 'label' date separators, the re-sort animation (utils/stack/moves.ts),
  * new Books popping in scattered around the pile, the swap of a whole pile
  * (utils/stack/shuffle.ts), the classic back cover and the title + stars hover label.
  */
 export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
-  separatorStyle: 'numerals',
-  pickOutside: 'put-back',
+  // Decided (owner, dev panel): the flat label with a leader line beside the pile.
+  separatorStyle: 'label',
+  // Decided (owner): clicking another Book while one is out swaps them.
+  pickOutside: 'swap',
   scrollHighlight: 'focus',
 })
 
@@ -111,16 +112,16 @@ export function useDevChoices() {
 }
 
 /**
- * The look of the 3D: live dev choices in Regal's own dev server (the panel
- * previews them), the decided picks everywhere else, including any app that
- * extends Regal as a layer.
+ * The look of the 3D: the decided picks (DECIDED_LOOK) everywhere, including
+ * any app that extends Regal as a layer; in Regal's own dev server the panel
+ * previews the still-open scroll highlight.
  */
 export function useLook() {
   const { devPanel } = useRegalConfig()
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { separatorStyle, pickOutside, scrollHighlight } = choices.value
-    return { separatorStyle, pickOutside, scrollHighlight }
+    // Only the scroll highlight is still open; the rest is decided.
+    return { ...DECIDED_LOOK, scrollHighlight: choices.value.scrollHighlight }
   })
 }

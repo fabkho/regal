@@ -7,7 +7,7 @@ import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
 import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
-import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
+import { focusLine, STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
 
 const props = defineProps<{
@@ -33,6 +33,8 @@ const FLING_SECONDS = 0.3
 const FLING_WINDOW = 80
 /** The focus line meets the Spines about this far in front of the pile's axis (half a Book's depth). */
 const FOCUS_Z = 0.07
+/** Where the bottom of the pile sits at the end of scrolling: 0 = centre, -1 = lower edge of the view. */
+const BOTTOM_AT = -0.75
 
 const { camera, renderer } = useTres()
 const { onBeforeRender } = useLoop()
@@ -46,7 +48,21 @@ const keyLight = shallowRef<DirectionalLight | null>(null)
 
 /** The height the camera looks at, and where it is easing to. */
 const view = { y: 0.2, target: 0.2 }
-const bounds = computed<[number, number]>(() => [0.1, Math.max(0.1, props.stackHeight - 0.06)])
+/** Camera distance relative to CAMERA_DISTANCE (narrow views step back). */
+const zoom = ref(1)
+
+/**
+ * The lowest height the camera looks at: the bottom of the pile (y = 0) then
+ * shows at BOTTOM_AT of the view's half height, near its lower edge, instead
+ * of mid-view.
+ */
+const lowest = computed(() => {
+  const distance = CAMERA_DISTANCE * zoom.value
+  const rise = CAMERA_RISE * zoom.value
+  const down = Math.atan(rise / distance) + Math.atan(-BOTTOM_AT * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2))
+  return Math.max(0.1, distance * Math.tan(down) - rise)
+})
+const bounds = computed<[number, number]>(() => [lowest.value, Math.max(lowest.value, props.stackHeight - 0.06)])
 let placed = false
 
 /** The scroll for the Books' scroll highlight (utils/stack/scrollHighlight.ts), updated every frame. */
@@ -55,8 +71,8 @@ let previousY = view.y
 provide(STACK_SCROLL, scroll)
 
 watch(() => props.stackHeight, (height) => {
-  const top = MathUtils.clamp(height - 0.1, ...bounds.value)
-  // Start at the top of the pile (what you're reading now); keep position on later changes.
+  const top = bounds.value[1]
+  // Start at the top of the pile (what you're reading now, in focus); keep position on later changes.
   if (!placed || view.target > bounds.value[1]) {
     view.target = top
     view.y = top
@@ -184,17 +200,19 @@ onBeforeRender(({ delta }) => {
   scroll.speed += (speed - scroll.speed) * (1 - Math.exp(-seconds * 20))
   if (Math.abs(scroll.speed) < 1e-4) scroll.speed = 0
   previousY = view.y
-  scroll.focusY = view.y
+  const ends: [number, number] = [0.015, Math.max(0.015, props.stackHeight - 0.015)]
+  scroll.focusY = focusLine(view.y, bounds.value, ends)
   const cam = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (cam) {
     // Narrow views (a portfolio sidebar) step back until the pile fits the width.
     const halfWidth = Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) * (cam.aspect || 1)
     const distance = Math.max(CAMERA_DISTANCE, (props.fitWidth ?? FIT_WIDTH) / 2 / halfWidth)
     const scale = distance / CAMERA_DISTANCE
+    if (Math.abs(scale - zoom.value) > 0.01) zoom.value = scale
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
     // The middle of the view, where the line of sight meets the Spines.
-    scroll.focusY = view.y + CAMERA_RISE * scale * FOCUS_Z / distance
+    scroll.focusY = focusLine(view.y, bounds.value, ends) + CAMERA_RISE * scale * FOCUS_Z / distance
   }
   // Lights travel with the view so every part of the pile is lit the same.
   if (rig.value) rig.value.position.y = view.y
