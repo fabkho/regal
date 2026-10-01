@@ -4,7 +4,6 @@
 // transitions, plus two tools (cover overrides, notes). Picks are saved to .data/choices.json. Settled
 // decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
 import { readYears } from '#layers/regal/app/utils/stack/view'
-import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
@@ -19,12 +18,6 @@ function showStack() {
   putAway()
   mode.value = 'stack'
 }
-
-// --- 1. Clicking next to a picked Book --------------------------------------
-const PICK_OUTSIDE: { value: PickOutside, title: string, text: string }[] = [
-  { value: 'put-back', title: 'Puts it back (recommended)', text: 'Any click outside the picked Book puts it back, also on the pile around it. Taking another Book out is a second click.' },
-  { value: 'swap', title: 'Takes the clicked Book out', text: 'A click on another Book swaps straight to it; only empty space puts back. In the Stack the pile fills most of the space next to a picked Book.' },
-]
 
 // --- Try the decided transitions -----------------------------------------------
 
@@ -107,29 +100,6 @@ onMounted(async () => {
       <p class="choices__intro">
         Every pick applies live and is saved for Claude in <code>.data/choices.json</code>.
       </p>
-
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          Click next to a picked book
-        </h3>
-        <label
-          v-for="option in PICK_OUTSIDE"
-          :key="option.value"
-          class="choices__option"
-          :data-on="choices.pickOutside === option.value"
-        >
-          <input
-            type="radio"
-            name="pick-outside"
-            :checked="choices.pickOutside === option.value"
-            @change="set('pickOutside', option.value)"
-          >
-          <span>
-            <strong>{{ option.title }}</strong>
-            <small>{{ option.text }}</small>
-          </span>
-        </label>
-      </section>
 
       <section class="choices__section">
         <h3 class="choices__heading">

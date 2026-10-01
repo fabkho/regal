@@ -24,6 +24,8 @@ const FIT_WIDTH = 0.42
 const WHEEL_SPEED = 0.0011
 const DRAG_SPEED = 0.0022
 const KEY_STEP = 0.12
+/** Where the bottom of the pile sits at the end of scrolling: 0 = centre, -1 = lower edge of the view. */
+const BOTTOM_AT = -0.75
 
 const { camera, renderer } = useTres()
 const { onBeforeRender } = useLoop()
@@ -36,7 +38,21 @@ const keyLight = shallowRef<DirectionalLight | null>(null)
 
 /** The height the camera looks at, and where it is easing to. */
 const view = { y: 0.2, target: 0.2 }
-const bounds = computed<[number, number]>(() => [0.1, Math.max(0.1, props.stackHeight - 0.06)])
+/** Camera distance relative to CAMERA_DISTANCE (narrow views step back). */
+const zoom = ref(1)
+
+/**
+ * The lowest height the camera looks at: the bottom of the pile (y = 0) then
+ * shows at BOTTOM_AT of the view's half height, near its lower edge, instead
+ * of mid-view.
+ */
+const lowest = computed(() => {
+  const distance = CAMERA_DISTANCE * zoom.value
+  const rise = CAMERA_RISE * zoom.value
+  const down = Math.atan(rise / distance) + Math.atan(-BOTTOM_AT * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2))
+  return Math.max(0.1, distance * Math.tan(down) - rise)
+})
+const bounds = computed<[number, number]>(() => [lowest.value, Math.max(lowest.value, props.stackHeight - 0.06)])
 let placed = false
 
 watch(() => props.stackHeight, (height) => {
@@ -150,6 +166,7 @@ onBeforeRender(({ delta }) => {
     const halfWidth = Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) * (cam.aspect || 1)
     const distance = Math.max(CAMERA_DISTANCE, (props.fitWidth ?? FIT_WIDTH) / 2 / halfWidth)
     const scale = distance / CAMERA_DISTANCE
+    if (Math.abs(scale - zoom.value) > 0.01) zoom.value = scale
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
   }
