@@ -128,6 +128,7 @@ watch(books, (list) => {
             :aside="props.showDetails"
             :shuffle="shuffleStyle"
             :shuffle-threshold="shuffleThreshold"
+            :entrance="look.entrance"
           />
         </StackScene>
       </TresCanvas>

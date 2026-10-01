@@ -12,6 +12,8 @@ import type { SeparatorStyle } from '~/utils/stack/separators'
 export type PageLayout = 'sidebar-all' | 'sidebar-list' | 'sidebar-filters'
 /** Fancy re-sort for big changes (more variants arrive from utils/stack/shuffle.ts). */
 export type FancyShuffle = string
+/** How Books new to the Stack appear and leaving ones vanish (see ENTRANCE_STYLES in utils/stack/shuffle.ts). */
+export type Entrance = 'fade' | 'pop' | 'drop'
 
 export interface DevChoices {
   /** Preview the portfolio page (/books): 3D in the body, text in the sidebar. */
@@ -23,6 +25,8 @@ export interface DevChoices {
   shuffleFancy: FancyShuffle
   /** Moved Books up to which 'hand' is used; null = always 'hand'. */
   shuffleThreshold: number | null
+  /** How Books new to the Stack appear (open: previewed in the panel). */
+  entrance: Entrance
   /** Back cover typography. */
   backStyle: 'classic' | 'clean'
   /** Hover label content. */
@@ -39,6 +43,7 @@ export interface DevChoices {
 export interface Look {
   shuffleFancy: FancyShuffle
   shuffleThreshold: number | null
+  entrance: Entrance
   backStyle: 'classic' | 'clean'
   label: 'stars-title' | 'stars'
   separatorStyle: SeparatorStyle
@@ -46,11 +51,12 @@ export interface Look {
 
 /**
  * Decided: 'hand' for re-sorts that move up to 3 Books, 'carousel' above; classic back; title + stars on hover.
- * Not decided yet, recommended default: 'numerals' date separators.
+ * Not decided yet, recommended defaults: 'numerals' date separators, the 'fade' entrance of new Books.
  */
 export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   shuffleFancy: 'carousel',
   shuffleThreshold: 3,
+  entrance: 'fade',
   backStyle: 'classic',
   label: 'stars-title',
   separatorStyle: 'numerals',
@@ -128,7 +134,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { shuffleFancy, shuffleThreshold, backStyle, label, separatorStyle } = choices.value
-    return { shuffleFancy, shuffleThreshold, backStyle, label, separatorStyle }
+    const { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle } = choices.value
+    return { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle }
   })
 }

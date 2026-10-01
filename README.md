@@ -82,7 +82,7 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_MODE=embed`, `NUXT_PUBLIC_REGAL_
 
 Both load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML) and share it, the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year, by month inside one year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
 
-The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; classic back covers; title and stars in the hover label.
+The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; Books a filter brings back fade in scattered around the pile and leaving ones slide out and fade (instant with reduced motion); classic back covers; title and stars in the hover label.
 
 **Styling.** The components use the paper-ink tokens with fallbacks, e.g. `var(--color-ink, #2C2C2A)`, so they look right with or without them. A host that defines the same tokens (`--color-bg`, `--color-ink`, `--color-ink-muted`, `--color-ink-faint`, `--color-line`, `--color-accent`, `--color-accent-tint`, `--font-mono`, `--font-serif`, `--text-2xs` … `--text-2xl`) restyles them; set them on a wrapper to change only Regal. Regal registers the IBM Plex Mono, Patua One and Antonio `@font-face`s (no other global CSS).
 

@@ -5,6 +5,8 @@
 // .data/choices.json. Decided points are listed at the top.
 import type { StackSort } from '~/utils/stack/view'
 import { SEPARATOR_STYLES } from '~/utils/stack/separators'
+import { ENTRANCE_STYLES } from '~/utils/stack/shuffle'
+import type { Entrance } from '~/composables/useDevChoices'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
@@ -40,6 +42,20 @@ function shuffleNow() {
   if (mode.value !== 'stack') showStack()
   const next = SORT_CYCLE[(SORT_CYCLE.indexOf(stackView.value.sort) + 1) % SORT_CYCLE.length]!
   setStackView({ sort: next })
+}
+
+// --- 3. New and leaving books -------------------------------------------------
+const RECOMMENDED_ENTRANCE = 'fade'
+
+/** Flips the rating filter between ★ 4.5+ and all: many Books enter, then leave. */
+function filterNow() {
+  if (mode.value !== 'stack') showStack()
+  setStackView({ minRating: stackView.value.minRating ? 0 : 4.5 })
+}
+
+function tryEntrance(value: Entrance) {
+  set('entrance', value)
+  filterNow()
 }
 
 // --- Tools: cover overrides -------------------------------------------------
@@ -182,6 +198,47 @@ onMounted(async () => {
             <strong>{{ option.title }}{{ option.value === 'numerals' ? ' (recommended)' : '' }}</strong>
             <small>{{ option.text }}</small>
           </span>
+        </label>
+      </section>
+
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Open · New and leaving books
+        </h3>
+        <p class="choices__hint">
+          When a filter brings books back, they turn up scattered around the pile, near where they belong, then join it;
+          leaving books slide out and vanish. Never through another book.
+          <button
+            type="button"
+            class="choices__link"
+            @click="filterNow"
+          >
+            Try it ({{ stackView.minRating ? `★ ${stackView.minRating}+ → all` : 'all → ★ 4.5+' }})
+          </button>
+        </p>
+        <label
+          v-for="option in ENTRANCE_STYLES"
+          :key="option.value"
+          class="choices__option"
+          :data-on="choices.entrance === option.value"
+        >
+          <input
+            type="radio"
+            name="entrance"
+            :checked="choices.entrance === option.value"
+            @change="set('entrance', option.value)"
+          >
+          <span class="choices__grow">
+            <strong>{{ option.title }}{{ option.value === RECOMMENDED_ENTRANCE ? ' (recommended)' : '' }}</strong>
+            <small>{{ option.text }}</small>
+          </span>
+          <button
+            type="button"
+            class="choices__try"
+            @click.prevent="tryEntrance(option.value)"
+          >
+            Try
+          </button>
         </label>
       </section>
 

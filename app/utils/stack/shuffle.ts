@@ -22,7 +22,17 @@
 // of chords that cut inside the circle. A turning ring therefore gets
 // intermediate keyframes every ≤ 20°, and its slots are built for the shrunken
 // ring the chords pass through (see turnProgress and ringSlots' shrink).
+//
+// Books new to the view and Books leaving it follow one more rule: a Book that
+// is not shown cannot collide. A new Book waits unseen at its own spot (its
+// lane or ring slot, at about the height it will rest at, so new Books turn up
+// scattered around the pile rather than all from one point) and appears there
+// once nothing else can pass through that spot: straight away when the spot
+// lies above the old pile, else once every other Book keeps to its own slot.
+// A leaving Book slides out at its own height during the first phase, while
+// every height is still disjoint, and has vanished before any height changes.
 import type { BookPose } from '../books/pose'
+import { hashString } from '../bookcase/layout'
 
 export type ShuffleStyle = 'hand' | 'carousel' | 'spin' | 'helix' | 'fan'
 
@@ -35,6 +45,16 @@ export const SHUFFLE_STYLES: { value: ShuffleStyle, title: string, text: string 
   { value: 'fan', title: 'Fan', text: 'Fans the pile out like a hand of cards, swaps the Books around and closes it again.' },
 ]
 
+/** How Books new to the view appear (leaving Books mirror it). */
+export type EntranceStyle = 'fade' | 'pop' | 'drop'
+
+/** Every entrance, for the dev choices panel. */
+export const ENTRANCE_STYLES: { value: EntranceStyle, title: string, text: string }[] = [
+  { value: 'fade', title: 'Scatter + fade', text: 'New Books fade in around the pile, close to where they belong, then join it. Leaving Books slide away and fade.' },
+  { value: 'pop', title: 'Scatter + pop', text: 'New Books pop out of nowhere around the pile, then join it. Leaving Books slide away and shrink to nothing.' },
+  { value: 'drop', title: 'Scatter + drop', text: 'New Books fade in a little above their spot and drop onto it, then join the pile. Leaving Books slide away and fade.' },
+]
+
 export interface ShuffleKeyframe {
   /** Seconds from the start of the plan. */
   t: number
@@ -43,16 +63,38 @@ export interface ShuffleKeyframe {
   rotation: [number, number, number]
 }
 
+/** Seconds over which a Book appears or vanishes. */
+export interface Presence {
+  start: number
+  end: number
+}
+
 export interface ShufflePlan {
   /** Seconds. */
   duration: number
   /** Book Id → keyframes, ascending in time. The last one is the target pose. */
   tracks: Map<string, ShuffleKeyframe[]>
+  /** Books leaving the view → keyframes; they have vanished by the last one. */
+  leaving: Map<string, ShuffleKeyframe[]>
+  /** Books new to the view: unseen before `start`, fully there from `end`. */
+  appear: Map<string, Presence>
+  /** Leaving Books: fully there before `start`, gone from `end`. */
+  vanish: Map<string, Presence>
+}
+
+/** World heights the camera shows, at the pile. */
+export interface ShuffleView {
+  bottom: number
+  top: number
 }
 
 export interface ShuffleOptions {
   /** Playback rate; 2 plays the whole plan twice as fast. Default 1. */
   speed?: number
+  /** How new Books appear; only 'drop' changes the tracks. Default 'fade'. */
+  entrance?: EntranceStyle
+  /** Heights in view: new Books headed for them appear near them. Default: the whole pile. */
+  view?: ShuffleView
 }
 
 type Vec3 = [number, number, number]
@@ -114,8 +156,18 @@ const RING_CLEARANCE = 0.012
 const RING_LAP_GAP = 0.05
 const MAX_STAGGER = 0.04
 const STAGGER_BUDGET = 0.5
-/** Headroom above everything, where Books new to the view wait. */
-const PARK_CLEARANCE = 0.02
+/** A leaving Book's exit, when no first phase of the Style can carry it. */
+const EXIT = 0.45
+/** How far past its half length a leaving Book slides out, and how much it may twist. */
+const EXIT_REACH = 0.16
+const EXIT_TWIST = 0.5
+/** How long a new Book takes to appear, and how far apart new Books may start. */
+const APPEAR = 0.35
+const APPEAR_SPREAD = 0.3
+/** New Books appear this close above or below the height they will rest at. */
+const APPEAR_JITTER = 0.04
+/** How far above its spot a new Book appears with the 'drop' entrance. */
+const DROP = 0.07
 
 const vec = (value: readonly number[]): Vec3 => [value[0] ?? 0, value[1] ?? 0, value[2] ?? 0]
 const poseNode = (pose: BookPose): Node => ({ position: [pose.x, pose.y, pose.z], rotation: vec(pose.rotation) })
@@ -123,24 +175,161 @@ const samePose = (pose: BookPose, other: BookPose | undefined): boolean =>
   !!other && pose.x === other.x && pose.y === other.y && pose.z === other.z
   && pose.rotation.every((value, index) => value === other.rotation[index])
 
+/** Deterministic 0 to 1 per Book, well mixed: Book Ids often differ in their last digit only. */
+function scatter(bookId: string, salt: string): number {
+  let hash = hashString(`${salt}:${bookId}`)
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85EBCA6B)
+  hash = Math.imul(hash ^ (hash >>> 13), 0xC2B2AE35)
+  return ((hash ^ (hash >>> 16)) >>> 0) / 0x1_0000_0000
+}
+
+/** What a Style needs to know about Books entering and leaving the view. */
+interface Entrance {
+  /** Height of a new Book's spot, where it appears (before any 'drop' lift). */
+  spotY: (pose: BookPose) => number
+  /** How far above its spot a new Book appears. */
+  drop: number
+  /** Whether any Book leaves; a Style then carries their exit in its first phase. */
+  leaving: boolean
+  /** Top of the pile as it lies now, leaving Books included. */
+  oldTop: number
+}
+
+/** A new Book's spot sits wholly above the pile as it lies now. */
+const aboveOldPile = (pose: BookPose, entrance: Entrance): boolean =>
+  entrance.spotY(pose) - pose.thickness / 2 > entrance.oldTop + LAYER_GAP
+
+/**
+ * When a new Book may appear: from `start`, done by `end` (inside which its
+ * spot is its own). `moveFrom` is when the Style first moves it; null leaves
+ * its track as planned (it may already be moving when it appears).
+ */
+interface Window {
+  start: number
+  end: number
+  moveFrom: number | null
+}
+
+/** A Style's plan for the Books in the target view, before entering and leaving are added. */
+interface Staged {
+  duration: number
+  tracks: Map<string, ShuffleKeyframe[]>
+  /** End of the phase in which leaving Books slide out and vanish. */
+  exitEnd: number
+  windows: Map<string, Window>
+}
+
 /**
  * Plans a collision-free move from the current poses to the target poses.
- * Books missing from `to` are dropped (they vanish); Books missing from `from`
- * are new to the view and join the pile on the way.
+ * Books missing from `to` slide out and vanish; Books missing from `from`
+ * appear around the pile and join it on the way.
  */
 export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyle, options: ShuffleOptions = {}): ShufflePlan {
   const speed = options.speed && options.speed > 0 ? options.speed : 1
   const fromById = new Map(from.map(pose => [pose.bookId, pose]))
-  if (to.length === 0) return { duration: 0, tracks: new Map() }
-  if (to.every(pose => samePose(pose, fromById.get(pose.bookId)))) {
-    const tracks = new Map(to.map(pose => [pose.bookId, [{ t: 0, ...poseNode(pose) }]]))
-    return { duration: 0, tracks }
+  const kept = new Set(to.map(pose => pose.bookId))
+  const leaving = from.filter(pose => !kept.has(pose.bookId))
+  const oldTop = pileTop(from)
+  const band = options.view ?? { bottom: 0, top: Math.max(oldTop, pileTop(to)) }
+  const entrance: Entrance = {
+    spotY: pose => appearHeight(pose, band),
+    drop: options.entrance === 'drop' ? DROP : 0,
+    leaving: leaving.length > 0,
+    oldTop,
   }
-  if (style === 'carousel') return planCarousel(fromById, to, speed)
-  if (style === 'spin') return planSpin(fromById, to, speed)
-  if (style === 'helix') return planHelix(fromById, to, speed)
-  if (style === 'fan') return planFan(fromById, to, speed)
-  return planHand(fromById, to, speed)
+
+  if (to.length === 0 || to.every(pose => samePose(pose, fromById.get(pose.bookId)))) {
+    // Nothing to re-sort: the pile holds still while any leaving Books go.
+    const tracks = new Map(to.map(pose => [pose.bookId, [{ t: 0, ...poseNode(pose) }]]))
+    const exitEnd = leaving.length > 0 ? EXIT / speed : 0
+    return dress({ duration: exitEnd, tracks, exitEnd, windows: new Map() }, leaving, entrance, speed)
+  }
+  const plan = style === 'carousel'
+    ? planCarousel(fromById, to, speed, entrance)
+    : style === 'spin'
+      ? planSpin(fromById, to, speed, entrance)
+      : style === 'helix'
+        ? planHelix(fromById, to, speed, entrance)
+        : style === 'fan'
+          ? planFan(fromById, to, speed, entrance)
+          : planHand(fromById, to, speed, entrance)
+  return dress(plan, leaving, entrance, speed)
+}
+
+/**
+ * Where a new Book appears: near the height it will rest at when that is in
+ * view, so the new Books of a big change turn up scattered over the picture.
+ * One headed out of view appears out of view, right at its height.
+ */
+function appearHeight(pose: BookPose, band: ShuffleView): number {
+  if (pose.y < band.bottom || pose.y > band.top) return pose.y
+  const jitter = (scatter(pose.bookId, 'appear-y') - 0.5) * 2 * APPEAR_JITTER
+  return Math.min(Math.max(pose.y + jitter, band.bottom, pose.thickness / 2), Math.max(band.top, pose.thickness / 2))
+}
+
+/** How much of a Book is there at time t: 0 unseen, 1 fully there. */
+export function presenceAt(plan: ShufflePlan, bookId: string, t: number): number {
+  const appear = plan.appear.get(bookId)
+  if (appear) {
+    if (t <= appear.start) return 0
+    if (t < appear.end) return (t - appear.start) / (appear.end - appear.start)
+  }
+  const vanish = plan.vanish.get(bookId)
+  if (vanish) {
+    if (t >= vanish.end) return 0
+    if (t > vanish.start) return 1 - (t - vanish.start) / (vanish.end - vanish.start)
+  }
+  return 1
+}
+
+/**
+ * Adds the leaving Books (each slides out its own way at its own height, then
+ * vanishes) and times the new Books' appearance inside their windows.
+ */
+function dress(staged: Staged, leaving: BookPose[], entrance: Entrance, speed: number): ShufflePlan {
+  const { duration, tracks, exitEnd, windows } = staged
+  const leavingTracks = new Map<string, ShuffleKeyframe[]>()
+  const vanish = new Map<string, Presence>()
+  for (const pose of leaving) {
+    const angle = scatter(pose.bookId, 'exit-angle') * 2 * Math.PI
+    const reach = pose.height / 2 + EXIT_REACH
+    const twist = (scatter(pose.bookId, 'exit-twist') - 0.5) * 2 * EXIT_TWIST
+    const [rx, ry, rz] = vec(pose.rotation)
+    leavingTracks.set(pose.bookId, [
+      { t: 0, ...poseNode(pose) },
+      { t: exitEnd, position: [pose.x + reach * Math.sin(angle), pose.y, pose.z + reach * Math.cos(angle)], rotation: [rx, ry + twist, rz] },
+    ])
+    vanish.set(pose.bookId, { start: exitEnd * (0.1 + 0.3 * scatter(pose.bookId, 'exit-delay')), end: exitEnd })
+  }
+
+  const appear = new Map<string, Presence>()
+  for (const [id, window] of windows) {
+    const room = window.end - window.start
+    const span = Math.min(APPEAR / speed, room * 0.5)
+    const spread = Math.max(0, Math.min(APPEAR_SPREAD / speed, room * 0.75 - span))
+    const start = window.start + scatter(id, 'appear-delay') * spread
+    appear.set(id, { start, end: start + span })
+    const track = tracks.get(id)
+    if (track && window.moveFrom !== null) landAt(track, start, start + span, window.moveFrom, entrance.drop)
+  }
+  return { duration, tracks, leaving: leavingTracks, appear, vanish }
+}
+
+/**
+ * A new Book waits at its first keyframe (its spot, raised by `drop`), comes
+ * down onto the spot while it appears, holds there until the Style first
+ * moves it, then moves as planned. Its track must be still up to `moveFrom`.
+ */
+function landAt(track: ShuffleKeyframe[], start: number, end: number, moveFrom: number, drop: number) {
+  const raised = track[0]!
+  const landed: Node = { position: [raised.position[0], raised.position[1] - drop, raised.position[2]], rotation: vec(raised.rotation) }
+  const head: ShuffleKeyframe[] = [{ t: 0, position: vec(raised.position), rotation: vec(raised.rotation) }]
+  if (start > 0) head.push({ t: start, position: vec(raised.position), rotation: vec(raised.rotation) })
+  head.push({ t: end, ...landed })
+  if (moveFrom > end) head.push({ t: moveFrom, position: vec(landed.position), rotation: vec(landed.rotation) })
+  const resume = Math.max(end, moveFrom)
+  const tail = track.filter(keyframe => keyframe.t > resume + 1e-9)
+  track.splice(0, track.length, ...head, ...tail)
 }
 
 /**
@@ -238,10 +427,6 @@ const extents = (poses: BookPose[]): { length: number, depth: number, thickness:
   thickness: poses.reduce((max, pose) => Math.max(max, pose.thickness), 0),
 })
 
-/** Height at which a Book new to the view waits, clear of every given top. */
-const parkHeight = (tops: number[], thickness: number): number =>
-  tops.reduce((max, top) => Math.max(max, top), 0) + thickness / 2 + PARK_CLEARANCE
-
 /** Each Book keeps the twist it lies with; a new Book uses its target twist. */
 const twistMap = (fromById: Map<string, BookPose>, target: BookPose[]): Map<string, number> =>
   new Map(target.map(pose => [pose.bookId, (fromById.get(pose.bookId) ?? pose).rotation[1]]))
@@ -253,7 +438,7 @@ const staggerStep = (count: number): number =>
  * Last phase: every Book is already at its final, disjoint height, so they may
  * all move in at once; a bottom-up stagger makes it cascade instead.
  */
-function staggerIn(timeline: ReturnType<typeof createTimeline>, target: BookPose[], inSpan: number, step: number): ShufflePlan {
+function staggerIn(timeline: ReturnType<typeof createTimeline>, target: BookPose[], inSpan: number, step: number): Pick<ShufflePlan, 'duration' | 'tracks'> {
   const started = timeline.now()
   let duration = started
   target.forEach((pose, index) => {
@@ -301,7 +486,7 @@ function phaseScale(raw: number): number {
   return raw > TARGET_TOTAL ? TARGET_TOTAL / raw : 1
 }
 
-function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number): ShufflePlan {
+function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
   const target = [...to].sort((a, b) => a.y - b.y)
   const byId = new Map(target.map(pose => [pose.bookId, pose]))
   const thickness = new Map(target.map(pose => [pose.bookId, pose.thickness]))
@@ -321,15 +506,10 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
   const batches: string[][] = []
   for (let i = 0; i < movers.length; i += BATCH_SIZE) batches.push(movers.slice(i, i + BATCH_SIZE))
   const lane = new Map<string, Lane>()
-  const parked = new Map<string, number>()
-  batches.forEach((batch, index) => batch.forEach((id, slot) => {
-    lane.set(id, LANES[slot]!)
-    parked.set(id, index)
-  }))
+  batches.forEach(batch => batch.forEach((id, slot) => lane.set(id, LANES[slot]!)))
 
   const maxLength = target.reduce((max, pose) => Math.max(max, pose.height), 0)
   const maxDepth = target.reduce((max, pose) => Math.max(max, pose.depth), 0)
-  const maxThickness = target.reduce((max, pose) => Math.max(max, pose.thickness), 0)
   const laneX = maxLength + LANE_CLEARANCE
   const laneZ = maxDepth + LANE_CLEARANCE
   const lanePoint = (which: Lane, x: number, y: number, z: number): Vec3 => {
@@ -338,29 +518,32 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
     if (which === 'left') return [-laneX, y, z]
     return [laneX, y, z]
   }
-  // New Books wait high in their lane, above the pile and above every Book that
-  // shares the lane later, so nothing passes through them.
-  const parkStep = maxThickness + 0.01
-  const parkBase = Math.max(pileTop([...fromById.values()]), pileTop(target)) + maxThickness / 2 + PARK_CLEARANCE
-
+  // New Books wait unseen in their lane, at about the height they will rest at,
+  // until their batch has the lane to itself.
   const start = new Map<string, Node>()
   for (const pose of target) {
     const old = fromById.get(pose.bookId)
     if (old) start.set(pose.bookId, poseNode(old))
     else {
-      const which = lane.get(pose.bookId) ?? 'front'
-      const y = parkBase + (parked.get(pose.bookId) ?? 0) * parkStep
-      start.set(pose.bookId, { position: lanePoint(which, 0, y, 0), rotation: vec(pose.rotation) })
+      const y = entrance.spotY(pose) + entrance.drop
+      start.set(pose.bookId, { position: lanePoint(lane.get(pose.bookId) ?? 'front', 0, y, 0), rotation: vec(pose.rotation) })
     }
   }
 
   const timeline = createTimeline(start)
-  const raw = batches.length * (HAND_PULL + HAND_RESTACK + HAND_SLIDE) + HAND_SETTLE
+  // With nobody to pull out first, leaving Books get a phase of their own.
+  const ownExit = entrance.leaving && batches.length === 0
+  const raw = batches.length * (HAND_PULL + HAND_RESTACK + HAND_SLIDE) + HAND_SETTLE + (ownExit ? EXIT : 0)
   const scale = phaseScale(raw)
   const span = (base: number) => Math.max(MIN_PHASE, base * scale) / speed
+  if (ownExit) timeline.phase(span(EXIT), new Map())
+  // Leaving Books slide out during the first pull, while every height holds.
+  const exitEnd = ownExit ? timeline.now() : span(HAND_PULL)
+  const windows = new Map<string, Window>()
 
   for (const batch of batches) {
     const inBatch = new Set(batch)
+    const batchStart = timeline.now()
 
     // 1. Pull out: slide to the lane at constant height; the pile holds still.
     const pull = new Map<string, Node>()
@@ -374,6 +557,7 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
 
     // 2. Re-stack: the pile keeps its order and opens a gap for each batch Book
     //    directly above its predecessor among the Books already in place.
+    const restackStart = timeline.now()
     const next: string[] = []
     const slots = batch.map(id => insertionSlot(pile, settled, rankOf, rankOf(id)))
     for (let i = 0; i <= pile.length; i++) {
@@ -389,6 +573,15 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
       restack.set(id, { position: [node.position[0], heights.get(id)!, node.position[2]], rotation: node.rotation })
     }
     timeline.phase(span(HAND_RESTACK), restack)
+    // A new Book has its lane to itself from the start of its batch (once the
+    // leaving Books are gone, unless it waits above all of them) until it has
+    // come down to its height.
+    for (const id of batch) {
+      const pose = byId.get(id)!
+      if (fromById.has(id)) continue
+      const clear = !entrance.leaving || aboveOldPile(pose, entrance)
+      windows.set(id, { start: clear ? batchStart : Math.max(batchStart, exitEnd), end: timeline.now(), moveFrom: restackStart })
+    }
 
     // 3. Slide in: horizontally into the waiting gap.
     const slide = new Map<string, Node>()
@@ -404,7 +597,7 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
 
   // The order is final now, so the last correction is safe for everyone at once.
   timeline.phase(span(HAND_SETTLE), new Map(target.map(pose => [pose.bookId, poseNode(pose)])))
-  return { duration: timeline.now(), tracks: timeline.tracks }
+  return { duration: timeline.now(), tracks: timeline.tracks, exitEnd, windows }
 }
 
 /** Where a mover belongs: straight above the last settled Book below it. */
@@ -462,19 +655,36 @@ const ringNode = (slot: RingSlot, y: number, twist: number): Node => ({
 /** The same slot, turned by angle; used while a ring turns as a whole. */
 const turned = (slot: RingSlot, angle: number): RingSlot => ({ radius: slot.radius, angle: slot.angle + angle })
 
-function planCarousel(fromById: Map<string, BookPose>, to: BookPose[], speed: number): ShufflePlan {
+/** Where a new Book waits in its ring slot: at its spot, raised for a 'drop'. */
+const spotNode = (slot: RingSlot, pose: BookPose, twist: number, entrance: Entrance): Node =>
+  ringNode(slot, entrance.spotY(pose) + entrance.drop, twist)
+
+/**
+ * Windows for new Books waiting in their own ring slot: they may appear from
+ * the start when their spot lies above the old pile (until the lift nothing
+ * else leaves its height), else once every Book keeps to its own slot.
+ */
+function slotWindows(fromById: Map<string, BookPose>, target: BookPose[], entrance: Entrance, liftStart: number, liftEnd: number): Map<string, Window> {
+  const windows = new Map<string, Window>()
+  for (const pose of target) {
+    if (fromById.has(pose.bookId)) continue
+    windows.set(pose.bookId, { start: aboveOldPile(pose, entrance) ? 0 : liftStart, end: liftEnd, moveFrom: liftStart })
+  }
+  return windows
+}
+
+function planCarousel(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
   const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth, thickness } = extents(target)
+  const { length, depth } = extents(target)
   const slots = ringSlots(target.length, length, depth)
-  const parkY = parkHeight([pileTop([...fromById.values()]), pileTop(target)], thickness)
   const twist = twistMap(fromById, target)
   const twistOf = (pose: BookPose) => twist.get(pose.bookId)!
 
   const start = new Map<string, Node>()
   target.forEach((pose, index) => {
     const old = fromById.get(pose.bookId)
-    // New Books wait in their own slot above everything until the lift.
-    start.set(pose.bookId, old ? poseNode(old) : ringNode(slots[index]!, parkY, twistOf(pose)))
+    // New Books wait unseen in their own slot until it is safe to appear.
+    start.set(pose.bookId, old ? poseNode(old) : spotNode(slots[index]!, pose, twistOf(pose), entrance))
   })
 
   const timeline = createTimeline(start)
@@ -489,15 +699,19 @@ function planCarousel(fromById: Map<string, BookPose>, to: BookPose[], speed: nu
     out.set(pose.bookId, ringNode(slots[index]!, timeline.state.get(pose.bookId)!.position[1], twistOf(pose)))
   })
   timeline.phase(span(CAROUSEL_OUT), out)
+  const liftStart = timeline.now()
 
   // 2. Lift: to the final height, each Book inside its own slot.
   const lift = new Map<string, Node>()
   target.forEach((pose, index) => lift.set(pose.bookId, ringNode(slots[index]!, pose.y, twistOf(pose))))
   timeline.phase(span(CAROUSEL_LIFT), lift)
+  const windows = slotWindows(fromById, target, entrance, liftStart, timeline.now())
 
   // 3. In: everyone is at a final, disjoint height, so they may come back at
   //    once; a bottom-up stagger makes it cascade.
-  return staggerIn(timeline, target, span(CAROUSEL_IN), (stagger * scale) / speed)
+  const plan = staggerIn(timeline, target, span(CAROUSEL_IN), (stagger * scale) / speed)
+  // Leaving Books slide out while the pile swings out, at unchanged heights.
+  return { ...plan, exitEnd: liftStart, windows }
 }
 
 /** Slot per Book: the pile keeps its bottom-to-top order, new Books follow it. */
@@ -522,22 +736,21 @@ const liftY = (from: number, to: number, u: number): number => (u >= 1 ? to : fr
  * Turning is cut into small eased steps, because the sampler lerps positions
  * and a wide step would chord straight through the neighbouring slots.
  */
-function planSpin(fromById: Map<string, BookPose>, to: BookPose[], speed: number): ShufflePlan {
+function planSpin(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
   const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth, thickness } = extents(target)
+  const { length, depth } = extents(target)
   const progress = turnProgress(SPIN_SWEEP, TURN_MAX_STEP)
   const slots = ringSlots(target.length, length, depth, {
     shrink: turnShrink(SPIN_SWEEP, progress),
     clearance: RING_CLEARANCE + RING_TURN_MARGIN,
   })
-  const parkY = parkHeight([pileTop([...fromById.values()]), pileTop(target)], thickness)
   const twist = twistMap(fromById, target)
 
   const start = new Map<string, Node>()
   target.forEach((pose, index) => {
     const old = fromById.get(pose.bookId)
-    // New Books wait in their own slot above everything until the turn.
-    start.set(pose.bookId, old ? poseNode(old) : ringNode(slots[index]!, parkY, twist.get(pose.bookId)!))
+    // New Books wait unseen in their own slot until it is safe to appear.
+    start.set(pose.bookId, old ? poseNode(old) : spotNode(slots[index]!, pose, twist.get(pose.bookId)!, entrance))
   })
 
   const timeline = createTimeline(start)
@@ -552,6 +765,7 @@ function planSpin(fromById: Map<string, BookPose>, to: BookPose[], speed: number
     out.set(pose.bookId, ringNode(slots[index]!, timeline.state.get(pose.bookId)!.position[1], twist.get(pose.bookId)!))
   })
   timeline.phase(span(SPIN_OUT), out)
+  const turnStart = timeline.now()
 
   // 2. Turn: the ring revolves while each Book rises or sinks inside its own
   //    slot. The slots stay disjoint at every radius the chords pass through,
@@ -567,18 +781,29 @@ function planSpin(fromById: Map<string, BookPose>, to: BookPose[], speed: number
     timeline.phase(stepSpan, moves)
   }
 
+  // A new Book above the old pile appears before the turn, the rest while they
+  // already turn with the ring (each in its own slot).
+  const windows = new Map<string, Window>()
+  for (const pose of target) {
+    if (fromById.has(pose.bookId)) continue
+    windows.set(pose.bookId, aboveOldPile(pose, entrance)
+      ? { start: 0, end: turnStart, moveFrom: turnStart }
+      : { start: turnStart, end: timeline.now(), moveFrom: null })
+  }
+
   // 3. In: every height is final and disjoint, so the Books may slide in and
   //    unwind the whole spin at once, cascading from the bottom.
-  return staggerIn(timeline, target, span(SPIN_IN), (stagger * scale) / speed)
+  const plan = staggerIn(timeline, target, span(SPIN_IN), (stagger * scale) / speed)
+  return { ...plan, exitEnd: turnStart, windows }
 }
 
 /**
  * Helix: the pile stretches into a spiral staircase, the staircase turns while
  * the Books swap steps, then the column collapses back into a pile.
  */
-function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: number): ShufflePlan {
+function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
   const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth, thickness } = extents(target)
+  const { length, depth } = extents(target)
   const progress = turnProgress(HELIX_SWEEP, TURN_MAX_STEP)
   const slots = ringSlots(target.length, length, depth, {
     shrink: turnShrink(HELIX_SWEEP, progress),
@@ -594,20 +819,22 @@ function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: numbe
   const thicknessById = new Map(target.map(pose => [pose.bookId, pose.thickness]))
   const spread = stackHeights(present, thicknessById, SPREAD_GAP)
   const steps = stackHeights(target.map(pose => pose.bookId), thicknessById, SPREAD_GAP)
-  const columnTop = [...spread.values(), ...steps.values()].reduce((max, y) => Math.max(max, y), 0) + thickness / 2
-  const parkY = parkHeight([pileTop([...fromById.values()]), pileTop(target), columnTop], thickness)
 
   const start = new Map<string, Node>()
   for (const pose of target) {
     const old = fromById.get(pose.bookId)
-    // New Books wait in their own slot, clear of the whole staircase.
-    start.set(pose.bookId, old ? poseNode(old) : ringNode(slotFor(pose.bookId), parkY, twist.get(pose.bookId)!))
+    // New Books wait unseen in their own slot until the turn.
+    start.set(pose.bookId, old ? poseNode(old) : spotNode(slotFor(pose.bookId), pose, twist.get(pose.bookId)!, entrance))
   }
 
   const timeline = createTimeline(start)
-  const raw = HELIX_SPREAD + HELIX_SWING + HELIX_TURN + HELIX_IN + HELIX_COLLAPSE
+  const raw = HELIX_SPREAD + HELIX_SWING + HELIX_TURN + HELIX_IN + HELIX_COLLAPSE + (entrance.leaving ? EXIT : 0)
   const scale = phaseScale(raw)
   const span = (base: number) => Math.max(MIN_PHASE, base * scale) / speed
+
+  // 0. Leaving Books slide out first: the spread changes heights right away.
+  if (entrance.leaving) timeline.phase(span(EXIT), new Map())
+  const exitEnd = timeline.now()
 
   // 1. Spread: the pile stretches upwards, keeping its order, until every Book
   //    stands on a step of its own.
@@ -634,6 +861,7 @@ function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: numbe
 
   // 3. Turn: the staircase revolves while every Book climbs to the step its new
   //    rank asks for; the slots keep the footprints apart while they cross.
+  const turnStart = timeline.now()
   const held = new Map(target.map(pose => [pose.bookId, timeline.state.get(pose.bookId)!.position[1]]))
   const stepSpan = span(HELIX_TURN) / progress.length
   for (const u of progress) {
@@ -643,6 +871,11 @@ function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: numbe
       moves.set(pose.bookId, ringNode(turned(slotFor(pose.bookId), HELIX_SWEEP * u), y, twist.get(pose.bookId)!))
     }
     timeline.phase(stepSpan, moves)
+  }
+  // New Books appear while they turn with the staircase, each in its own slot.
+  const windows = new Map<string, Window>()
+  for (const pose of target) {
+    if (!fromById.has(pose.bookId)) windows.set(pose.bookId, { start: turnStart, end: timeline.now(), moveFrom: null })
   }
 
   // 4. In: the steps are already in the new order, so the Books come back to
@@ -655,7 +888,7 @@ function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: numbe
 
   // 5. Collapse: the column sinks into the pile, order preserved.
   timeline.phase(span(HELIX_COLLAPSE), new Map(target.map(pose => [pose.bookId, poseNode(pose)])))
-  return { duration: timeline.now(), tracks: timeline.tracks }
+  return { duration: timeline.now(), tracks: timeline.tracks, exitEnd, windows }
 }
 
 /**
@@ -663,14 +896,13 @@ function planHelix(fromById: Map<string, BookPose>, to: BookPose[], speed: numbe
  * out to the ring to swap heights, then closes back into a fan and a pile.
  * Every move but the one in the ring happens at unchanged, disjoint heights.
  */
-function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number): ShufflePlan {
+function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number, entrance: Entrance): Staged {
   const target = [...to].sort((a, b) => a.y - b.y)
-  const { length, depth, thickness } = extents(target)
+  const { length, depth } = extents(target)
   const slots = ringSlots(target.length, length, depth)
   const twist = twistMap(fromById, target)
   const { present, slotOf } = slotOrder(fromById, target)
   const slotFor = (id: string) => slots[slotOf.get(id)!]!
-  const parkY = parkHeight([pileTop([...fromById.values()]), pileTop(target)], thickness)
 
   // A lying Book runs along x, so the pivot sits just off one end of the pile.
   const pivot = length / 2
@@ -692,8 +924,8 @@ function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number)
   const start = new Map<string, Node>()
   for (const pose of target) {
     const old = fromById.get(pose.bookId)
-    // New Books wait in their own slot above everything until the lift.
-    start.set(pose.bookId, old ? poseNode(old) : ringNode(slotFor(pose.bookId), parkY, twist.get(pose.bookId)!))
+    // New Books wait unseen in their own slot until it is safe to appear.
+    start.set(pose.bookId, old ? poseNode(old) : spotNode(slotFor(pose.bookId), pose, twist.get(pose.bookId)!, entrance))
   }
 
   const timeline = createTimeline(start)
@@ -707,16 +939,20 @@ function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number)
   const open = new Map<string, Node>()
   present.forEach((id, index) => open.set(id, fanned(timeline.state.get(id)!, fanStep * index)))
   timeline.phase(span(FAN_OPEN), open)
+  // Leaving Books slide out while the fan opens, at unchanged heights.
+  const exitEnd = timeline.now()
 
   // 2. Out: from the fan to the ring, still without touching a height.
   const out = new Map<string, Node>()
   for (const id of present) out.set(id, ringNode(slotFor(id), timeline.state.get(id)!.position[1], twist.get(id)!))
   timeline.phase(span(FAN_OUT), out)
+  const liftStart = timeline.now()
 
   // 3. Lift: to the final height, each Book inside its own slot.
   const lift = new Map<string, Node>()
   for (const pose of target) lift.set(pose.bookId, ringNode(slotFor(pose.bookId), pose.y, twist.get(pose.bookId)!))
   timeline.phase(span(FAN_LIFT), lift)
+  const windows = slotWindows(fromById, target, entrance, liftStart, timeline.now())
 
   // 4. Back: into the fan again, now in the new order and at final heights.
   const fan = new Map<string, Node>()
@@ -724,5 +960,6 @@ function planFan(fromById: Map<string, BookPose>, to: BookPose[], speed: number)
   timeline.phase(span(FAN_BACK), fan)
 
   // 5. Close: the fan folds shut on the pile, bottom Book first.
-  return staggerIn(timeline, target, span(FAN_CLOSE), (stagger * scale) / speed)
+  const plan = staggerIn(timeline, target, span(FAN_CLOSE), (stagger * scale) / speed)
+  return { ...plan, exitEnd, windows }
 }

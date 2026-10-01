@@ -29,9 +29,9 @@ import type { Book } from '~~/shared/types/book'
 import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
 import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
-import { planShuffle, sampleTrack } from '~/utils/stack/shuffle'
+import { planShuffle, presenceAt, sampleTrack } from '~/utils/stack/shuffle'
 import { chooseShuffle, countMoves } from '~/utils/stack/moves'
-import type { ShufflePlan, ShuffleStyle } from '~/utils/stack/shuffle'
+import type { EntranceStyle, ShufflePlan, ShuffleStyle, ShuffleView } from '~/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
 import { fullCoverTexture, loadCover, releaseFullCover } from '~/utils/covers/coverTextures'
@@ -53,7 +53,9 @@ const props = withDefaults(defineProps<{
   shuffle?: ShuffleStyle | 'instant'
   /** Up to this many moved Books a re-sort uses the calm 'hand' style; null = always 'hand'. */
   shuffleThreshold?: number | null
-}>(), { aside: true, shuffle: 'instant', shuffleThreshold: null })
+  /** How Books new to the Stack appear during a re-sort (leaving Books mirror it). */
+  entrance?: EntranceStyle
+}>(), { aside: true, shuffle: 'instant', shuffleThreshold: null, entrance: 'fade' })
 
 // --- Look: decided picks (dev server: live previews of open options) --------
 
@@ -122,6 +124,8 @@ interface BookMaterials {
   description?: string | null
   /** Last loaded Cover (null until/unless there is one), reused for redraws. */
   loaded: LoadedCover | null
+  /** Below 1 while the Book appears or vanishes. */
+  opacity: number
 }
 
 interface Motion {
@@ -137,6 +141,14 @@ interface Motion {
 const materialsByBook = new Map<string, BookMaterials>()
 const motionByBook = new Map<string, Motion>()
 const meshes = new Map<string, Mesh>()
+/** Books still shown though no longer in the view: on their way out of a re-sorted Stack. */
+const extra = shallowRef<BookPose[]>([])
+/** Every Book drawn: the view's own, then those on their way out. */
+const rendered = computed(() => {
+  if (extra.value.length === 0) return props.poses
+  const inView = new Set(props.poses.map(pose => pose.bookId))
+  return [...props.poses, ...extra.value.filter(pose => !inView.has(pose.bookId))]
+})
 
 function setGloss(material: MeshPhysicalMaterial, gloss: Gloss) {
   material.userData.gloss = gloss
@@ -281,7 +293,7 @@ function materialsFor(pose: BookPose): Material[] {
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials as [Material, Material, Material]
-    entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -352,13 +364,6 @@ function disposeEntry(entry: BookMaterials) {
 }
 
 watch(() => props.poses, (poses) => {
-  const current = new Set(poses.map(p => p.bookId))
-  for (const [bookId, entry] of materialsByBook) {
-    if (current.has(bookId)) continue
-    disposeEntry(entry)
-    materialsByBook.delete(bookId)
-    motionByBook.delete(bookId)
-  }
   for (const pose of poses) {
     if (!materialsByBook.has(pose.bookId)) {
       materialsFor(pose)
@@ -366,6 +371,31 @@ watch(() => props.poses, (poses) => {
     }
   }
 }, { immediate: true })
+
+/** Frees the materials of Books that are neither in the view nor still on their way out. */
+function sweep() {
+  const keep = new Set(rendered.value.map(pose => pose.bookId))
+  for (const [bookId, entry] of materialsByBook) {
+    if (keep.has(bookId)) continue
+    disposeEntry(entry)
+    materialsByBook.delete(bookId)
+    motionByBook.delete(bookId)
+  }
+}
+
+/** Fades a Book's faces; three.js only blends materials marked transparent. */
+function setOpacity(entry: BookMaterials, opacity: number) {
+  if (entry.opacity === opacity) return
+  const blend = opacity < 1
+  for (const material of entry.faces) {
+    if (material.transparent !== blend) {
+      material.transparent = blend
+      material.needsUpdate = true
+    }
+    material.opacity = opacity
+  }
+  entry.opacity = opacity
+}
 
 // --- Interaction -------------------------------------------------------------
 
@@ -391,7 +421,11 @@ function setCursor(value: string) {
   if (element) element.style.cursor = value
 }
 
+/** Not drawn right now: waiting to appear in a re-sort (the raycaster still finds it). */
+const unseen = (bookId: string) => meshes.get(bookId)?.visible === false
+
 function onEnter(bookId: string) {
+  if (unseen(bookId)) return
   hoveredId = bookId
   hoveredBook.value = bookId
   setCursor('pointer')
@@ -408,7 +442,8 @@ function onLeave(bookId: string) {
 
 function onClick(bookId: string, event: { stopPropagation?: () => void }) {
   event.stopPropagation?.()
-  if (justDragged()) return
+  // A Book on its way into or out of the view can't be taken out.
+  if (justDragged() || unseen(bookId) || !props.poses.some(pose => pose.bookId === bookId)) return
   click(bookId)
 }
 
@@ -534,6 +569,27 @@ const Y_AXIS = new Vector3(0, 1, 0)
 
 const smooth = (t: number) => t * t * (3 - 2 * t)
 
+const FULLY_THERE = { opacity: 1, scale: 1 }
+/** Overshoot of a popping Book (easeOutBack); 1 grows it about 4 % past full size. */
+const POP_BACK = 1
+
+/**
+ * How a Book looks while it appears or vanishes, from presence 0 (gone) to 1.
+ * 'fade' fades and grows a little, 'pop' grows out of nothing (a leaving Book
+ * shrinks away), 'drop' only fades: its fall is part of the track.
+ */
+function presenceLook(presence: number, entrance: EntranceStyle, leaving: boolean): { opacity: number, scale: number } {
+  if (presence >= 1) return FULLY_THERE
+  const eased = smooth(presence)
+  if (entrance === 'pop') {
+    if (leaving) return { opacity: 1, scale: eased }
+    const u = presence - 1
+    return { opacity: Math.min(1, presence * 4), scale: 1 + (POP_BACK + 1) * u * u * u + POP_BACK * u * u }
+  }
+  if (entrance === 'drop') return { opacity: eased, scale: 1 }
+  return { opacity: eased, scale: 0.9 + 0.1 * eased }
+}
+
 // --- Re-sort --------------------------------------------------------------------
 // When the Stack is re-sorted or filtered, Books travel along a plan in which
 // they never pass through each other (see utils/stack/shuffle.ts).
@@ -543,31 +599,71 @@ let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = n
 const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
 /** A re-sort that arrived while another was running; starts when that one ends. */
 let queued: BookPose[] | null = null
+/** A re-sort waiting for the next frame, so it plans with the camera where it will be. */
+let requested: { from: BookPose[], to: BookPose[] } | null = null
 let shuffleTime = 0
 
+const viewPoint = new Vector3()
+/** Stays this far inside the picture's top and bottom edge. */
+const VIEW_INSET = 0.04
+
+/** Heights the camera shows at the pile's axis (z = 0), for where new Books appear. */
+function viewBand(cam: PerspectiveCamera | undefined): ShuffleView | undefined {
+  if (!cam) return undefined
+  cam.updateMatrixWorld()
+  const [bottom, top] = [-1, 1].map((ndcY) => {
+    viewPoint.set(0, ndcY, 0.5).unproject(cam).sub(cam.position)
+    if (Math.abs(viewPoint.z) < 1e-6) return Number.NaN
+    return cam.position.y + viewPoint.y * (-cam.position.z / viewPoint.z)
+  }) as [number, number]
+  if (!Number.isFinite(bottom) || !Number.isFinite(top) || top - bottom < 3 * VIEW_INSET) return undefined
+  return { bottom: bottom + VIEW_INSET, top: top - VIEW_INSET }
+}
+
 function startShuffle(from: BookPose[], to: BookPose[]) {
-  if (props.shuffle === 'instant') return
+  if (props.shuffle === 'instant') {
+    running = null
+    extra.value = []
+    sweep()
+    return
+  }
   const moves = countMoves(from, to)
   const style = chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
-  const plan = planShuffle(from, to, style)
+  const view = viewBand(camera.value as PerspectiveCamera | undefined)
+  const plan = planShuffle(from, to, style, { entrance: props.entrance, view })
   lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }
   running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
+  // Leaving Books stay drawn until they have vanished.
+  extra.value = running ? from.filter(pose => plan.leaving.has(pose.bookId)) : []
+  sweep()
 }
 
 watch(() => props.poses, (next, previous) => {
   if (!previous?.length || props.shuffle === 'instant' || reduced.value) {
     running = null
     queued = null
+    requested = null
+    extra.value = []
+    sweep()
     return
   }
+  const staying = new Set(next.map(pose => pose.bookId))
   if (running) {
+    // Books of the running plan keep moving (and are drawn) until it ends.
     queued = next
+    const drawn = [...running.to, ...rendered.value.filter(pose => running!.plan.leaving.has(pose.bookId))]
+    extra.value = drawn.filter(pose => !staying.has(pose.bookId))
     return
   }
-  startShuffle(previous, next)
+  requested = { from: requested?.from ?? previous, to: next }
+  extra.value = requested.from.filter(pose => !staying.has(pose.bookId))
 })
 
 onBeforeRender(({ delta }) => {
+  if (requested) {
+    startShuffle(requested.from, requested.to)
+    requested = null
+  }
   shuffleTime = running ? (performance.now() - running.startedAt) / 1000 : 0
   if (running && shuffleTime >= running.plan.duration) {
     const from = running.to
@@ -577,12 +673,16 @@ onBeforeRender(({ delta }) => {
       queued = null
       shuffleTime = 0
     }
+    else {
+      extra.value = []
+      sweep()
+    }
   }
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-(delta ?? 0.016) * 12)
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
 
-  for (const pose of props.poses) {
+  for (const pose of rendered.value) {
     const mesh = meshes.get(pose.bookId)
     if (!mesh) continue
     const motion = motionFor(pose.bookId)
@@ -594,13 +694,24 @@ onBeforeRender(({ delta }) => {
 
     targetPosition.set(pose.x, pose.y, pose.z)
     targetQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
-    // A running re-sort moves the Book along its collision-free track.
-    const track = running?.plan.tracks.get(pose.bookId)
+    // A running re-sort moves the Book along its collision-free track; Books
+    // entering or leaving the view appear or vanish on the way.
+    const track = running?.plan.tracks.get(pose.bookId) ?? running?.plan.leaving.get(pose.bookId)
+    let presence = 1
     if (track && running && shuffleTime < running.plan.duration) {
       const sample = sampleTrack(track, shuffleTime)
       targetPosition.set(...sample.position)
       targetQuaternion.setFromEuler(euler.set(...sample.rotation))
+      presence = presenceAt(running.plan, pose.bookId, shuffleTime)
     }
+    // New to a re-sort that waits for the running one: not there yet.
+    else if (running) presence = 0
+    const appearance = presenceLook(presence, props.entrance, !!running?.plan.vanish.has(pose.bookId))
+    mesh.visible = presence > 0
+    mesh.castShadow = appearance.opacity > 0.5
+    mesh.scale.set(pose.thickness * appearance.scale, pose.height * appearance.scale, pose.depth * appearance.scale)
+    const faces = materialsByBook.get(pose.bookId)
+    if (faces) setOpacity(faces, appearance.opacity)
     const shown = motion.shown
     shown.position.copy(targetPosition)
     shown.quaternion.copy(targetQuaternion)
@@ -700,7 +811,7 @@ onBeforeUnmount(() => {
 <template>
   <TresGroup name="books">
     <TresMesh
-      v-for="pose in props.poses"
+      v-for="pose in rendered"
       :key="pose.bookId"
       :ref="(element: unknown) => setMesh(pose.bookId, element)"
       :name="`book:${pose.bookId}`"
