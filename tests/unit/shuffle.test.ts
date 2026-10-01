@@ -5,7 +5,7 @@ import type { BookPose } from '../../app/utils/books/pose'
 import { layoutStack } from '../../app/utils/stack/layout'
 import { applyStackView, DEFAULT_STACK_VIEW, stackGroups } from '../../app/utils/stack/view'
 import type { ShufflePlan, ShuffleStyle } from '../../app/utils/stack/shuffle'
-import { ENTRANCE_STYLES, planShuffle, presenceAt, sampleTrack } from '../../app/utils/stack/shuffle'
+import { isSwap, planShuffle, presenceAt, sampleTrack } from '../../app/utils/stack/shuffle'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,
@@ -320,7 +320,6 @@ describe('planShuffle duration', () => {
 
 // ------------------------------------------------- entering and leaving
 
-const ENTRANCES = ENTRANCE_STYLES.map(entry => entry.value)
 /** What the camera shows: the lower part of the pile, like a view scrolled down. */
 const VIEW = { bottom: 0.05, top: 0.55 }
 const shown = (books: Book[], minRating = 0): BookPose[] => stack(applyStackView(books, { ...DEFAULT_STACK_VIEW, minRating }))
@@ -344,13 +343,13 @@ describe('Books entering and leaving the view never collide', () => {
         const books = library(30)
         const from = before(books)
         const to = after(books)
-        ENTRANCES.forEach((entrance, index) => {
-          // Every other entrance with a view scrolled to the lower pile, the rest with the whole pile in view.
-          const plan = planShuffle(from, to, style, { entrance, view: index % 2 === 0 ? VIEW : undefined })
+        // A view scrolled to the lower pile, and the whole pile in view.
+        for (const view of [VIEW, undefined]) {
+          const plan = planShuffle(from, to, style, { view })
           expect(plan.tracks.size).toBe(to.length)
           expect(plan.leaving.size).toBe(from.length - to.length + newIds(from, to).length)
-          expect(findCollision(plan, poseMap(from, to), 300), `${entrance}`).toBeNull()
-        })
+          expect(findCollision(plan, poseMap(from, to), 300), view ? 'scrolled' : 'whole pile').toBeNull()
+        }
       })
     }
   }
@@ -422,36 +421,19 @@ describe('Books new to the view', () => {
     expect(Math.max(...starts)).toBeGreaterThanOrEqual(0.5)
   })
 
-  for (const style of STYLES) {
-    it(`${style}: with 'drop' a new Book comes down onto its spot while it appears`, () => {
-      const books = library(30)
-      const from = shown(books, 5)
-      const to = shown(books, 4)
-      const plan = planShuffle(from, to, style, { entrance: 'drop' })
-      for (const id of newIds(from, to)) {
-        const appear = plan.appear.get(id)!
-        const track = plan.tracks.get(id)!
-        const fall = sampleTrack(track, appear.start).position[1] - sampleTrack(track, appear.end).position[1]
-        expect(fall).toBeCloseTo(0.07, 6)
+  it('every track still ends exactly at its target pose', () => {
+    const books = library(30)
+    const from = shown(books.slice(0, 16))
+    const to = shown(books.slice(4, 19))
+    for (const style of STYLES) {
+      const plan = planShuffle(from, to, style, { view: VIEW })
+      for (const pose of to) {
+        const track = plan.tracks.get(pose.bookId)!
+        for (let i = 1; i < track.length; i++) expect(track[i]!.t).toBeGreaterThanOrEqual(track[i - 1]!.t)
+        expect(sampleTrack(track, plan.duration)).toEqual({ position: [pose.x, pose.y, pose.z], rotation: pose.rotation })
       }
-    })
-  }
-
-  for (const entrance of ENTRANCES) {
-    it(`${entrance}: every track still ends exactly at its target pose`, () => {
-      const books = library(30)
-      const from = shown(books.slice(0, 16))
-      const to = shown(books.slice(4, 19))
-      for (const style of STYLES) {
-        const plan = planShuffle(from, to, style, { entrance, view: VIEW })
-        for (const pose of to) {
-          const track = plan.tracks.get(pose.bookId)!
-          for (let i = 1; i < track.length; i++) expect(track[i]!.t).toBeGreaterThanOrEqual(track[i - 1]!.t)
-          expect(sampleTrack(track, plan.duration)).toEqual({ position: [pose.x, pose.y, pose.z], rotation: pose.rotation })
-        }
-      }
-    })
-  }
+    }
+  })
 })
 
 describe('Books leaving the view', () => {
@@ -482,10 +464,97 @@ describe('Books leaving the view', () => {
   }
 })
 
-describe('the entrance list', () => {
-  it('describes every entrance once', () => {
-    expect(ENTRANCES).toEqual(['fade', 'pop', 'drop'])
-    for (const entry of ENTRANCE_STYLES) expect(entry.text.length).toBeGreaterThan(20)
+describe('the whole pile swapped (a new year)', () => {
+  /** Two piles without a shared Book, like two years. */
+  const PAIRS: { name: string, from: (books: Book[]) => BookPose[], to: (books: Book[]) => BookPose[] }[] = [
+    { name: 'same size', from: books => shown(books.slice(0, 15)), to: books => shown(books.slice(15, 30)) },
+    { name: 'small to big', from: books => shown(books.slice(0, 3)), to: books => shown(books.slice(3, 30)) },
+    { name: 'big to small', from: books => shown(books.slice(0, 27)), to: books => shown(books.slice(27, 30)) },
+    { name: 'one to one', from: books => shown(books.slice(0, 1)), to: books => shown(books.slice(1, 2)) },
+  ]
+
+  it('is recognised only when no Book stays', () => {
+    const books = library(10)
+    expect(isSwap(shown(books.slice(0, 5)), shown(books.slice(5)))).toBe(true)
+    expect(isSwap(shown(books.slice(0, 6)), shown(books.slice(5)))).toBe(false)
+    expect(isSwap([], shown(books))).toBe(false)
+    expect(isSwap(shown(books), [])).toBe(false)
+  })
+
+  for (const { name, from: before, to: after } of PAIRS) {
+    it(`${name} without a collision, landing exactly`, () => {
+      const books = library(30)
+      const from = before(books)
+      const to = after(books)
+      for (const view of [VIEW, undefined]) {
+        const plan = planShuffle(from, to, 'carousel', { view })
+        expect(plan.tracks.size).toBe(to.length)
+        expect(plan.leaving.size).toBe(from.length)
+        expect(findCollision(plan, poseMap(from, to), 300)).toBeNull()
+        for (const pose of to) {
+          const track = plan.tracks.get(pose.bookId)!
+          for (let i = 1; i < track.length; i++) expect(track[i]!.t).toBeGreaterThanOrEqual(track[i - 1]!.t)
+          expect(sampleTrack(track, plan.duration)).toEqual({ position: [pose.x, pose.y, pose.z], rotation: pose.rotation })
+          expect(presenceAt(plan, pose.bookId, 0)).toBe(0)
+          expect(presenceAt(plan, pose.bookId, plan.duration)).toBe(1)
+        }
+        for (const pose of from) {
+          expect(sampleTrack(plan.leaving.get(pose.bookId)!, 0).position).toEqual([pose.x, pose.y, pose.z])
+          expect(presenceAt(plan, pose.bookId, 0)).toBe(1)
+          expect(presenceAt(plan, pose.bookId, plan.duration)).toBe(0)
+        }
+        expect(plan.duration).toBeGreaterThan(0.6)
+        expect(plan.duration).toBeLessThan(3)
+      }
+    })
+  }
+
+  it('sweeps the old pile out to the left; the new one settles in place once it is clear', () => {
+    const books = library(20)
+    const from = shown(books.slice(0, 10))
+    const to = shown(books.slice(10))
+    const plan = planShuffle(from, to, 'carousel')
+    // Old Books slide out at their own heights, top first.
+    for (const [id, track] of plan.leaving) {
+      const old = from.find(pose => pose.bookId === id)!
+      expect(track[track.length - 1]!.position[0]).toBeLessThan(-0.5)
+      for (const keyframe of track) expect(keyframe.position[1]).toBe(old.y)
+    }
+    const top = [...from].sort((a, b) => b.y - a.y)[0]!
+    expect(plan.vanish.get(top.bookId)!.start).toBe(Math.min(...[...plan.vanish.values()].map(presence => presence.start)))
+    const length = Math.max(...[...from, ...to].map(pose => pose.height))
+    const firstIn = Math.min(...[...plan.appear.values()].map(presence => presence.start))
+    for (const pose of to) {
+      const track = plan.tracks.get(pose.bookId)!
+      // Right above its place, a little higher, then down onto it.
+      expect(track[0]!.position[0]).toBe(pose.x)
+      expect(track[0]!.position[2]).toBe(pose.z)
+      expect(track[0]!.position[1]).toBeCloseTo(pose.y + 0.05, 9)
+    }
+    // When the first new Book shows, every old one still there is a Book's length away.
+    for (const [id, track] of plan.leaving) {
+      if (presenceAt(plan, id, firstIn) === 0) continue
+      const old = from.find(pose => pose.bookId === id)!
+      expect(old.x - sampleTrack(track, firstIn).position[0]).toBeGreaterThanOrEqual(length + 0.1 - 1e-6)
+    }
+    // Bottom up: the lowest new Book comes first.
+    const lowest = [...to].sort((a, b) => a.y - b.y)[0]!
+    expect(plan.appear.get(lowest.bookId)!.start).toBeCloseTo(firstIn, 9)
+    // About 1.2 s, and twice as fast at double speed.
+    expect(plan.duration).toBeGreaterThan(1)
+    expect(plan.duration).toBeLessThan(1.6)
+    expect(planShuffle(from, to, 'carousel', { speed: 2 }).duration).toBeCloseTo(plan.duration / 2, 6)
+  })
+
+  it('is the same whatever the re-sort Style; a partial change is no swap', () => {
+    const books = library(20)
+    const from = shown(books.slice(0, 10))
+    const to = shown(books.slice(10))
+    expect(planShuffle(from, to, 'hand')).toEqual(planShuffle(from, to, 'carousel'))
+    const partial = planShuffle(from, shown(books.slice(5, 15)), 'carousel')
+    expect(partial.tracks.size).toBe(10)
+    // Kept Books ride the carousel out, so they leave the pile's column.
+    expect(maxRadius(partial)).toBeGreaterThan(0.15)
   })
 })
 

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 // Dev-only drawer with the open design decisions, previewed live (click next
-// to a picked Book, date separators, new and leaving Books) plus two tools
-// (cover overrides, notes). Picks are saved to .data/choices.json. Settled
+// to a picked Book, date separators), links that play the decided re-sort
+// transitions, plus two tools (cover overrides, notes). Picks are saved to .data/choices.json. Settled
 // decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
 import { SEPARATOR_STYLES } from '#layers/regal/app/utils/stack/separators'
-import { ENTRANCE_STYLES } from '#layers/regal/app/utils/stack/shuffle'
-import type { Entrance } from '#layers/regal/app/composables/useDevChoices'
+import { readYears } from '#layers/regal/app/utils/stack/view'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
 const { choices, saved, set, restore } = useDevChoices()
@@ -28,8 +27,7 @@ const PICK_OUTSIDE: { value: PickOutside, title: string, text: string }[] = [
   { value: 'swap', title: 'Takes the clicked Book out', text: 'A click on another Book swaps straight to it; only empty space puts back. In the Stack the pile fills most of the space next to a picked Book.' },
 ]
 
-// --- 2. New and leaving books -------------------------------------------------
-const RECOMMENDED_ENTRANCE = 'fade'
+// --- Try the decided transitions -----------------------------------------------
 
 /** Flips the rating filter between ★ 4.5+ and all: many Books enter, then leave. */
 function filterNow() {
@@ -37,9 +35,18 @@ function filterNow() {
   setStackView({ minRating: stackView.value.minRating ? 0 : 4.5 })
 }
 
-function tryEntrance(value: Entrance) {
-  set('entrance', value)
-  filterNow()
+const years = computed(() => readYears(books.value))
+/** The year 'New year' switches to: the next one read, round the list. */
+const nextYear = computed(() => {
+  const list = years.value
+  const current = stackView.value.year
+  return current === null ? list[0] ?? null : list[(list.indexOf(current) + 1) % list.length] ?? null
+})
+
+/** Switches the year filter, so no Book stays and the whole pile is swapped. */
+function yearNow() {
+  if (mode.value !== 'stack') showStack()
+  if (nextYear.value !== null) setStackView({ year: nextYear.value })
 }
 
 // --- Tools: cover overrides -------------------------------------------------
@@ -131,7 +138,7 @@ onMounted(async () => {
           Stack date separators
         </h3>
         <p class="choices__hint">
-          Under each year (each month when one year is filtered) while sorted by date read. Grouping: Stack controls → Group.
+          Under each year (or month) while sorted by date read. Grouping: Stack controls → Group.
         </p>
         <label
           v-for="option in SEPARATOR_STYLES"
@@ -154,43 +161,29 @@ onMounted(async () => {
 
       <section class="choices__section">
         <h3 class="choices__heading">
-          Open · New and leaving books
+          Try the decided transitions
         </h3>
         <p class="choices__hint">
-          When a filter brings books back, they turn up scattered around the pile, near where they belong, then join it;
-          leaving books slide out and vanish. Never through another book.
+          New books pop in scattered around the pile, leaving ones slide out and shrink away;
+          a new year sweeps the old pile out to the left while the new one settles in.
+        </p>
+        <p class="choices__hint">
           <button
             type="button"
             class="choices__link"
             @click="filterNow"
           >
-            Try it ({{ stackView.minRating ? `★ ${stackView.minRating}+ → all` : 'all → ★ 4.5+' }})
+            Filter ({{ stackView.minRating ? `★ ${stackView.minRating}+ → all` : 'all → ★ 4.5+' }})
+          </button>
+          <button
+            v-if="years.length > 1"
+            type="button"
+            class="choices__link"
+            @click="yearNow"
+          >
+            New year ({{ stackView.year ?? 'all years' }} → {{ nextYear }})
           </button>
         </p>
-        <label
-          v-for="option in ENTRANCE_STYLES"
-          :key="option.value"
-          class="choices__option"
-          :data-on="choices.entrance === option.value"
-        >
-          <input
-            type="radio"
-            name="entrance"
-            :checked="choices.entrance === option.value"
-            @change="set('entrance', option.value)"
-          >
-          <span class="choices__grow">
-            <strong>{{ option.title }}{{ option.value === RECOMMENDED_ENTRANCE ? ' (recommended)' : '' }}</strong>
-            <small>{{ option.text }}</small>
-          </span>
-          <button
-            type="button"
-            class="choices__try"
-            @click.prevent="tryEntrance(option.value)"
-          >
-            Try
-          </button>
-        </label>
       </section>
 
       <!-- Tools -->
@@ -438,6 +431,10 @@ onMounted(async () => {
   margin-top: 0.5rem;
 }
 
+.choices__link + .choices__link {
+  margin-left: 0.8rem;
+}
+
 .choices__book {
   margin-top: 0.8rem;
 }
@@ -507,22 +504,5 @@ onMounted(async () => {
   padding: 0.5rem;
   border: 1px solid var(--color-line);
   background: transparent;
-}
-
-.choices__try {
-  align-self: center;
-  padding: 0.25rem 0.6rem;
-  font: inherit;
-  font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-accent);
-  background: var(--color-bg);
-  border: 1px solid var(--color-accent);
-  cursor: pointer;
-}
-
-.choices__grow {
-  flex: 1;
 }
 </style>

@@ -31,7 +31,7 @@ import { hashString } from '#layers/regal/app/utils/bookcase/layout'
 import type { BookPose } from '#layers/regal/app/utils/books/pose'
 import { planShuffle, presenceAt, sampleTrack } from '#layers/regal/app/utils/stack/shuffle'
 import { chooseShuffle, countMoves } from '#layers/regal/app/utils/stack/moves'
-import type { EntranceStyle, ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shuffle'
+import type { ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
 import { fullCoverTexture, loadCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
@@ -51,9 +51,7 @@ const props = withDefaults(defineProps<{
   aside?: boolean
   /** How a re-sorted Stack moves: 'animate' plays a collision-free plan (by hand or carousel), 'instant' jumps. */
   shuffle?: 'animate' | 'instant'
-  /** How Books new to the Stack appear during a re-sort (leaving Books mirror it). */
-  entrance?: EntranceStyle
-}>(), { aside: true, shuffle: 'instant', entrance: 'fade' })
+}>(), { aside: true, shuffle: 'instant' })
 
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
@@ -566,20 +564,14 @@ const FULLY_THERE = { opacity: 1, scale: 1 }
 const POP_BACK = 1
 
 /**
- * How a Book looks while it appears or vanishes, from presence 0 (gone) to 1.
- * 'fade' fades and grows a little, 'pop' grows out of nothing (a leaving Book
- * shrinks away), 'drop' only fades: its fall is part of the track.
+ * How a Book looks while it appears or vanishes, from presence 0 (gone) to 1:
+ * a new Book pops out of nothing, a leaving one shrinks away.
  */
-function presenceLook(presence: number, entrance: EntranceStyle, leaving: boolean): { opacity: number, scale: number } {
+function presenceLook(presence: number, leaving: boolean): { opacity: number, scale: number } {
   if (presence >= 1) return FULLY_THERE
-  const eased = smooth(presence)
-  if (entrance === 'pop') {
-    if (leaving) return { opacity: 1, scale: eased }
-    const u = presence - 1
-    return { opacity: Math.min(1, presence * 4), scale: 1 + (POP_BACK + 1) * u * u * u + POP_BACK * u * u }
-  }
-  if (entrance === 'drop') return { opacity: eased, scale: 1 }
-  return { opacity: eased, scale: 0.9 + 0.1 * eased }
+  if (leaving) return { opacity: 1, scale: smooth(presence) }
+  const u = presence - 1
+  return { opacity: Math.min(1, presence * 4), scale: 1 + (POP_BACK + 1) * u * u * u + POP_BACK * u * u }
 }
 
 // --- Re-sort --------------------------------------------------------------------
@@ -622,7 +614,7 @@ function startShuffle(from: BookPose[], to: BookPose[]) {
   const moves = countMoves(from, to)
   const style = chooseShuffle(moves)
   const view = viewBand(camera.value as PerspectiveCamera | undefined)
-  const plan = planShuffle(from, to, style, { entrance: props.entrance, view })
+  const plan = planShuffle(from, to, style, { view })
   lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }
   running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
   // Leaving Books stay drawn until they have vanished.
@@ -698,7 +690,7 @@ onBeforeRender(({ delta }) => {
     }
     // New to a re-sort that waits for the running one: not there yet.
     else if (running) presence = 0
-    const appearance = presenceLook(presence, props.entrance, !!running?.plan.vanish.has(pose.bookId))
+    const appearance = presenceLook(presence, !!running?.plan.vanish.has(pose.bookId))
     mesh.visible = presence > 0
     mesh.castShadow = appearance.opacity > 0.5
     mesh.scale.set(pose.thickness * appearance.scale, pose.height * appearance.scale, pose.depth * appearance.scale)

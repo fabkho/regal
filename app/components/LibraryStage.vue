@@ -120,7 +120,6 @@ watch(books, (list) => {
             :books="books"
             :aside="props.showDetails"
             shuffle="animate"
-            :entrance="look.entrance"
           />
         </StackScene>
         <BooksPickProbe v-if="debugPick" />

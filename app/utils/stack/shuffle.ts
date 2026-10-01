@@ -25,21 +25,15 @@
 // lies above the old pile, else once every other Book keeps to its own slot.
 // A leaving Book slides out at its own height during the first phase, while
 // every height is still disjoint, and has vanished before any height changes.
+//
+// When no Book stays (a new year, say) the whole pile is swapped instead: the
+// old pile sweeps out to the left at its own heights, and once it is clear the
+// new one settles in place from the bottom up (see planSwap).
 import type { BookPose } from '../books/pose'
 import { hashString } from '../bookcase/layout'
 import { LAYER_GAP } from './layout'
 
 export type ShuffleStyle = 'hand' | 'carousel'
-
-/** How Books new to the view appear (leaving Books mirror it). */
-export type EntranceStyle = 'fade' | 'pop' | 'drop'
-
-/** Every entrance, for the dev choices panel. */
-export const ENTRANCE_STYLES: { value: EntranceStyle, title: string, text: string }[] = [
-  { value: 'fade', title: 'Scatter + fade', text: 'New Books fade in around the pile, close to where they belong, then join it. Leaving Books slide away and fade.' },
-  { value: 'pop', title: 'Scatter + pop', text: 'New Books pop out of nowhere around the pile, then join it. Leaving Books slide away and shrink to nothing.' },
-  { value: 'drop', title: 'Scatter + drop', text: 'New Books fade in a little above their spot and drop onto it, then join the pile. Leaving Books slide away and fade.' },
-]
 
 export interface ShuffleKeyframe {
   /** Seconds from the start of the plan. */
@@ -77,8 +71,6 @@ export interface ShuffleView {
 export interface ShuffleOptions {
   /** Playback rate; 2 plays the whole plan twice as fast. Default 1. */
   speed?: number
-  /** How new Books appear; only 'drop' changes the tracks. Default 'fade'. */
-  entrance?: EntranceStyle
   /** Heights in view: new Books headed for them appear near them. Default: the whole pile. */
   view?: ShuffleView
 }
@@ -122,8 +114,14 @@ const APPEAR = 0.35
 const APPEAR_SPREAD = 0.3
 /** New Books appear this close above or below the height they will rest at. */
 const APPEAR_JITTER = 0.04
-/** How far above its spot a new Book appears with the 'drop' entrance. */
-const DROP = 0.07
+/** Swaps: one Book's slide or settle, and how long a cascade through a whole pile may take. */
+const SWAP_SLIDE = 0.7
+const SWAP_SETTLE = 0.45
+const SWAP_CASCADE = 0.3
+/** How far the old pile slides out, at least (beyond the picture's edge on a wide view). */
+const SWEEP_REACH = 0.7
+/** How far above its place a new Book settles from. */
+const SETTLE_DROP = 0.05
 
 const vec = (value: readonly number[]): Vec3 => [value[0] ?? 0, value[1] ?? 0, value[2] ?? 0]
 const poseNode = (pose: BookPose): Node => ({ position: [pose.x, pose.y, pose.z], rotation: vec(pose.rotation) })
@@ -141,10 +139,8 @@ function scatter(bookId: string, salt: string): number {
 
 /** What a Style needs to know about Books entering and leaving the view. */
 interface Entrance {
-  /** Height of a new Book's spot, where it appears (before any 'drop' lift). */
+  /** Height of a new Book's spot, where it appears. */
   spotY: (pose: BookPose) => number
-  /** How far above its spot a new Book appears. */
-  drop: number
   /** Whether any Book leaves; a Style then carries their exit in its first phase. */
   leaving: boolean
   /** Top of the pile as it lies now, leaving Books included. */
@@ -178,7 +174,8 @@ interface Staged {
 /**
  * Plans a collision-free move from the current poses to the target poses.
  * Books missing from `to` slide out and vanish; Books missing from `from`
- * appear around the pile and join it on the way.
+ * appear around the pile and join it on the way. When no Book stays, the
+ * whole pile is swapped (see planSwap).
  */
 export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyle, options: ShuffleOptions = {}): ShufflePlan {
   const speed = options.speed && options.speed > 0 ? options.speed : 1
@@ -189,21 +186,97 @@ export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyl
   const band = options.view ?? { bottom: 0, top: Math.max(oldTop, pileTop(to)) }
   const entrance: Entrance = {
     spotY: pose => appearHeight(pose, band),
-    drop: options.entrance === 'drop' ? DROP : 0,
     leaving: leaving.length > 0,
     oldTop,
   }
 
+  if (isSwap(from, to)) return planSwap(from, to, speed)
   if (to.length === 0 || to.every(pose => samePose(pose, fromById.get(pose.bookId)))) {
     // Nothing to re-sort: the pile holds still while any leaving Books go.
     const tracks = new Map(to.map(pose => [pose.bookId, [{ t: 0, ...poseNode(pose) }]]))
     const exitEnd = leaving.length > 0 ? EXIT / speed : 0
-    return dress({ duration: exitEnd, tracks, exitEnd, windows: new Map() }, leaving, entrance, speed)
+    return dress({ duration: exitEnd, tracks, exitEnd, windows: new Map() }, leaving, speed)
   }
   const plan = style === 'carousel'
     ? planCarousel(fromById, to, speed, entrance)
     : planHand(fromById, to, speed, entrance)
-  return dress(plan, leaving, entrance, speed)
+  return dress(plan, leaving, speed)
+}
+
+/** No Book stays: the whole pile is replaced by another (a new year, say). */
+export function isSwap(from: BookPose[], to: BookPose[]): boolean {
+  const before = new Set(from.map(pose => pose.bookId))
+  return from.length > 0 && to.length > 0 && !to.some(pose => before.has(pose.bookId))
+}
+
+/** 0 for the top Book of a pile, 1 for the bottom one (or the other way round). */
+function heightRank(poses: BookPose[], topFirst: boolean): Map<string, number> {
+  const sorted = [...poses].sort((a, b) => (topFirst ? b.y - a.y : a.y - b.y))
+  return new Map(sorted.map((pose, index) => [pose.bookId, sorted.length > 1 ? index / (sorted.length - 1) : 0]))
+}
+
+/** A pose moved sideways and up; the twist stays. */
+const shifted = (pose: BookPose, dx: number, dy: number): Node =>
+  ({ position: [pose.x + dx, pose.y + dy, pose.z], rotation: vec(pose.rotation) })
+
+/** Keyframes that hold `first` until `start`, then move to `last` by `end`. */
+function slide(first: Node, start: number, end: number, last: Node): ShuffleKeyframe[] {
+  const track: ShuffleKeyframe[] = [{ t: 0, position: vec(first.position), rotation: vec(first.rotation) }]
+  if (start > 0) track.push({ t: start, position: vec(first.position), rotation: vec(first.rotation) })
+  track.push({ t: end, position: vec(last.position), rotation: vec(last.rotation) })
+  return track
+}
+
+/** Share of a smoothstep-eased segment after which it has covered `share` of its way. */
+function smoothstepAt(share: number): number {
+  let low = 0
+  let high = 1
+  for (let i = 0; i < 40; i++) {
+    const mid = (low + high) / 2
+    if (mid * mid * (3 - 2 * mid) < share) low = mid
+    else high = mid
+  }
+  return high
+}
+
+/**
+ * The whole pile is swapped. The old Books slide off to the left at their own,
+ * disjoint heights, top first. As soon as even the last of them has slid a
+ * full Book's length (and a margin) clear, the new pile settles in place from
+ * the bottom up, every Book from the same height above its place, so a higher
+ * Book always stays above the one below it. The piles never touch.
+ */
+function planSwap(from: BookPose[], to: BookPose[], speed: number): ShufflePlan {
+  const tracks = new Map<string, ShuffleKeyframe[]>()
+  const leaving = new Map<string, ShuffleKeyframe[]>()
+  const appear = new Map<string, Presence>()
+  const vanish = new Map<string, Presence>()
+  let duration = 0
+  const span = (seconds: number) => seconds / speed
+  const settle = (map: Map<string, ShuffleKeyframe[]>, id: string, track: ShuffleKeyframe[]) => {
+    map.set(id, track)
+    duration = Math.max(duration, track[track.length - 1]!.t)
+  }
+
+  const { length } = extents([...from, ...to])
+  const reach = Math.max(SWEEP_REACH, length + 0.15)
+  const out = heightRank(from, true)
+  let lastOut = 0
+  for (const pose of from) {
+    const start = span(SWAP_CASCADE) * out.get(pose.bookId)!
+    lastOut = Math.max(lastOut, start)
+    settle(leaving, pose.bookId, slide(poseNode(pose), start, start + span(SWAP_SLIDE), shifted(pose, -reach, 0)))
+    vanish.set(pose.bookId, { start: start + span(SWAP_SLIDE) * 0.35, end: start + span(SWAP_SLIDE) })
+  }
+
+  const begin = lastOut + span(SWAP_SLIDE) * smoothstepAt(Math.min(1, (length + 0.1) / reach))
+  const inRank = heightRank(to, false)
+  for (const pose of to) {
+    const start = begin + span(SWAP_CASCADE) * inRank.get(pose.bookId)!
+    settle(tracks, pose.bookId, slide(shifted(pose, 0, SETTLE_DROP), start, start + span(SWAP_SETTLE), poseNode(pose)))
+    appear.set(pose.bookId, { start, end: start + span(SWAP_SETTLE) * 0.7 })
+  }
+  return { duration, tracks, leaving, appear, vanish }
 }
 
 /**
@@ -236,7 +309,7 @@ export function presenceAt(plan: ShufflePlan, bookId: string, t: number): number
  * Adds the leaving Books (each slides out its own way at its own height, then
  * vanishes) and times the new Books' appearance inside their windows.
  */
-function dress(staged: Staged, leaving: BookPose[], entrance: Entrance, speed: number): ShufflePlan {
+function dress(staged: Staged, leaving: BookPose[], speed: number): ShufflePlan {
   const { duration, tracks, exitEnd, windows } = staged
   const leavingTracks = new Map<string, ShuffleKeyframe[]>()
   const vanish = new Map<string, Presence>()
@@ -260,26 +333,22 @@ function dress(staged: Staged, leaving: BookPose[], entrance: Entrance, speed: n
     const start = window.start + scatter(id, 'appear-delay') * spread
     appear.set(id, { start, end: start + span })
     const track = tracks.get(id)
-    if (track && window.moveFrom !== null) landAt(track, start, start + span, window.moveFrom, entrance.drop)
+    if (track && window.moveFrom !== null) holdUntil(track, start + span, window.moveFrom)
   }
   return { duration, tracks, leaving: leavingTracks, appear, vanish }
 }
 
 /**
- * A new Book waits at its first keyframe (its spot, raised by `drop`), comes
- * down onto the spot while it appears, holds there until the Style first
- * moves it, then moves as planned. Its track must be still up to `moveFrom`.
+ * A new Book holds still at its spot (its first keyframe) until it is fully
+ * there, even if the Style would move it sooner, then moves as planned. Its
+ * track must be still up to `moveFrom`.
  */
-function landAt(track: ShuffleKeyframe[], start: number, end: number, moveFrom: number, drop: number) {
-  const raised = track[0]!
-  const landed: Node = { position: [raised.position[0], raised.position[1] - drop, raised.position[2]], rotation: vec(raised.rotation) }
-  const head: ShuffleKeyframe[] = [{ t: 0, position: vec(raised.position), rotation: vec(raised.rotation) }]
-  if (start > 0) head.push({ t: start, position: vec(raised.position), rotation: vec(raised.rotation) })
-  head.push({ t: end, ...landed })
-  if (moveFrom > end) head.push({ t: moveFrom, position: vec(landed.position), rotation: vec(landed.rotation) })
+function holdUntil(track: ShuffleKeyframe[], end: number, moveFrom: number) {
+  const spot = track[0]!
   const resume = Math.max(end, moveFrom)
   const tail = track.filter(keyframe => keyframe.t > resume + 1e-9)
-  track.splice(0, track.length, ...head, ...tail)
+  const held = (t: number): ShuffleKeyframe => ({ t, position: vec(spot.position), rotation: vec(spot.rotation) })
+  track.splice(0, track.length, held(0), held(resume), ...tail)
 }
 
 /**
@@ -446,7 +515,7 @@ function planHand(fromById: Map<string, BookPose>, to: BookPose[], speed: number
     const old = fromById.get(pose.bookId)
     if (old) start.set(pose.bookId, poseNode(old))
     else {
-      const y = entrance.spotY(pose) + entrance.drop
+      const y = entrance.spotY(pose)
       start.set(pose.bookId, { position: lanePoint(lane.get(pose.bookId) ?? 'front', 0, y, 0), rotation: vec(pose.rotation) })
     }
   }
@@ -562,9 +631,9 @@ const ringNode = (slot: RingSlot, y: number, twist: number): Node => ({
   rotation: [0, twist + slot.angle, Math.PI / 2],
 })
 
-/** Where a new Book waits in its ring slot: at its spot, raised for a 'drop'. */
+/** Where a new Book waits in its ring slot: at its spot. */
 const spotNode = (slot: RingSlot, pose: BookPose, twist: number, entrance: Entrance): Node =>
-  ringNode(slot, entrance.spotY(pose) + entrance.drop, twist)
+  ringNode(slot, entrance.spotY(pose), twist)
 
 /**
  * Windows for new Books waiting in their own ring slot: they may appear from

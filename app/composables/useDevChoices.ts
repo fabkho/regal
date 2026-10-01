@@ -8,18 +8,14 @@
 // Decided (no longer choices): Regal is a Nuxt layer for a separate portfolio
 // page; ratings show as a hover label (plus the details card); covers default
 // to the best automatic image + Gemini back/spine (Batch API), with photos for
-// a few special editions.
+// a few special editions; new Books pop in scattered around the pile, and a
+// replaced pile (a new year) sweeps out while the new one settles in.
 
 import type { SeparatorStyle } from '#layers/regal/app/utils/stack/separators'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
-/** How Books new to the Stack appear and leaving ones vanish (see ENTRANCE_STYLES in utils/stack/shuffle.ts). */
-export type Entrance = 'fade' | 'pop' | 'drop'
-
 /** The open decisions plus the tools; settled ones live in DECIDED_LOOK, not here. */
 export interface DevChoices {
-  /** How Books new to the Stack appear (open: previewed in the panel). */
-  entrance: Entrance
   /** Date separators in the Stack (open: recommended 'numerals'). */
   separatorStyle: SeparatorStyle
   /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
@@ -31,19 +27,18 @@ export interface DevChoices {
 
 /** What the 3D looks like: the decided picks plus the open ones (the dev panel previews those). */
 export interface Look {
-  entrance: Entrance
   separatorStyle: SeparatorStyle
   pickOutside: PickOutside
 }
 
 /**
- * Not decided yet, recommended defaults: 'numerals' date separators, the 'fade'
- * entrance of new Books, a click next to a picked Book puts it back (even on the pile).
+ * Not decided yet, recommended defaults: 'numerals' date separators, a click
+ * next to a picked Book puts it back (even on the pile).
  * Decided and hard-wired (no longer choices): the re-sort animation (utils/stack/moves.ts),
- * the classic back cover and the title + stars hover label.
+ * new Books popping in scattered around the pile, the swap of a whole pile
+ * (utils/stack/shuffle.ts), the classic back cover and the title + stars hover label.
  */
 export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
-  entrance: 'fade',
   separatorStyle: 'numerals',
   pickOutside: 'put-back',
 })
@@ -54,7 +49,8 @@ export const DEFAULT_CHOICES: DevChoices = {
   notes: '',
 }
 
-// v3: the settled choices (re-sort, back style, hover label, page preview, AI mode) are gone.
+// v3: the settled choices (re-sort, back style, hover label, page preview, AI mode) are gone;
+// entrance went later (a stored one is ignored like any unknown key).
 const STORAGE_KEY = 'regal:dev-choices:v3'
 const LEGACY_STORAGE_KEY = 'regal:dev-choices:v2'
 
@@ -118,7 +114,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { entrance, separatorStyle, pickOutside } = choices.value
-    return { entrance, separatorStyle, pickOutside }
+    const { separatorStyle, pickOutside } = choices.value
+    return { separatorStyle, pickOutside }
   })
 }
