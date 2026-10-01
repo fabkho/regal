@@ -34,7 +34,7 @@ import { chooseShuffle, countMoves } from '~/utils/stack/moves'
 import type { ShufflePlan, ShuffleStyle } from '~/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
-import { loadCover } from '~/utils/covers/coverTextures'
+import { fullCoverTexture, loadCover, releaseFullCover } from '~/utils/covers/coverTextures'
 import { isPhotoFace, loadAssets } from '~/utils/covers/bookAssets'
 import type { LoadedAssets } from '~/utils/covers/bookAssets'
 import { drawPageEdges, pageEdgePlan } from '~/utils/books/pageEdges'
@@ -314,7 +314,7 @@ async function applyCover(pose: BookPose) {
   entry.assets = assets
 
   if (loaded) {
-    entry.cover.map = loaded.texture
+    entry.cover.map = pickedId.value === pose.bookId ? fullCoverTexture(loaded) : loaded.texture
     entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
     // Printed covers are smoother and glossier than cloth.
     entry.cover.roughness = 0.5
@@ -438,6 +438,25 @@ watch(pickedId, (id, previous) => {
   // Orbiting would fight the drag-to-spin gesture while a Book is out.
   if (controls.value) (controls.value as { enabled: boolean }).enabled = !id
   setCursor(id ? 'grab' : 'default')
+})
+
+// The pile shows small Covers; the picked Book gets its Cover at full size,
+// and gives it back once it is back in place.
+function setFullCover(bookId: string, on: boolean) {
+  const entry = materialsByBook.get(bookId)
+  if (!entry?.loaded) return
+  entry.cover.map = on ? fullCoverTexture(entry.loaded) : entry.loaded.texture
+  entry.cover.needsUpdate = true
+  if (!on) releaseFullCover(entry.loaded)
+}
+
+watch(pickedId, (id, previous) => {
+  if (id) setFullCover(id, true)
+  if (previous && previous !== id) {
+    setTimeout(() => {
+      if (pickedId.value !== previous) setFullCover(previous, false)
+    }, RETURN_SECONDS * 1000 + 100)
+  }
 })
 
 watch(face, (value) => {
