@@ -45,8 +45,8 @@ const stack = computed(() => layoutStack(stackBooks.value, { keepOrder: true }))
 const { choices } = useDevChoices()
 if (props.stackOnly) mode.value = 'stack'
 /** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones (dev choices). */
-const shuffleStyle = computed(() => (import.meta.dev ? choices.value.shuffleFancy : 'spin') as ShuffleStyle)
-const shuffleThreshold = computed(() => (import.meta.dev ? choices.value.shuffleThreshold : 5))
+const shuffleStyle = computed(() => (import.meta.dev ? choices.value.shuffleFancy : 'carousel') as ShuffleStyle)
+const shuffleThreshold = computed(() => (import.meta.dev ? choices.value.shuffleThreshold : 3))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)

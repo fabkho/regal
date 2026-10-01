@@ -4,7 +4,6 @@
 // hover label change the app right away. Picks are saved to
 // .data/choices.json. Decided points are listed at the top.
 import type { StackSort } from '~/utils/stack/view'
-import { SHUFFLE_STYLES } from '~/utils/stack/shuffle'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
@@ -28,26 +27,12 @@ const DECIDED = [
   'Books page: layout A (filters + list in the sidebar, 3D in the body), details as a card over the 3D',
   'Back cover: classic paperback (genre, quotes, blurb, publisher, ISBN + barcode)',
   'Hover label: title + stars',
-  'Re-sort: by hand for small changes; fancy animation above the threshold',
+  'Re-sort: by hand when up to 3 books move, carousel when more move',
   'AI images: Batch API (half price)',
 ]
 
 // --- 2. Re-sort animation ---------------------------------------------------
-const THRESHOLDS: { value: number | null, title: string }[] = [
-  { value: 3, title: 'More than 3 move' },
-  { value: 5, title: 'More than 5 move' },
-  { value: null, title: 'Never (always by hand)' },
-]
-/** Fancy styles for big re-sorts: the carousel and its variations. */
-const FANCY = SHUFFLE_STYLES.filter(style => style.value !== 'hand')
 const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
-const forcedShuffle = useState<string | null>('shuffle:force', () => null)
-
-/** Runs one re-sort with this style, whatever the threshold says. */
-function tryStyle(style: string) {
-  forcedShuffle.value = style
-  shuffleNow()
-}
 const SORT_CYCLE: StackSort[] = ['date', 'rating', 'author', 'title']
 
 function shuffleNow() {
@@ -151,14 +136,11 @@ onMounted(async () => {
         </label>
       </section>
 
-      <!-- 2 -->
       <section class="choices__section">
         <h3 class="choices__heading">
-          Open · Big re-sorts
+          Try the re-sort
         </h3>
         <p class="choices__hint">
-          Books are solid: they never pass through each other. Small re-sorts use
-          <strong>by hand</strong> (decided): only the books that must move are pulled out and slid back in.
           <button
             type="button"
             class="choices__link"
@@ -173,52 +155,6 @@ onMounted(async () => {
         >
           Last re-sort: {{ lastShuffle.moves }} {{ lastShuffle.moves === 1 ? 'book' : 'books' }} moved → {{ lastShuffle.style === 'hand' ? 'by hand' : lastShuffle.style }}
         </p>
-        <p class="choices__subheading">
-          Switch to the fancy animation when…
-        </p>
-        <div class="choices__row choices__row--three">
-          <label
-            v-for="option in THRESHOLDS"
-            :key="String(option.value)"
-            class="choices__option choices__option--small"
-            :data-on="choices.shuffleThreshold === option.value"
-          >
-            <input
-              type="radio"
-              name="shuffle-threshold"
-              :checked="choices.shuffleThreshold === option.value"
-              @change="set('shuffleThreshold', option.value)"
-            >
-            <span><strong>{{ option.title }}</strong></span>
-          </label>
-        </div>
-        <p class="choices__subheading">
-          Fancy animation
-        </p>
-        <label
-          v-for="option in FANCY"
-          :key="option.value"
-          class="choices__option"
-          :data-on="choices.shuffleFancy === option.value"
-        >
-          <input
-            type="radio"
-            name="shuffle-fancy"
-            :checked="choices.shuffleFancy === option.value"
-            @change="set('shuffleFancy', option.value)"
-          >
-          <span class="choices__grow">
-            <strong>{{ option.title }}</strong>
-            <small>{{ option.text }}</small>
-          </span>
-          <button
-            type="button"
-            class="choices__try"
-            @click.prevent="tryStyle(option.value)"
-          >
-            Try
-          </button>
-        </label>
       </section>
 
       <!-- Tools -->

@@ -522,7 +522,6 @@ const smooth = (t: number) => t * t * (3 - 2 * t)
 let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = null
 /** The last re-sort: how many Books moved and which style ran (shown in the dev choices). */
 const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
-const forcedShuffle = useState<ShuffleStyle | null>('shuffle:force', () => null)
 /** A re-sort that arrived while another was running; starts when that one ends. */
 let queued: BookPose[] | null = null
 let shuffleTime = 0
@@ -530,9 +529,7 @@ let shuffleTime = 0
 function startShuffle(from: BookPose[], to: BookPose[]) {
   if (props.shuffle === 'instant') return
   const moves = countMoves(from, to)
-  // A one-off "try this style" from the dev choices wins over the threshold.
-  const style = forcedShuffle.value ?? chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
-  forcedShuffle.value = null
+  const style = chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
   const plan = planShuffle(from, to, style)
   lastShuffle.value = { moves, style }
   running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
