@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import type { Book } from '#shared/types/book'
+import type { Book } from '../types/book'
 import { importReadingTracker, looksLikeJson } from './importReadingTracker'
 
 /**

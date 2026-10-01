@@ -5,7 +5,7 @@ import {
   useLibraryRestored,
   type StoredLibrary,
 } from '~/composables/useLibrary'
-import type { Book } from '#shared/types/book'
+import type { Book } from '~~/shared/types/book'
 
 /**
  * Restores the Library from localStorage after hydration (never during SSR
@@ -15,11 +15,19 @@ import type { Book } from '#shared/types/book'
  * Doing this in `app:mounted` — instead of reading localStorage at
  * `useLibrary()` module/composable init time — avoids the classic "server
  * rendered empty, client rendered restored" hydration mismatch.
+ *
+ * Not in 'embed' mode: there the Library comes from the host's `librarySrc`
+ * and a visitor's stored upload must neither replace it nor be overwritten.
  */
 export default defineNuxtPlugin((nuxtApp) => {
+  const embedded = useRegalConfig().mode === 'embed'
   nuxtApp.hook('app:mounted', () => {
     const books = useState<Book[]>('library:books', () => [])
     const restored = useLibraryRestored()
+    if (embedded) {
+      restored.value = true
+      return
+    }
 
     restoreFromStorage(books)
     restored.value = true

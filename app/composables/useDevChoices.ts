@@ -31,14 +31,27 @@ export interface DevChoices {
   notes: string
 }
 
-export const DEFAULT_CHOICES: DevChoices = {
-  pagePreview: false,
-  pageLayout: 'sidebar-all',
-  details: 'overlay',
+/** What the 3D looks like: the owner's decided picks, used everywhere outside the dev panel. */
+export interface Look {
+  shuffleFancy: FancyShuffle
+  shuffleThreshold: number | null
+  backStyle: 'classic' | 'clean'
+  label: 'stars-title' | 'stars'
+}
+
+/** Decided: 'hand' for re-sorts that move up to 3 Books, 'carousel' above; classic back; title + stars on hover. */
+export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   shuffleFancy: 'carousel',
   shuffleThreshold: 3,
   backStyle: 'classic',
   label: 'stars-title',
+})
+
+export const DEFAULT_CHOICES: DevChoices = {
+  pagePreview: false,
+  pageLayout: 'sidebar-all',
+  details: 'overlay',
+  ...DECIDED_LOOK,
   ai: null,
   editionPicks: {},
   notes: '',
@@ -94,4 +107,19 @@ export function useDevChoices() {
   }
 
   return { choices: readonly(choices), saved: readonly(saved), set, restore }
+}
+
+/**
+ * The look of the 3D: live dev choices in Regal's own dev server (the panel
+ * previews them), the decided picks everywhere else, including any app that
+ * extends Regal as a layer.
+ */
+export function useLook() {
+  const { devPanel } = useRegalConfig()
+  const { choices } = useDevChoices()
+  return computed<Look>(() => {
+    if (!devPanel) return DECIDED_LOOK
+    const { shuffleFancy, shuffleThreshold, backStyle, label } = choices.value
+    return { shuffleFancy, shuffleThreshold, backStyle, label }
+  })
 }

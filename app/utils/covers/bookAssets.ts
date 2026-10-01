@@ -1,7 +1,8 @@
 // Book asset set (first cut of #20): real or AI-made faces for a Book, listed
-// in /book-assets/manifest.json and keyed by ISBN-13 (Goodreads Book Id as
-// fallback). A face that's present replaces the generated one; everything
-// else falls back to the Cover resolver and the drawn Spine/back.
+// in manifest.json under the assets base (default /book-assets/, see
+// setAssetsBase) and keyed by ISBN-13 (Goodreads Book Id as fallback). A
+// face that's present replaces the generated one; everything else falls back
+// to the Cover resolver and the drawn Spine/back.
 import { schedule } from './coverTextures'
 
 export type AssetSource = 'photo' | 'ai'
@@ -16,7 +17,7 @@ export interface AssetQuote {
 }
 
 export interface BookAssetEntry {
-  /** URLs relative to /book-assets/. */
+  /** URLs relative to the assets base (default /book-assets/). */
   front?: string
   spine?: string
   back?: string
@@ -53,12 +54,20 @@ export interface LoadedAssets {
   back?: HTMLImageElement
 }
 
-const BASE = '/book-assets/'
+let base = '/book-assets/'
 let manifest: Promise<AssetManifest> | null = null
+
+/** Where manifest.json and the images live (runtimeConfig.public.regal.assetsBase). */
+export function setAssetsBase(value: string) {
+  const next = value.endsWith('/') ? value : `${value}/`
+  if (next === base) return
+  base = next
+  manifest = null
+}
 
 /** The manifest, fetched once; an absent or broken one means no assets. */
 export function loadAssetManifest(): Promise<AssetManifest> {
-  manifest ??= fetch(`${BASE}manifest.json`)
+  manifest ??= fetch(`${base}manifest.json`)
     .then(response => (response.ok ? response.json() as Promise<AssetManifest> : {}))
     .catch(() => ({}))
   return manifest
@@ -70,7 +79,7 @@ export function assetEntryFor(book: AssetBook, entries: AssetManifest): BookAsse
   return (isbn && entries[isbn]) || entries[book.id] || null
 }
 
-export const assetUrl = (path: string) => (/^(https?:)?\//.test(path) ? path : `${BASE}${path}`)
+export const assetUrl = (path: string) => (/^(https?:)?\//.test(path) ? path : `${base}${path}`)
 
 function loadImage(src: string): Promise<HTMLImageElement | undefined> {
   return schedule(() => new Promise<HTMLImageElement | undefined>((resolve) => {

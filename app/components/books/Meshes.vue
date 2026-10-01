@@ -25,7 +25,7 @@ import {
 import type { Material, Mesh, PerspectiveCamera, PointLight } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
-import type { Book } from '#shared/types/book'
+import type { Book } from '~~/shared/types/book'
 import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
 import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
@@ -55,11 +55,11 @@ const props = withDefaults(defineProps<{
   shuffleThreshold?: number | null
 }>(), { aside: true, shuffle: 'instant', shuffleThreshold: null })
 
-// --- Dev choices: live previews of open design options ----------------------
+// --- Look: decided picks (dev server: live previews of open options) --------
 
-/** Back cover typography: 'classic' paperback or 'clean' (dev choice; classic until decided). */
-const { choices } = useDevChoices()
-const backStyle = computed(() => (import.meta.dev ? choices.value.backStyle : 'classic'))
+/** Back cover typography: 'classic' paperback (decided) or 'clean' (dev preview). */
+const look = useLook()
+const backStyle = computed(() => look.value.backStyle)
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
 

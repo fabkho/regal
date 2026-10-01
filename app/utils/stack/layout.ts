@@ -2,7 +2,7 @@
 // Cover up and Spine towards the viewer, so the Spines read left to right.
 // Currently-reading and the most recent reads sit on top. Pure and
 // deterministic (seeded by Book Id).
-import type { Book } from '#shared/types/book'
+import type { Book } from '~~/shared/types/book'
 import type { BookPose } from '~/utils/books/pose'
 import { bookDimensions, CLOTH_COLORS, hashString, random01, sortForShelves } from '../bookcase/layout'
 

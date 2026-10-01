@@ -2,6 +2,7 @@
 const { books, summary, warnings, error, importFile, loadDemo, loadUrl, clear } = useLibrary()
 /** Dev-only test Libraries. */
 const isDev = import.meta.dev
+const { assetsBase } = useRegalConfig()
 
 const hasLibrary = computed(() => books.value.length > 0)
 
@@ -41,7 +42,7 @@ function onFile(file: File) {
             v-if="isDev"
             type="button"
             class="btn"
-            @click="loadUrl('/book-assets/library.json')"
+            @click="loadUrl(`${assetsBase}library.json`)"
           >
             My latest (dev)
           </button>
@@ -121,8 +122,8 @@ function onFile(file: File) {
 
 .panel__intro {
   margin: 0;
-  color: var(--color-ink-subtle);
-  font-size: var(--text-sm);
+  color: var(--color-ink-subtle, rgba(44, 44, 42, 0.72));
+  font-size: var(--text-sm, 0.75rem);
   line-height: 1.5;
 }
 
@@ -141,10 +142,10 @@ function onFile(file: File) {
 
 .panel__replace-label {
   margin: 0;
-  font-size: var(--text-2xs);
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-muted, #6B6B69);
 }
 
 .panel__replace {
@@ -157,18 +158,18 @@ function onFile(file: File) {
 
 .panel__error {
   margin: 0;
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent-tint);
-  color: var(--color-accent);
+  border: 1px solid var(--color-accent, #B93E2E);
+  background: var(--color-accent-tint, rgba(185, 62, 46, 0.12));
+  color: var(--color-accent, #B93E2E);
   padding: 0.6rem 0.75rem;
-  font-size: var(--text-sm);
+  font-size: var(--text-sm, 0.75rem);
 }
 
 .panel__warnings {
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
   padding: 0.5rem 0.75rem;
-  font-size: var(--text-xs);
-  color: var(--color-ink-muted);
+  font-size: var(--text-xs, 0.7rem);
+  color: var(--color-ink-muted, #6B6B69);
 }
 
 .panel__warnings summary {

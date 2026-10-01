@@ -1,9 +1,9 @@
 import { computed } from 'vue'
 import demoLibraryCsv from '~/assets/data/demo-library.csv?raw'
 import sunEaterCsv from '~/assets/data/sun-eater.csv?raw'
-import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importLibrary'
-import { NotAReadingTrackerExportError } from '#shared/library/importReadingTracker'
-import type { Book } from '#shared/types/book'
+import { importLibrary, NotAGoodreadsExportError } from '~~/shared/library/importLibrary'
+import { NotAReadingTrackerExportError } from '~~/shared/library/importReadingTracker'
+import type { Book } from '~~/shared/types/book'
 
 /** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
 export const LIBRARY_STORAGE_KEY = 'regal:library:v1'

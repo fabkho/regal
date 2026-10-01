@@ -1,6 +1,6 @@
 // Stack view settings: how the pile is ordered and which Books it shows.
 // Pure; the composable keeps them in the URL (?sort=rating&year=2026&min=4).
-import type { Book } from '#shared/types/book'
+import type { Book } from '~~/shared/types/book'
 import { sortForShelves } from '../bookcase/layout'
 
 export type StackSort = 'date' | 'rating' | 'author' | 'title'

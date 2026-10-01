@@ -53,8 +53,8 @@ const formatDate = (iso: string | null) => (iso
 <style scoped>
 .records__count {
   margin: 0 0 0.6rem;
-  color: var(--color-ink-muted);
-  font-size: var(--text-xs);
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-xs, 0.7rem);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -69,32 +69,33 @@ const formatDate = (iso: string | null) => (iso
   padding: 0.6rem 0.5rem;
   font: inherit;
   text-align: left;
-  color: var(--color-ink);
+  color: var(--color-ink, #2C2C2A);
   background: transparent;
   border: 0;
-  border-bottom: 1px dashed var(--color-line);
+  border-bottom: 1px dashed var(--color-line, rgba(44, 44, 42, 0.14));
   cursor: pointer;
 }
 
 .records__item:hover,
 .records__item[aria-pressed='true'] {
-  background: var(--color-accent-tint);
+  color: var(--color-ink, #2C2C2A);
+  background: var(--color-accent-tint, rgba(185, 62, 46, 0.12));
 }
 
 .records__title {
-  font-size: var(--text-sm);
+  font-size: var(--text-sm, 0.75rem);
 }
 
 .records__meta {
-  color: var(--color-ink-muted);
-  font-size: var(--text-xs);
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-xs, 0.7rem);
 }
 
 .records__stars {
   position: relative;
   justify-self: start;
-  color: var(--color-line);
-  font-size: var(--text-xs);
+  color: var(--color-line, rgba(44, 44, 42, 0.14));
+  font-size: var(--text-xs, 0.7rem);
   letter-spacing: 0.08em;
 }
 
@@ -102,6 +103,6 @@ const formatDate = (iso: string | null) => (iso
   position: absolute;
   inset: 0 auto 0 0;
   overflow: hidden;
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
 }
 </style>

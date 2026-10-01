@@ -105,7 +105,7 @@ const summary = computed(() => {
 
 <style scoped>
 .controls {
-  font-size: var(--text-xs);
+  font-size: var(--text-xs, 0.7rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -126,8 +126,8 @@ const summary = computed(() => {
   margin-top: 0.4rem;
   flex-direction: column;
   padding: 0.8rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-ink);
+  background: var(--color-bg, #F5F2EB);
+  border: 1px solid var(--color-ink, #2C2C2A);
   box-shadow: 0 6px 24px rgb(0 0 0 / 0.08);
 }
 
@@ -140,7 +140,7 @@ const summary = computed(() => {
 
 .controls__label {
   min-width: 3.6rem;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-muted, #6B6B69);
 }
 
 .controls__chip,
@@ -149,24 +149,26 @@ const summary = computed(() => {
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
-  color: var(--color-ink);
-  background: var(--color-bg);
-  border: 1px solid var(--color-line);
+  color: var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
+  border: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
   cursor: pointer;
 }
 
+.controls__chip:hover,
+.controls__toggle:hover,
 .controls__chip[aria-pressed='true'] {
-  color: var(--color-bg);
-  background: var(--color-ink);
-  border-color: var(--color-ink);
+  color: var(--color-bg, #F5F2EB);
+  background: var(--color-ink, #2C2C2A);
+  border-color: var(--color-ink, #2C2C2A);
 }
 
 .controls__toggle {
-  border-color: var(--color-ink);
+  border-color: var(--color-ink, #2C2C2A);
 }
 
 .controls__summary {
   margin-left: 0.4rem;
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
 }
 </style>

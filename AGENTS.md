@@ -18,6 +18,18 @@
 
 `app/pages/index.vue` is the shell. The 3D scene lives in `BookcaseStage` and its children; upload, summary and list view live in `LibraryPanel` and its children. Keep features inside their own component trees so parallel tickets don't collide.
 
+## Nuxt layer
+
+Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer"; the portfolio's `/books` extends it). Keep it host-safe:
+
+- Standalone-only setup (global CSS `main.css`, head, `@nuxt/eslint`, test-utils, the dev choices panel and `server/dev/*` API) lives in the `regalApp` module in `nuxt.config.ts` and runs only when Regal is the root app. Don't add globals to the plain config keys.
+- Host API: `RegalBooksStage`, `RegalBooksSidebar` (`app/components/regal/`), config `runtimeConfig.public.regal` (`mode`, `librarySrc`, `assetsBase`). Keep it small; document changes in the README.
+- Component CSS: tokens always with a fallback, `var(--color-ink, #2C2C2A)`; no reliance on global classes (`.btn`) in anything the embed components render.
+- In `app/`, import shared code as `~~/shared/...` (layer-aware), never `#shared/...` (that is the host's).
+- Runtime packages go in `dependencies` (hosts install the layer with `{ install: true }`).
+- Look decisions: `DECIDED_LOOK` in `useDevChoices.ts`, read through `useLook()`.
+- `tests/e2e/layer-host.test.ts` builds `tests/fixtures/layer-host/` (synthetic data only).
+
 ## Dependencies
 
 - Before installing any npm package, look up the latest version with pnpm (`pnpm view <pkg> version`; check `pnpm view <pkg> peerDependencies` when compatibility matters) and install that exact latest: `pnpm add <pkg>@<latest>`. Applies to one-off tooling too (use `pnpm dlx` / pnpm in scratch dirs, not npm/npx with guessed versions).

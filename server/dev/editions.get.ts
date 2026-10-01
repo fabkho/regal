@@ -1,6 +1,6 @@
 // Dev only: other editions of a Book on Apple Books (cover thumbnails), for
 // choosing a cover edition visually. Flags film tie-ins.
-import { cleanTitle, USER_AGENT } from '../../utils/covers'
+import { cleanTitle, USER_AGENT } from '../utils/covers'
 
 interface AppleBook { trackId?: number, trackName?: string, artistName?: string, artworkUrl100?: string, description?: string, releaseDate?: string }
 

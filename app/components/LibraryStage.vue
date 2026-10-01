@@ -31,8 +31,11 @@ const { pickedId, putAway } = useBookPick()
 const mode = useViewMode()
 
 // ?view=stack deep-links the Stack view; switching views keeps the URL in step.
-if (route.query.view === 'stack' || route.query.view === 'bookcase') mode.value = route.query.view
+// A Stack-only page has no views to link.
+if (props.stackOnly) mode.value = 'stack'
+else if (route.query.view === 'stack' || route.query.view === 'bookcase') mode.value = route.query.view
 watch(mode, (value) => {
+  if (props.stackOnly) return
   router.replace({ query: { ...route.query, view: value === 'bookcase' ? undefined : value } })
 })
 
@@ -41,12 +44,11 @@ const { view: stackView } = useStackView()
 const stackBooks = computed(() => applyStackView(books.value, stackView.value))
 const stack = computed(() => layoutStack(stackBooks.value, { keepOrder: true }))
 
-// Open design options, previewed live in dev (see components/dev/Choices.vue).
-const { choices } = useDevChoices()
-if (props.stackOnly) mode.value = 'stack'
-/** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones (dev choices). */
-const shuffleStyle = computed(() => (import.meta.dev ? choices.value.shuffleFancy : 'carousel') as ShuffleStyle)
-const shuffleThreshold = computed(() => (import.meta.dev ? choices.value.shuffleThreshold : 3))
+// The decided look; Regal's dev server previews open options (components/dev/Choices.vue).
+const look = useLook()
+/** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones. */
+const shuffleStyle = computed(() => look.value.shuffleFancy as ShuffleStyle)
+const shuffleThreshold = computed(() => look.value.shuffleThreshold)
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
@@ -160,7 +162,7 @@ watch(books, (list) => {
       No books match these filters
     </p>
 
-    <BooksHoverLabel :variant="choices.label" />
+    <BooksHoverLabel :variant="look.label" />
 
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"
@@ -201,8 +203,8 @@ watch(books, (list) => {
 
 .stage__status {
   margin: 0;
-  color: var(--color-ink-faint);
-  font-size: var(--text-sm);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  font-size: var(--text-sm, 0.75rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -217,33 +219,33 @@ watch(books, (list) => {
   top: 1rem;
   left: 1rem;
   display: flex;
-  border: 1px solid var(--color-ink);
-  background: var(--color-bg);
+  border: 1px solid var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
 }
 
 .stage__view {
   padding: 0.35rem 0.8rem;
   border: 0;
   background: transparent;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-muted, #6B6B69);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-xs, 0.7rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   cursor: pointer;
 }
 
 .stage__view + .stage__view {
-  border-left: 1px solid var(--color-ink);
+  border-left: 1px solid var(--color-ink, #2C2C2A);
 }
 
 .stage__view[aria-pressed="true"] {
-  color: var(--color-bg);
-  background: var(--color-ink);
+  color: var(--color-bg, #F5F2EB);
+  background: var(--color-ink, #2C2C2A);
 }
 
 .stage__view:hover:not([aria-pressed="true"]) {
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
   background: transparent;
 }
 
@@ -252,8 +254,8 @@ watch(books, (list) => {
   top: 1.35rem;
   right: 1rem;
   margin: 0;
-  color: var(--color-ink-faint);
-  font-size: var(--text-2xs);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   pointer-events: none;
