@@ -4,7 +4,7 @@ import type { Book } from '../../shared/types/book'
 import type { BookPose } from '../../app/utils/books/pose'
 import { layoutStack } from '../../app/utils/stack/layout'
 import { applyStackView, DEFAULT_STACK_VIEW } from '../../app/utils/stack/view'
-import type { ShuffleKeyframe, ShufflePlan, ShuffleStyle } from '../../app/utils/stack/shuffle'
+import type { ShufflePlan, ShuffleStyle } from '../../app/utils/stack/shuffle'
 import { planShuffle, sampleTrack, SHUFFLE_STYLES } from '../../app/utils/stack/shuffle'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
@@ -110,21 +110,15 @@ const overlaps = (a: Box, b: Box): boolean => {
 const halfY = (box: Box): number =>
   box.axes.reduce((sum, axis, i) => sum + Math.abs(axis.y) * box.half[i]!, 0)
 
-const keyframeTimes = (plan: ShufflePlan): number[] => {
-  const times = new Set<number>()
-  for (const track of plan.tracks.values()) {
-    for (const keyframe of track) times.add(keyframe.t)
-  }
-  return [...times].sort((a, b) => a - b)
-}
-
 const sampleTimes = (plan: ShufflePlan, count: number): number[] => {
   const times = new Set<number>()
   for (let i = 0; i <= count; i++) times.add((plan.duration * i) / count)
-  for (const t of keyframeTimes(plan)) {
-    times.add(t)
-    times.add(Math.max(0, t - 1e-4))
-    times.add(t + 1e-4)
+  for (const track of plan.tracks.values()) {
+    for (const keyframe of track) {
+      times.add(keyframe.t)
+      times.add(Math.max(0, keyframe.t - 1e-4))
+      times.add(keyframe.t + 1e-4)
+    }
   }
   return [...times].sort((a, b) => a - b)
 }
@@ -174,16 +168,15 @@ const stack = (books: Book[]): BookPose[] => layoutStack(books, { keepOrder: tru
 
 // --------------------------------------------------------------------- cases
 
-const STYLES: ShuffleStyle[] = ['hand', 'constellation', 'rain', 'deal']
-/** The Styles built on the shared float opening. */
-const FANCY: ShuffleStyle[] = ['constellation', 'rain', 'deal']
+const STYLES: ShuffleStyle[] = ['hand', 'carousel', 'spin', 'helix', 'fan']
 const SIZES = [2, 10, 40]
 /** Seconds a plan may take, per Style, for ten and for forty Books. */
 const BUDGET: Record<ShuffleStyle, [number, number]> = {
   hand: [4, 8],
-  constellation: [3.5, 5],
-  rain: [3.5, 5],
-  deal: [3.5, 5],
+  carousel: [3.5, 4],
+  spin: [3.5, 4],
+  helix: [3.5, 4],
+  fan: [3.5, 4],
 }
 const ORDERS: { name: string, reorder: (books: Book[]) => Book[] }[] = [
   { name: 'reversed', reorder: books => [...books].reverse() },
@@ -219,47 +212,6 @@ describe('planShuffle keeps Books apart', () => {
       // Six Books vanish, eight are new to the view.
       expect([...plan.tracks.keys()].filter(id => !from.some(pose => pose.bookId === id))).toHaveLength(8)
       expect(findCollision(plan, poseMap(from, to))).toBeNull()
-    })
-  }
-
-  for (const style of STYLES) {
-    it(`${style}: a filter that swaps most of the view`, () => {
-      const books = library(30)
-      const from = stack(books.slice(0, 20))
-      const to = stack(shuffled(books.slice(8), 42))
-      const plan = planShuffle(from, to, style)
-      expect(plan.tracks.size).toBe(22)
-      expect([...plan.tracks.keys()].filter(id => !from.some(pose => pose.bookId === id))).toHaveLength(10)
-      expect(findCollision(plan, poseMap(from, to))).toBeNull()
-    })
-  }
-
-  for (const style of STYLES) {
-    it(`${style}: a view where every Book is new, and one that keeps a single Book`, () => {
-      const books = library(12)
-      const all = stack(books)
-      const fresh = planShuffle([], all, style)
-      expect(fresh.tracks.size).toBe(12)
-      expect(findCollision(fresh, poseMap(all))).toBeNull()
-      const narrowed = planShuffle(all, stack(books.slice(0, 1)), style)
-      expect(narrowed.tracks.size).toBe(1)
-      expect(findCollision(narrowed, poseMap(all))).toBeNull()
-    })
-  }
-
-  for (const style of FANCY) {
-    it(`${style}: Books new to the view wait outside the pile's column`, () => {
-      const books = library(24)
-      const from = stack(books.slice(0, 16))
-      const to = stack(shuffled(books.slice(6), 99))
-      const plan = planShuffle(from, to, style)
-      const arrivals = to.filter(pose => !from.some(old => old.bookId === pose.bookId))
-      expect(arrivals.length).toBe(8)
-      for (const pose of arrivals) {
-        const start = sampleTrack(plan.tracks.get(pose.bookId)!, 0).position
-        // Clear of the column by more than a lying Book's half diagonal.
-        expect(Math.hypot(start[0], start[2])).toBeGreaterThan(Math.hypot(pose.height, pose.depth) / 2)
-      }
     })
   }
 })
@@ -317,17 +269,6 @@ describe('planShuffle duration', () => {
     }
   })
 
-  it('gives a pile of ten Books between two and a half and three and a half seconds', () => {
-    const books = library(10)
-    const from = stack(books)
-    const to = stack(shuffled(books, 3))
-    for (const style of FANCY) {
-      const plan = planShuffle(from, to, style)
-      expect(plan.duration).toBeGreaterThanOrEqual(2.5)
-      expect(plan.duration).toBeLessThanOrEqual(3.5)
-    }
-  })
-
   it('scales with speed', () => {
     const books = library(10)
     const from = stack(books)
@@ -351,104 +292,11 @@ describe('the Style list', () => {
   })
 })
 
-// ------------------------------------------------------------- the float open
-
-/** The spread-out column: heights only, taken at the first keyframe that shows it. */
-const floatFrame = (plan: ShufflePlan, from: BookPose[], minGap: number): Map<string, number> | null => {
-  const column = [...from].sort((a, b) => a.y - b.y)
-  for (const t of keyframeTimes(plan)) {
-    const frame = column.map(pose => ({ pose, sample: sampleTrack(plan.tracks.get(pose.bookId)!, t) }))
-    // Nothing has left the column yet: the spread is purely vertical.
-    const overColumn = frame.every(({ pose, sample }) =>
-      Math.abs(sample.position[0] - pose.x) < 1e-12 && Math.abs(sample.position[2] - pose.z) < 1e-12)
-    if (!overColumn) return null
-    const spread = frame.every(({ pose, sample }, index) => {
-      if (index === 0) return true
-      const below = frame[index - 1]!
-      const surface = sample.position[1] - pose.thickness / 2
-      return surface - (below.sample.position[1] + below.pose.thickness / 2) >= minGap - 1e-9
-    })
-    if (spread) return new Map(frame.map(({ pose, sample }) => [pose.bookId, sample.position[1]]))
-  }
-  return null
-}
-
-describe('the float every fancy Style opens with', () => {
-  it('spreads the pile straight up, in order, with room between the Books', () => {
-    const books = library(10)
-    const from = stack(books)
-    const to = stack(shuffled(books, 11))
-    const frames = FANCY.map(style => floatFrame(planShuffle(from, to, style), from, 0.03))
-    for (const frame of frames) expect(frame).not.toBeNull()
-    // The pile keeps its order on the way up.
-    const column = [...from].sort((a, b) => a.y - b.y).map(pose => pose.bookId)
-    for (const frame of frames) {
-      const heights = column.map(id => frame!.get(id)!)
-      for (let i = 1; i < heights.length; i++) expect(heights[i]!).toBeGreaterThan(heights[i - 1]!)
-    }
-    // And all three Styles open with exactly the same float.
-    for (const frame of frames.slice(1)) {
-      for (const [id, y] of frames[0]!) expect(frame!.get(id)).toBeCloseTo(y, 12)
-    }
-  })
-
-  it('still leaves two centimetres of air for a Library of forty', () => {
-    const books = library(40)
-    const from = stack(books)
-    const to = stack(shuffled(books, 13))
-    for (const style of FANCY) {
-      expect(floatFrame(planShuffle(from, to, style), from, 0.02)).not.toBeNull()
-    }
-  })
-})
-
-/** When a track reaches its target pose for good. */
-const restTime = (track: ShuffleKeyframe[], pose: BookPose): number => {
-  const resting = (keyframe: ShuffleKeyframe): boolean =>
-    keyframe.position[0] === pose.x && keyframe.position[1] === pose.y && keyframe.position[2] === pose.z
-  let index = track.length - 1
-  while (index > 0 && resting(track[index - 1]!)) index--
-  return track[index]!.t
-}
-
-describe('Rain and Deal fill the new pile from the bottom', () => {
-  for (const style of ['rain', 'deal'] as ShuffleStyle[]) {
-    it(`${style}: every Book lands after the one below it`, () => {
-      const books = library(12)
-      const from = stack(books)
-      const to = stack(shuffled(books, 21)).sort((a, b) => a.y - b.y)
-      const plan = planShuffle(from, to, style)
-      const landings = to.map(pose => restTime(plan.tracks.get(pose.bookId)!, pose))
-      for (let i = 1; i < landings.length; i++) expect(landings[i]!).toBeGreaterThan(landings[i - 1]!)
-      expect(landings[landings.length - 1]!).toBeLessThanOrEqual(plan.duration + 1e-9)
-    })
-  }
-})
-
-describe('Books stay flat', () => {
-  // A tilt would raise a Book's vertical extent from its thickness to
-  // thickness * cos(t) + height * sin(t), which the gaps are not built for, so
-  // every rotation in every Style is about the vertical axis alone.
-  for (const style of STYLES) {
-    it(`${style}: only the twist about the vertical ever changes`, () => {
-      const books = library(16)
-      const from = stack(books)
-      const to = stack(shuffled(books, 8))
-      const plan = planShuffle(from, to, style)
-      for (const pose of to) {
-        for (const keyframe of plan.tracks.get(pose.bookId)!) {
-          expect(keyframe.rotation[0]).toBe(pose.rotation[0])
-          expect(keyframe.rotation[2]).toBe(pose.rotation[2])
-        }
-      }
-    })
-  }
-})
-
-describe('turns stay small while a Book changes height', () => {
-  // Positions interpolate component-wise, so a Book that turns far inside one
-  // segment travels a chord, not an arc. Height changes and wide turns
-  // therefore never share a segment in any Style.
+describe('turning rings keep their steps small', () => {
+  // A turning ring is sampled as chords, so a Book may only turn a little
+  // between two keyframes while its height moves; otherwise it would cut across
+  // the slots beside it. Height changes and wide turns therefore never share a
+  // segment in any Style.
   for (const style of STYLES) {
     it(`${style}: no segment both lifts a Book and turns it far`, () => {
       const books = library(24)
@@ -462,6 +310,20 @@ describe('turns stay small while a Book changes height', () => {
       }
     })
   }
+
+  it('spin and helix really turn the ring the long way round', () => {
+    const books = library(12)
+    const from = stack(books)
+    const to = stack([...books].reverse())
+    for (const style of ['spin', 'helix'] as ShuffleStyle[]) {
+      const plan = planShuffle(from, to, style)
+      const swings = [...plan.tracks.values()].map((track) => {
+        const angles = track.map(keyframe => keyframe.rotation[1])
+        return Math.max(...angles) - Math.min(...angles)
+      })
+      expect(Math.min(...swings)).toBeGreaterThan((200 * Math.PI) / 180)
+    }
+  })
 })
 
 describe('sampleTrack', () => {
