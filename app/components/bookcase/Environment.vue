@@ -4,7 +4,7 @@
 import { PMREMGenerator, type Scene, type Texture, type WebGLRenderer } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { isWebGLRenderer, useTresContext } from '@tresjs/core'
-import { ENVIRONMENT_INTENSITY } from '~/utils/bookcase/scene'
+import { ENVIRONMENT_INTENSITY } from '#layers/regal/app/utils/bookcase/scene'
 
 const { scene, renderer } = useTresContext()
 

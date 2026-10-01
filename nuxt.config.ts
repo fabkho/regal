@@ -60,6 +60,9 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  // Named layer: Nuxt aliases `#layers/regal` to this folder, here and in hosts.
+  // Regal's own imports use it instead of `~`/`~~`, which point at the host app
+  // when Regal is extended (and break the host's typecheck).
 
   modules: [
     '@nuxt/fonts',
@@ -67,6 +70,7 @@ export default defineNuxtConfig({
     '@vueuse/nuxt',
     regalApp,
   ],
+  $meta: { name: 'regal' },
 
   devtools: { enabled: true },
 

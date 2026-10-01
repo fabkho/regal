@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sort & filter for the Stack (#27): 'chips' (a row over the 3D), 'stacked'
 // (one group per line, for a sidebar) or 'menu' (one button, popover).
-import { readYears, STACK_GROUPINGS, STACK_SORTS } from '~/utils/stack/view'
+import { readYears, STACK_GROUPINGS, STACK_SORTS } from '#layers/regal/app/utils/stack/view'
 
 const props = defineProps<{ variant: 'chips' | 'stacked' | 'menu' }>()
 

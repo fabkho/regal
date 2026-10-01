@@ -196,6 +196,9 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
+      three-stdlib:
+        specifier: 2.36.1
+        version: 2.36.1(three@0.186.1)
       vue:
         specifier: ^3.5.43
         version: 3.5.43(typescript@6.0.3)
@@ -230,9 +233,6 @@ importers:
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@26.6.3)
-      three-stdlib:
-        specifier: 2.36.1
-        version: 2.36.1(three@0.186.1)
       tsx:
         specifier: 4.23.15
         version: 4.23.15

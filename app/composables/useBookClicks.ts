@@ -1,9 +1,9 @@
 import type { ShallowRef } from 'vue'
 import type { Object3D } from 'three'
 import { useTres } from '@tresjs/core'
-import { bookAt, toNdc } from '~/utils/books/hit'
-import { isClick, movePress, startPress } from '~/utils/books/press'
-import type { Press } from '~/utils/books/press'
+import { bookAt, toNdc } from '#layers/regal/app/utils/books/hit'
+import { isClick, movePress, startPress } from '#layers/regal/app/utils/books/press'
+import type { Press } from '#layers/regal/app/utils/books/press'
 
 /**
  * Clicks in the 3D view: a click on a Book picks, flips or puts it away, a

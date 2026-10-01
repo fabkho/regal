@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
-import { loadDescription } from '~/utils/covers/descriptions'
+import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()

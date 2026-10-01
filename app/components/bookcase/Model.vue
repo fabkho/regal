@@ -3,8 +3,8 @@
 // world unit is one metre.
 import type { Mesh, MeshStandardMaterial, Object3D } from 'three'
 import { useGLTF } from '@tresjs/cientos'
-import { BOOKCASE_SCALE } from '~/utils/bookcase/shelves'
-import { WOOD_MATERIAL } from '~/utils/bookcase/scene'
+import { BOOKCASE_SCALE } from '#layers/regal/app/utils/bookcase/shelves'
+import { WOOD_MATERIAL } from '#layers/regal/app/utils/bookcase/scene'
 
 const props = withDefaults(defineProps<{ x?: number }>(), { x: 0 })
 const emit = defineEmits<{ loaded: [] }>()

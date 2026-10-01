@@ -4,12 +4,12 @@
 // the Bookcase's Shelves or as one Stack; both share the Book meshes and the
 // Pick interaction.
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
-import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
-import { layoutLibrary } from '~/utils/bookcase/layout'
-import { layoutStack } from '~/utils/stack/layout'
-import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
-import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '~/utils/stack/separators'
-import type { ViewMode } from '~/composables/useBookPick'
+import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
+import { layoutLibrary } from '#layers/regal/app/utils/bookcase/layout'
+import { layoutStack } from '#layers/regal/app/utils/stack/layout'
+import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
+import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
+import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
 
 const props = withDefaults(defineProps<{
   /** Sort & filter controls over the 3D (off when a sidebar shows them). */

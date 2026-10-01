@@ -5,8 +5,8 @@ import {
   LIBRARY_STORAGE_VERSION,
   useLibraryRestored,
   type StoredLibrary,
-} from '~/composables/useLibrary'
-import type { Book } from '~~/shared/types/book'
+} from '#layers/regal/app/composables/useLibrary'
+import type { Book } from '#layers/regal/shared/types/book'
 
 /**
  * Restores the Library from localStorage after hydration (never during SSR

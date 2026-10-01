@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Book } from '~~/shared/types/book'
+import type { Book } from '#layers/regal/shared/types/book'
 
 defineProps<{
   books: Book[]

@@ -1,8 +1,8 @@
 // Layout: turns a Library into Placements on the Bookcase's Shelves.
 // Pure and deterministic (seeded by Book Id), no three.js dependency.
 // Units are world metres, same origin as SHELF_SLOTS.
-import type { Book } from '~~/shared/types/book'
-import type { BookPose } from '~/utils/books/pose'
+import type { Book } from '#layers/regal/shared/types/book'
+import type { BookPose } from '#layers/regal/app/utils/books/pose'
 import type { ShelfSlot } from './shelves'
 import { BOOKCASE_SIZE, SHELF_COUNT, SHELF_SLOTS } from './shelves'
 

@@ -2,7 +2,7 @@
 // The Stack's Books as plain text records (same order and filters as the 3D
 // Stack). Hovering a record lifts its Book in 3D; clicking takes it out.
 // Year / month headers match the Stack's date separators.
-import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
+import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
 
 const { books } = useLibrary()
 const { view } = useStackView()

@@ -10,8 +10,8 @@
 // to the best automatic image + Gemini back/spine (Batch API), with photos for
 // a few special editions.
 
-import type { SeparatorStyle } from '~/utils/stack/separators'
-import type { PickOutside } from '~/utils/books/pick'
+import type { SeparatorStyle } from '#layers/regal/app/utils/stack/separators'
+import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
 /** How Books new to the Stack appear and leaving ones vanish (see ENTRANCE_STYLES in utils/stack/shuffle.ts). */
 export type Entrance = 'fade' | 'pop' | 'drop'

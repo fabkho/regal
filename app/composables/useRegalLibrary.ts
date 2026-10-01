@@ -1,4 +1,4 @@
-import { importLibrary } from '~~/shared/library/importLibrary'
+import { importLibrary } from '#layers/regal/shared/library/importLibrary'
 import type { NuxtApp } from '#app'
 
 /** One load per app (per request on the server), however many embed components ask. */

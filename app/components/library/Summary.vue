@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibrarySummary } from '~/composables/useLibrary'
+import type { LibrarySummary } from '#layers/regal/app/composables/useLibrary'
 
 const props = defineProps<{
   summary: LibrarySummary

@@ -1,5 +1,5 @@
-import type { PickOutside, PickState } from '~/utils/books/pick'
-import { clickAt, flip, putAway, SHELVED } from '~/utils/books/pick'
+import type { PickOutside, PickState } from '#layers/regal/app/utils/books/pick'
+import { clickAt, flip, putAway, SHELVED } from '#layers/regal/app/utils/books/pick'
 
 /**
  * Shared Pick state: which Book is out and which face it shows. Used by the

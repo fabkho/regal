@@ -1,5 +1,5 @@
-import type { StackGrouping, StackSort, StackView } from '~/utils/stack/view'
-import { DEFAULT_STACK_VIEW } from '~/utils/stack/view'
+import type { StackGrouping, StackSort, StackView } from '#layers/regal/app/utils/stack/view'
+import { DEFAULT_STACK_VIEW } from '#layers/regal/app/utils/stack/view'
 
 const SORTS: StackSort[] = ['date', 'rating', 'author', 'title']
 const GROUPINGS: StackGrouping[] = ['auto', 'off', 'year', 'month']

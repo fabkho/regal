@@ -3,10 +3,10 @@
 // to a picked Book, date separators, new and leaving Books) plus two tools
 // (cover overrides, notes). Picks are saved to .data/choices.json. Settled
 // decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
-import { SEPARATOR_STYLES } from '~/utils/stack/separators'
-import { ENTRANCE_STYLES } from '~/utils/stack/shuffle'
-import type { Entrance } from '~/composables/useDevChoices'
-import type { PickOutside } from '~/utils/books/pick'
+import { SEPARATOR_STYLES } from '#layers/regal/app/utils/stack/separators'
+import { ENTRANCE_STYLES } from '#layers/regal/app/utils/stack/shuffle'
+import type { Entrance } from '#layers/regal/app/composables/useDevChoices'
+import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()

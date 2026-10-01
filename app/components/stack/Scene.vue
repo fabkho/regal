@@ -5,7 +5,7 @@
 import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
-import { FLOOR_SHADOW } from '~/utils/bookcase/scene'
+import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 
 const props = defineProps<{
   stackHeight: number

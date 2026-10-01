@@ -6,7 +6,7 @@
 import { useLoop, useTres } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Object3D } from 'three'
-import { bookAt, toNdc } from '~/utils/books/hit'
+import { bookAt, toNdc } from '#layers/regal/app/utils/books/hit'
 
 const { scene, camera, renderer } = useTres()
 const { onRender } = useLoop()

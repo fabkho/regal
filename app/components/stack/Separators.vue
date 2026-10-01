@@ -18,9 +18,9 @@ import type { BufferGeometry, Material, Object3D } from 'three'
 import { useLoop } from '@tresjs/core'
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js'
-import type { StackSeparator } from '~/utils/stack/layout'
-import type { SeparatorStyle } from '~/utils/stack/separators'
-import { labelEm, MONO_ADVANCE, MONO_CAP, separatorRoom } from '~/utils/stack/separators'
+import type { StackSeparator } from '#layers/regal/app/utils/stack/layout'
+import type { SeparatorStyle } from '#layers/regal/app/utils/stack/separators'
+import { labelEm, MONO_ADVANCE, MONO_CAP, separatorRoom } from '#layers/regal/app/utils/stack/separators'
 
 const props = defineProps<{
   separators: StackSeparator[]
