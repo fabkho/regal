@@ -27,6 +27,7 @@
 // every height is still disjoint, and has vanished before any height changes.
 import type { BookPose } from '../books/pose'
 import { hashString } from '../bookcase/layout'
+import { LAYER_GAP } from './layout'
 
 export type ShuffleStyle = 'hand' | 'carousel'
 
@@ -89,8 +90,6 @@ interface Node {
   rotation: Vec3
 }
 
-/** Mirrors LAYER_GAP in layout.ts, which does not export it. */
-const LAYER_GAP = 0.0008
 /** Room between the pile's footprint and a lane, sideways and front to back. */
 const LANE_CLEARANCE = 0.06
 const LANES = ['front', 'back', 'left', 'right'] as const

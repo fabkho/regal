@@ -46,7 +46,7 @@ const shuffled = (books: Book[], seed: number): Book[] => {
 
 // ---------------------------------------------------------------- collisions
 
-/** Half extents shrink by this, to allow the 0.8 mm resting gap. */
+/** Half extents shrink by this, so Books resting flush (no gap) are not reported as touching. */
 const SHRINK = 0.0002
 
 interface Box {
@@ -540,8 +540,8 @@ describe('the collision checker itself', () => {
       rotation: pose.rotation,
     }]])))
     expect(findCollision(resting(0.002), poseMap(poses), 2)).not.toBeNull()
-    // Still a gap, so the 0.2 mm tolerance must not raise a false alarm.
-    expect(findCollision(resting(0.0005), poseMap(poses), 2)).toBeNull()
+    // Within the 0.4 mm tolerance for faces that merely touch: no false alarm.
+    expect(findCollision(resting(0.0003), poseMap(poses), 2)).toBeNull()
   })
 
   it('reports no overlap for a pile at rest', () => {

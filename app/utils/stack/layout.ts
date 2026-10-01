@@ -39,8 +39,8 @@ export interface StackLayoutOptions {
 /** Default room for a separator: a sturdy card. */
 export const SEPARATOR_THICKNESS = 0.012
 
-/** Room around a lying Book, so neighbours never intersect. */
-const LAYER_GAP = 0.0008
+/** Room around a lying Book. */
+export const LAYER_GAP = 0
 /** Books lie flat, so no Shelf limits their size. */
 const FREE_CLEARANCE = 1
 const FREE_DEPTH = 1

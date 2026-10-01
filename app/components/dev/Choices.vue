@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Dev-only drawer with the open design decisions, previewed live (click next
 // to a picked Book, date separators, new and leaving Books) plus two tools
-// (cover overrides, notes). Picks are saved to .data/choices.json. Decided
-// points are listed at the top.
+// (cover overrides, notes). Picks are saved to .data/choices.json. Settled
+// decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
 import { SEPARATOR_STYLES } from '~/utils/stack/separators'
 import { ENTRANCE_STYLES } from '~/utils/stack/shuffle'
 import type { Entrance } from '~/composables/useDevChoices'
@@ -21,18 +21,6 @@ function showStack() {
   putAway()
   mode.value = 'stack'
 }
-
-const DECIDED = [
-  'Regal becomes a Nuxt layer; the portfolio gets its own Books page (no sidebar widget)',
-  'Ratings: hover label with stars (+ the details card); no bookmark, no sticking out',
-  'Covers: best automatic image by default, Gemini back + spine for every book',
-  'Photos only for a few special editions (Sun Eater, …): drop-in, see Tools',
-  'Books page: layout A (filters + list in the sidebar, 3D in the body), details as a card over the 3D',
-  'Back cover: classic paperback (genre, quotes, blurb, publisher, ISBN + barcode)',
-  'Hover label: title + stars',
-  'Re-sort: by hand when up to 3 books move, carousel when more move',
-  'AI images: Batch API (half price)',
-]
 
 // --- 1. Clicking next to a picked Book --------------------------------------
 const PICK_OUTSIDE: { value: PickOutside, title: string, text: string }[] = [
@@ -113,20 +101,6 @@ onMounted(async () => {
       <p class="choices__intro">
         Every pick applies live and is saved for Claude in <code>.data/choices.json</code>.
       </p>
-
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          Decided ✓
-        </h3>
-        <ul class="choices__decided">
-          <li
-            v-for="item in DECIDED"
-            :key="item"
-          >
-            {{ item }}
-          </li>
-        </ul>
-      </section>
 
       <section class="choices__section">
         <h3 class="choices__heading">
@@ -544,70 +518,7 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.choices__subheading {
-  margin: 0.8rem 0 0.2rem;
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-
-.choices__row--three {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-.choices__last {
-  color: var(--color-accent);
-}
-
-.choices__decided {
-  margin: 0;
-  padding-left: 1.1rem;
-  color: var(--color-ink-muted);
-  font-size: var(--text-xs);
-  line-height: 1.6;
-}
-
 .choices__grow {
   flex: 1;
-}
-
-.choices__wire {
-  display: grid;
-  grid-template-columns: 1fr 34%;
-  gap: 3px;
-  height: 64px;
-  margin-top: 0.45rem;
-  padding: 3px;
-  font-size: 0.55rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  border: 1px solid var(--color-ink);
-}
-
-.choices__wire-body,
-.choices__wire-side {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.choices__wire-3d {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--color-bg);
-  background: var(--color-ink-muted);
-}
-
-.choices__wire-bar {
-  padding: 1px 3px;
-  border: 1px solid var(--color-line);
-}
-
-.choices__wire-list {
-  flex: 1;
-}
-
-.choices__sample {
-  color: var(--color-accent) !important;
 }
 </style>

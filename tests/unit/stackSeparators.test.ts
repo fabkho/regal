@@ -38,9 +38,9 @@ describe('layoutStack with date separators', () => {
       ...grouped.separators.map(separator => ({ y: separator.y, half: separator.thickness / 2 })),
     ].sort((a, b) => a.y - b.y)
     for (let i = 1; i < items.length; i++) {
-      expect(items[i]!.y - items[i]!.half).toBeGreaterThanOrEqual(items[i - 1]!.y + items[i - 1]!.half - 1e-12)
+      expect(items[i]!.y - items[i]!.half).toBeGreaterThanOrEqual(items[i - 1]!.y + items[i - 1]!.half - 1e-9)
     }
-    expect(grouped.height).toBeGreaterThan(plain.height + 4 * 0.014)
+    expect(grouped.height).toBeGreaterThanOrEqual(plain.height + 4 * 0.014 - 1e-9)
     expect(grouped.height).toBeLessThan(plain.height + 4 * 0.016)
   })
 
