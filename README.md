@@ -97,6 +97,13 @@ Put both under the host's `public/` (any path; point `librarySrc` and `assetsBas
 - `library.json`: the reading-tracker CLI's `reading list --json` output (`{ "books": [...] }`). A Goodreads CSV export works as well.
 - `manifest.json` under `assetsBase`: Book key (ISBN-13, else the Book id) → `{ "front": "<key>/front.webp", "spine": "<key>/spine.webp", "back": "<key>/back.webp", ... }`, paths relative to `assetsBase`; the images next to it as `<key>/{front,spine,back}.webp`. `pnpm assets:build` writes exactly this to `public/book-assets/` (copy it over); `pnpm assets:build --limit all --no-ai --no-model` covers the whole Read shelf (undated Books last) with free fronts and generated Spines/backs, no Gemini call. Books without an entry get a Cover from the Cover resolver (`/api/cover`, part of the layer) and drawn Spines/backs.
 
+**Correcting the reading history.** The tracker (Fable) keeps one entry per edition, has gaps and wrong dates. A private overrides file, `~/.reading-tracker/regal-overrides.json` (or `--overrides <file>`, `REGAL_OVERRIDES`; never commit it), fixes that before anything is built ([example](docs/overrides.example.json)):
+
+- `goodreads`: Goodreads Library exports, most trusted first. Their read rows are matched to tracker Books (ISBN, title + author, typos, series number, `goodreads` aliases); for a matched Book the most trusted export's read date wins, and its edition in the read language becomes the Book's (ISBN, cover; the title too when the language changes). Goodreads reads the tracker doesn't have are only reported.
+- `books`: per tracker id (or an 8+ character id prefix): `skip`, `mergeInto` (same work, its rating/review fill gaps), `dateRead`, `dateStarted`, `isbn13`, `title`, `author`, `lang` (`en` default, `de`: German store and German National Library covers), `coverUrl` (used as the front), `goodreads` (aliases), `note`.
+
+Same-title-same-author editions are merged automatically (the dated one stays). The build prints what changed (dropped duplicates, date and edition changes, unmatched rows both ways, series read out of order) and keeps it in `corrections.json` next to the manifest. A Book whose key changed keeps its blurb; with `--limit all`, asset sets of keys no longer used move to `.data/book-assets-stale/`. `--retry-fronts` looks again for fronts below 800 px.
+
 `nuxt dev` note: a `public/books/` folder next to a `/books` page makes the dev server redirect `/books` to `/books/` (the page still renders). Production builds don't.
 
 `tests/fixtures/layer-host/` is a minimal host (synthetic data) built by `tests/e2e/layer-host.test.ts`; `pnpm nuxi dev tests/fixtures/layer-host` runs it.

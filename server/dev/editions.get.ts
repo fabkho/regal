@@ -1,6 +1,8 @@
 // Dev only: other editions of a Book on Apple Books (cover thumbnails), for
-// choosing a cover edition visually. Flags film tie-ins.
+// choosing a cover edition visually (German editions from the German store).
+// Flags film tie-ins. `pnpm assets:build` uses the picked one as the front.
 import { cleanTitle, USER_AGENT } from '../utils/covers'
+import { isbnLanguage } from '../utils/descriptions'
 
 interface AppleBook { trackId?: number, trackName?: string, artistName?: string, artworkUrl100?: string, description?: string, releaseDate?: string }
 
@@ -17,7 +19,9 @@ export default defineEventHandler(async (event) => {
   if (!title) throw createError({ statusCode: 400, statusMessage: 'title required' })
   const surname = comparable(author.split(/\s+/).at(-1) ?? '')
   const results: AppleBook[] = []
-  for (const country of ['us', 'gb']) {
+  // A German edition (by ISBN) gets the German store's editions first.
+  const countries = isbnLanguage(String(query.isbn ?? '')) === 'de' ? ['de', 'us'] : ['us', 'gb']
+  for (const country of countries) {
     const params = new URLSearchParams({ term: `${title} ${author}`.trim(), entity: 'ebook', country, limit: '25' })
     const response = await fetch(`https://itunes.apple.com/search?${params}`, { headers: { 'User-Agent': USER_AGENT } }).catch(() => null)
     const data = response?.ok ? await response.json() as { results?: AppleBook[] } : null

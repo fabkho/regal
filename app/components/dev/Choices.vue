@@ -56,7 +56,7 @@ async function loadEditions() {
     const key = keyOf(book)
     if (editions.value[key]) continue
     editions.value[key] = 'loading'
-    $fetch<{ editions: Edition[], auto: string | null }>('/api/dev/editions', { query: { title: book.title, author: book.author ?? '' } })
+    $fetch<{ editions: Edition[], auto: string | null }>('/api/dev/editions', { query: { title: book.title, author: book.author ?? '', isbn: book.isbn13 ?? '' } })
       .then((result) => { editions.value[key] = { list: result.editions, auto: result.auto } })
       .catch(() => { editions.value[key] = { list: [], auto: null } })
   }
@@ -202,6 +202,10 @@ onMounted(async () => {
           <strong>Photos of special editions:</strong> put <code>front.jpg</code>, <code>spine.jpg</code>, <code>back.jpg</code> in
           <code>public/book-assets/&lt;ISBN-13&gt;/photo/</code> and run <code>pnpm assets:build --photos-only</code>.
           Photos win over AI and get no extra text.
+        </p>
+        <p class="choices__hint">
+          <strong>Cover overrides:</strong> a cover picked below becomes the Book's front on the next
+          <code>pnpm assets:build --limit all --no-ai</code> (German editions come from the German store).
         </p>
         <button
           type="button"

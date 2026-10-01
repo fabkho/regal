@@ -12,6 +12,8 @@
 //   pnpm assets:build --recrop            # re-cut spine/back from stored jackets (free)
 //   pnpm assets:build --refresh-text      # blurb, quotes, genre, publisher only (text model, free)
 //   pnpm assets:build --photos-only       # (re)process photo drop-ins, nothing else
+//   pnpm assets:build --retry-fronts      # look again for fronts below 800 px (free)
+//   pnpm assets:build --overrides <file>  # corrections file (default ~/.reading-tracker/regal-overrides.json)
 //   pnpm assets:build --now               # AI right away at full price instead of the Batch API
 //   pnpm assets:build --wait 0            # submit the batch and exit (collect on a later run)
 //
@@ -34,19 +36,38 @@
 // manifest's `photoFaces` and never overwrites them with AI output. With a
 // photographed back AND spine, no image is generated at all; a photographed
 // front alone is still used as the source for the AI back/spine.
+//
+// History corrections (tracker JSON only): the private overrides file
+// (--overrides, $REGAL_OVERRIDES, else ~/.reading-tracker/regal-overrides.json)
+// lists Goodreads exports and per-Book fixes. Before anything else the build
+// drops duplicate editions of a work, takes read dates and read-language
+// editions from Goodreads, applies the fixes and prints what changed (also in
+// <out>/corrections.json). See corrections.ts and docs/overrides.example.json.
+// A coverUrl there, or a cover picked in the dev panel's "Override a cover"
+// tool (.data/choices.json), is used as the front.
+//
+// A Book whose key (ISBN-13) changed keeps its blurb from the old key when the
+// language is the same; its front is fetched again, as is a front of another
+// language. With --limit all, asset folders of keys no longer in the Library
+// (nor in a bundled dev Library) move to .data/book-assets-stale/.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import sharp from 'sharp'
 import type { Book } from '../../shared/types/book'
 import { importLibrary } from '../../shared/library/importLibrary'
 import type { ReadingTrackerBook } from '../../shared/library/importReadingTracker'
+import { isbnLanguage } from '../../server/utils/descriptions'
 import type { Quote } from './backText'
 import { mapGenre, resolvePublisher, resolveQuotes } from './backText'
 import { resolveBlurb } from './blurb'
-import { findApple, resolveFront } from './front'
+import { findApple, isPlaceholder, MIN_HEIGHT, resolveFront } from './front'
+import type { CorrectedBook, Overrides } from './corrections'
+import { applyCorrections, formatReport } from './corrections'
+import type { GoodreadsRead } from './goodreads'
+import { parseGoodreads } from './goodreads'
 import { parseLimit, selectBooks } from './select'
 import { BATCH_COST_USD, BATCH_INLINE_LIMIT, getImageBatch, IMAGE_COST_USD, IMAGE_MODEL, submitImageBatch } from './gemini'
 import type { ImageRequest } from './gemini'
@@ -68,6 +89,8 @@ const { values: args } = parseArgs({
     'recrop': { type: 'boolean', default: false },
     'refresh-text': { type: 'boolean', default: false },
     'photos-only': { type: 'boolean', default: false },
+    'retry-fronts': { type: 'boolean', default: false },
+    'overrides': { type: 'string' },
     'now': { type: 'boolean', default: false },
     'wait': { type: 'string', default: '30' },
   },
@@ -89,6 +112,33 @@ interface ManifestEntry {
   meta?: Record<string, unknown>
 }
 
+const expandHome = (path: string) => (path.startsWith('~/') ? join(homedir(), path.slice(2)) : path)
+
+/** The private corrections file, if there is one. */
+function loadOverrides(): Overrides | null {
+  const path = resolve(expandHome(args.overrides ?? process.env.REGAL_OVERRIDES ?? '~/.reading-tracker/regal-overrides.json'))
+  if (!existsSync(path)) {
+    if (args.overrides || process.env.REGAL_OVERRIDES) throw new Error(`Overrides file not found: ${path}`)
+    return null
+  }
+  console.log(`Overrides: ${path}`)
+  return JSON.parse(readFileSync(path, 'utf8')) as Overrides
+}
+
+/** Read rows of the Goodreads exports the overrides list, most trusted first. */
+function loadGoodreads(overrides: Overrides): GoodreadsRead[] {
+  return (overrides.goodreads ?? []).flatMap((file, index) => {
+    const path = resolve(expandHome(file))
+    if (!existsSync(path)) {
+      console.warn(`  Goodreads export missing: ${path}`)
+      return []
+    }
+    const rows = parseGoodreads(readFileSync(path, 'utf8'), index, `#${index + 1} ${basename(path)}`)
+    console.log(`  Goodreads #${index + 1}: ${basename(path)} (${rows.length} read rows)`)
+    return rows
+  })
+}
+
 /** Raw source entries (kept for library.json) plus normalized Books. */
 function loadSource(): { raw: ReadingTrackerBook[] | null, books: Book[] } {
   let text: string
@@ -99,13 +149,109 @@ function loadSource(): { raw: ReadingTrackerBook[] | null, books: Book[] } {
     console.log(`Reading tracker: ${CLI} list --json --shelf ${args.shelf}`)
     text = execFileSync(process.execPath, [CLI, 'list', '--json', '--shelf', args.shelf!], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   }
-  const { books } = importLibrary(text)
   const parsed = text.trimStart().startsWith('{') || text.trimStart().startsWith('[') ? JSON.parse(text) : null
-  const raw = parsed ? (Array.isArray(parsed) ? parsed : parsed.books) as ReadingTrackerBook[] : null
+  let raw = parsed ? (Array.isArray(parsed) ? parsed : parsed.books) as ReadingTrackerBook[] : null
+  const overrides = raw ? loadOverrides() : null
+  if (raw && overrides) {
+    const corrected = applyCorrections(raw, { overrides, goodreads: loadGoodreads(overrides) })
+    console.log(`\n${formatReport(corrected.report).join('\n')}\n`)
+    mkdirSync(OUT, { recursive: true })
+    writeFileSync(join(OUT, 'corrections.json'), `${JSON.stringify(corrected.report, null, 1)}\n`)
+    raw = corrected.books
+    text = JSON.stringify({ books: raw })
+  }
+  const { books } = importLibrary(text)
   return { raw, books }
 }
 
 const keyOf = (book: Book) => book.isbn13 ?? book.id
+
+/** Language the Book was read in: the corrections' call, else its edition's, else English. */
+const languageOf = (raw: ReadingTrackerBook[] | null, book: Book) =>
+  (raw?.find(entry => entry.id === book.id) as CorrectedBook | undefined)?.language ?? isbnLanguage(book.isbn13) ?? 'en'
+
+/** Covers picked in the dev panel's "Override a cover" tool (.data/choices.json: asset key → URL). */
+function editionPicks(): Record<string, string> {
+  const path = resolve('.data/choices.json')
+  try {
+    return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')).editionPicks ?? {}) : {}
+  }
+  catch {
+    return {}
+  }
+}
+
+/** The owner's cover pick for a Book: the overrides' coverUrl, else the dev panel's pick. */
+const pinnedCover = (raw: ReadingTrackerBook[] | null, book: Book, picks: Record<string, string>) =>
+  ((raw?.find(entry => entry.id === book.id) as CorrectedBook | undefined)?.coverPinned ? book.coverUrl : null) ?? picks[keyOf(book)] ?? null
+
+/** Asset key per tracker id in the library.json of the previous build (keys change with the edition). */
+function previousKeys(): Map<string, string> {
+  const path = join(OUT, 'library.json')
+  if (!existsSync(path)) return new Map()
+  try {
+    return new Map(importLibrary(readFileSync(path, 'utf8')).books.map(book => [book.id, keyOf(book)]))
+  }
+  catch {
+    return new Map()
+  }
+}
+
+const TEXT_FIELDS = ['description', 'quotes', 'genre', 'publisher'] as const
+
+/** Language of an entry's front and words: as recorded, else its key's ISBN's, else English. */
+const entryLanguage = (entry: ManifestEntry | undefined, key: string) =>
+  (entry?.meta?.lang as string | undefined) ?? isbnLanguage(key) ?? 'en'
+
+/**
+ * A Book whose key changed (another edition, same language) keeps its words:
+ * blurb, quotes, genre and imprint move over from the old key's entry.
+ */
+function carryText(manifest: Record<string, ManifestEntry>, from: string, to: string, language: string): boolean {
+  const old = manifest[from]
+  const current = manifest[to]
+  if (!old?.description || current?.description || entryLanguage(old, from) !== language) return false
+  const entry: ManifestEntry = { ...current }
+  for (const field of TEXT_FIELDS) {
+    if (old[field] !== undefined) (entry as Record<string, unknown>)[field] = old[field]
+  }
+  const { blurbSource, blurbMethod, quotes } = old.meta ?? {}
+  entry.meta = { ...entry.meta, blurbSource, blurbMethod, quotes, lang: language }
+  manifest[to] = entry
+  return true
+}
+
+/** A stored front worth looking for again: the Google placeholder or below 800 px. */
+function lowFront(entry: ManifestEntry | undefined): boolean {
+  const [width, height] = String(entry?.meta?.frontSize ?? '').split('x').map(Number)
+  if (!width || !height) return false
+  return isPlaceholder(width, height) || height < MIN_HEIGHT
+}
+
+/** Keys of the bundled dev Libraries (app/assets/data/*.csv), whose assets share the folder. */
+function devLibraryKeys(): Set<string> {
+  const dir = resolve('app/assets/data')
+  if (!existsSync(dir)) return new Set()
+  return new Set(readdirSync(dir).filter(file => file.endsWith('.csv'))
+    .flatMap(file => importLibrary(readFileSync(join(dir, file), 'utf8')).books.map(keyOf)))
+}
+
+/** Moves asset folders and manifest entries of keys no longer in use to .data/book-assets-stale/. */
+function pruneStale(manifest: Record<string, ManifestEntry>, keep: Set<string>): string[] {
+  const staleDir = resolve('.data/book-assets-stale')
+  const pruned: string[] = []
+  const folders = readdirSync(OUT).filter(name => statSync(join(OUT, name)).isDirectory())
+  for (const key of new Set([...Object.keys(manifest), ...folders])) {
+    if (keep.has(key)) continue
+    if (existsSync(join(OUT, key))) {
+      mkdirSync(staleDir, { recursive: true })
+      renameSync(join(OUT, key), join(staleDir, existsSync(join(staleDir, key)) ? `${key}-${Date.now()}` : key))
+    }
+    Reflect.deleteProperty(manifest, key)
+    pruned.push(key)
+  }
+  return pruned
+}
 
 function readManifest(): Record<string, ManifestEntry> {
   const path = join(OUT, 'manifest.json')
@@ -121,7 +267,8 @@ function writeLibrary(raw: ReadingTrackerBook[] | null, selected: Book[], manife
   const ids = new Set(selected.map(book => book.id))
   const library = raw.filter(entry => ids.has(entry.id)).map((entry) => {
     const book = selected.find(item => item.id === entry.id)!
-    return { ...entry, description: manifest[keyOf(book)]?.description ?? entry.description }
+    const { coverPinned: _pinned, ...rest } = entry as CorrectedBook
+    return { ...rest, description: manifest[keyOf(book)]?.description || entry.description }
   })
   writeFileSync(join(OUT, 'library.json'), `${JSON.stringify({ books: library, total: library.length }, null, 1)}\n`)
 }
@@ -283,6 +430,8 @@ async function main() {
 
   mkdirSync(OUT, { recursive: true })
   const manifest = readManifest()
+  const previous = previousKeys()
+  const picks = editionPicks()
   const report: Record<string, unknown>[] = []
   let images = 0
 
@@ -306,7 +455,7 @@ async function main() {
     for (const book of selected) {
       const key = keyOf(book)
       console.log(`→ ${book.dateRead ?? 'undated'}  ${book.title}`)
-      const apple = await findApple(book)
+      const apple = await findApple(book, { language: languageOf(raw, book) })
       const extras = await textExtras(book, apple?.description ?? null, apple?.genres ?? [], publisherOf(raw, book))
       manifest[key] = mergeText(manifest[key], extras)
       console.log(`  ${extras.log}`)
@@ -326,7 +475,17 @@ async function main() {
   for (const book of selected) {
     const key = keyOf(book)
     const dir = join(OUT, key)
+    const language = languageOf(raw, book)
+    const pinned = pinnedCover(raw, book, picks)
+    const oldKey = previous.get(book.id)
+    if (oldKey && oldKey !== key && !args['dry-run'] && carryText(manifest, oldKey, key, language)) console.log(`  ${book.title}: blurb carried over from ${oldKey}`)
     const existing = manifest[key]
+    const languageChanged = Boolean(existing) && entryLanguage(existing, key) !== language
+    // A front of the other language's edition, a placeholder or small one (--retry-fronts), or not the pinned cover.
+    const frontStale = Boolean(existing?.front) && !(existing?.photoFaces ?? []).includes('front') && existing?.source !== 'ai' && (
+      languageChanged
+      || (args['retry-fronts'] && lowFront(existing))
+      || (pinned !== null && existing?.meta?.frontUrl !== pinned))
     if (waiting.has(key) && existing?.front && !args.force) {
       console.log(`… ${book.dateRead ?? 'undated'}  ${book.title} (AI back/spine waiting in a batch job)`)
       continue
@@ -344,7 +503,7 @@ async function main() {
     const drops = photoFacesIn(photoFiles(dir))
     const photoPair = drops.includes('spine') && drops.includes('back')
     const newPhotos = drops.some(face => !(existing?.photoFaces ?? []).includes(face))
-    const done = !newPhotos && existing?.front && existing.description !== undefined
+    const done = !newPhotos && !frontStale && existing?.front && existing.description !== undefined
       && (args['no-ai'] || photoPair || (existing.back && existing.meta?.promptVersion === PROMPT_VERSION))
     const label = `${book.dateRead ?? 'undated'}  ${book.title}`
     if (done && !args.force) {
@@ -360,6 +519,27 @@ async function main() {
       continue
     }
 
+    // Only the front is out of date: look again, keep the better one, leave the words alone.
+    if (frontStale && !languageChanged && !newPhotos && existing?.description && !needsAi) {
+      const front = await resolveFront(book, { language, pinnedUrl: pinned })
+      const [, oldHeight] = String(existing.meta?.frontSize ?? '0x0').split('x').map(Number)
+      if (front && (pinned !== null || front.height > (oldHeight ?? 0))) {
+        const webp = await sharp(front.image).resize({ height: 1600, withoutEnlargement: true }).webp({ quality: 88 }).toBuffer()
+        const size = await sharp(webp).metadata()
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'front.webp'), webp)
+        manifest[key] = { ...existing, front: `${key}/front.webp`, meta: { ...existing.meta, frontSource: front.source, frontSize: `${size.width}x${size.height}`, frontUrl: front.url, lang: language } }
+        console.log(`↻ ${label}: front ${existing.meta?.frontSource ?? '?'} ${existing.meta?.frontSize ?? '?'} → ${front.source} ${size.width}×${size.height}`)
+      }
+      else {
+        manifest[key] = { ...existing, meta: { ...existing.meta, lang: language } }
+        console.log(`✓ ${label}: no better front (${front ? `${front.source} ${front.width}×${front.height}` : 'none'}), kept ${existing.meta?.frontSize ?? '?'}`)
+      }
+      writeManifest(manifest)
+      report.push({ book: book.title, ...manifest[key]!.meta })
+      continue
+    }
+
     console.log(`→ ${label}`)
     mkdirSync(dir, { recursive: true })
     let entry: ManifestEntry = { ...existing }
@@ -368,8 +548,8 @@ async function main() {
 
     // A photographed front is the real thing: only Apple's words are still wanted.
     const photoFront = faces.includes('front')
-    const apple = photoFront ? await findApple(book) : null
-    const front = photoFront ? null : await resolveFront(book)
+    const apple = photoFront ? await findApple(book, { language }) : null
+    const front = photoFront ? null : await resolveFront(book, { language, pinnedUrl: pinned })
     if (!front && !photoFront) {
       console.warn('  no front found; skipped')
       report.push({ book: book.title, error: 'no front' })
@@ -382,13 +562,19 @@ async function main() {
     const size = await sharp(frontWebp).metadata()
     const frontWidth = size.width ?? 1
     const frontHeight = size.height ?? 1
-    console.log(`  front: ${front?.source ?? 'photo'} ${frontWidth}×${frontHeight}`)
+    console.log(`  front: ${front?.source ?? 'photo'} ${frontWidth}×${frontHeight}${frontHeight < MIN_HEIGHT ? ' (low-res)' : ''}`)
 
-    const extras = await textExtras(book, front?.appleDescription ?? apple?.description ?? null, front?.appleGenres ?? apple?.genres ?? [], publisherOf(raw, book))
-    console.log(`  ${extras.log}`)
-    entry = mergeText(entry, extras)
+    // Words carried over from the same language's other edition stay; otherwise they're looked up.
+    if (entry.description && !languageChanged && entryLanguage(entry, key) === language && !args.force) {
+      console.log('  blurb: kept')
+    }
+    else {
+      const extras = await textExtras(book, front?.appleDescription ?? apple?.description ?? null, front?.appleGenres ?? apple?.genres ?? [], publisherOf(raw, book))
+      console.log(`  ${extras.log}`)
+      entry = mergeText(entry, extras)
+    }
     entry.front = `${key}/front.webp`
-    entry.meta = { ...entry.meta, title: book.title, frontSource: front?.source ?? 'photo', frontSize: `${frontWidth}x${frontHeight}` }
+    entry.meta = { ...entry.meta, title: book.title, frontSource: front?.source ?? 'photo', frontSize: `${frontWidth}x${frontHeight}`, frontUrl: front?.url, lang: language }
 
     if (needsAi && useBatch) {
       const { layout, request } = await jacketRequest(book, front?.image ?? frontWebp, key, 'jpeg')
@@ -429,6 +615,16 @@ async function main() {
       if (still.size) console.log(`${still.size} book(s) still in a batch job; run the build again later to collect them.`)
     }
   }
+
+  // The whole shelf: keys no longer in the Library (nor in a dev Library, nor waiting in a batch) are stale.
+  if (parseLimit(args.limit) === Infinity) {
+    const keep = new Set([...selected.map(keyOf), ...devLibraryKeys(), ...readPending().flatMap(job => job.books.map(book => book.key))])
+    const pruned = pruneStale(manifest, keep)
+    if (pruned.length) console.log(`\nMoved ${pruned.length} stale asset set(s) to .data/book-assets-stale/: ${pruned.join(', ')}`)
+    writeManifest(manifest)
+  }
+  const low = selected.filter(book => !manifest[keyOf(book)]?.front || lowFront(manifest[keyOf(book)]))
+  if (low.length) console.log(`\nFronts below ${MIN_HEIGHT} px (${low.length}):\n${low.map(book => `  ${book.title}: ${manifest[keyOf(book)]?.meta?.frontSource ?? 'no front'} ${manifest[keyOf(book)]?.meta?.frontSize ?? ''}`).join('\n')}`)
 
   writeLibrary(raw, selected, manifest)
   console.log(`\n${selected.length} Books, ${images} AI image(s) ≈ $${(images * AI_COST).toFixed(2)}${useBatch ? ' (batch)' : ''}. Manifest: ${join(OUT, 'manifest.json')}`)
