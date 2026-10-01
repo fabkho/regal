@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // The Stack view: the whole Library as one pile of Books, no Bookcase. The
 // camera looks slightly down at the pile; the wheel, dragging and the arrow
-// keys scroll smoothly up and down it. Scrolling pauses while a Book is out.
+// keys scroll smoothly up and down it (a flicked finger glides on). Scrolling
+// pauses while a Book is out. The scroll goes to the Books' scroll highlight.
 import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
 import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
+import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
+import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
 
 const props = defineProps<{
   stackHeight: number
@@ -24,10 +27,17 @@ const FIT_WIDTH = 0.42
 const WHEEL_SPEED = 0.0011
 const DRAG_SPEED = 0.0022
 const KEY_STEP = 0.12
+/** A flicked touch drag carries on this long (s) at its last speed. */
+const FLING_SECONDS = 0.3
+/** A touch lifted longer than this (ms) after its last move was held still: no fling. */
+const FLING_WINDOW = 80
+/** The focus line meets the Spines about this far in front of the pile's axis (half a Book's depth). */
+const FOCUS_Z = 0.07
 
 const { camera, renderer } = useTres()
 const { onBeforeRender } = useLoop()
 const { pickedId } = useBookPick()
+const { scrolled } = useScrollLead()
 const reducedMotion = usePreferredReducedMotion()
 
 const cameraRef = shallowRef<PerspectiveCamera | null>(null)
@@ -39,18 +49,25 @@ const view = { y: 0.2, target: 0.2 }
 const bounds = computed<[number, number]>(() => [0.1, Math.max(0.1, props.stackHeight - 0.06)])
 let placed = false
 
+/** The scroll for the Books' scroll highlight (utils/stack/scrollHighlight.ts), updated every frame. */
+const scroll: StackScroll = { focusY: view.y, speed: 0 }
+let previousY = view.y
+provide(STACK_SCROLL, scroll)
+
 watch(() => props.stackHeight, (height) => {
   const top = MathUtils.clamp(height - 0.1, ...bounds.value)
   // Start at the top of the pile (what you're reading now); keep position on later changes.
   if (!placed || view.target > bounds.value[1]) {
     view.target = top
     view.y = top
+    previousY = top
     placed = height > 0
   }
 }, { immediate: true })
 
 function scrollBy(metres: number) {
   if (pickedId.value) return
+  scrolled()
   view.target = MathUtils.clamp(view.target + metres, ...bounds.value)
 }
 
@@ -62,11 +79,18 @@ function onWheel(event: WheelEvent) {
 
 let dragging = false
 let lastY = 0
+/** Speed (m/s) of a touch drag and when it last moved, for the fling. */
+let dragSpeed = 0
+let lastMoveAt = 0
 
 function onPointerDown(event: PointerEvent) {
   if (pickedId.value) return
+  // Touch has no hover: the scroll focus leads.
+  if (event.pointerType !== 'mouse') scrolled()
   dragging = true
   lastY = event.clientY
+  dragSpeed = 0
+  lastMoveAt = event.timeStamp
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -75,11 +99,19 @@ function onPointerMove(event: PointerEvent) {
   if (!dragging) return
   const dy = event.clientY - lastY
   lastY = event.clientY
+  if (dy === 0) return
+  const seconds = (event.timeStamp - lastMoveAt) / 1000
+  if (seconds > 0) dragSpeed += (dy * DRAG_SPEED / seconds - dragSpeed) * 0.6
+  lastMoveAt = event.timeStamp
   scrollBy(dy * DRAG_SPEED)
 }
 
-function onPointerUp() {
+function onPointerUp(event: PointerEvent) {
+  // A flicked finger lets the pile glide on (a mouse drag stops where it is let go).
+  const flicked = dragging && event.type === 'pointerup' && event.pointerType !== 'mouse'
+    && event.timeStamp - lastMoveAt < FLING_WINDOW
   dragging = false
+  if (flicked) scrollBy(dragSpeed * FLING_SECONDS)
 }
 
 function onKey(event: KeyboardEvent) {
@@ -96,9 +128,11 @@ function onKey(event: KeyboardEvent) {
     scrollBy(steps[event.key]!)
   }
   else if (event.key === 'Home') {
+    scrolled()
     view.target = bounds.value[1]
   }
   else if (event.key === 'End') {
+    scrolled()
     view.target = bounds.value[0]
   }
 }
@@ -142,8 +176,15 @@ onBeforeUnmount(() => {
 })
 
 onBeforeRender(({ delta }) => {
-  const smoothing = reducedMotion.value === 'reduce' ? 1 : 1 - Math.exp(-(delta ?? 0.016) * 7)
+  const seconds = delta || 0.016
+  const smoothing = reducedMotion.value === 'reduce' ? 1 : 1 - Math.exp(-seconds * 7)
   view.y += (view.target - view.y) * smoothing
+  // Smoothed, and a jump (a new pile, reduced motion) counts no faster than 3 m/s.
+  const speed = MathUtils.clamp((view.y - previousY) / seconds, -3, 3)
+  scroll.speed += (speed - scroll.speed) * (1 - Math.exp(-seconds * 20))
+  if (Math.abs(scroll.speed) < 1e-4) scroll.speed = 0
+  previousY = view.y
+  scroll.focusY = view.y
   const cam = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (cam) {
     // Narrow views (a portfolio sidebar) step back until the pile fits the width.
@@ -152,6 +193,8 @@ onBeforeRender(({ delta }) => {
     const scale = distance / CAMERA_DISTANCE
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
+    // The middle of the view, where the line of sight meets the Spines.
+    scroll.focusY = view.y + CAMERA_RISE * scale * FOCUS_Z / distance
   }
   // Lights travel with the view so every part of the pile is lit the same.
   if (rig.value) rig.value.position.y = view.y

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // Dev-only drawer with the open design decisions, previewed live (click next
-// to a picked Book, date separators), links that play the decided re-sort
+// to a picked Book, date separators, scroll highlight), links that play the decided re-sort
 // transitions, plus two tools (cover overrides, notes). Picks are saved to .data/choices.json. Settled
 // decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts).
 import { SEPARATOR_STYLES } from '#layers/regal/app/utils/stack/separators'
+import { SCROLL_HIGHLIGHTS } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { readYears } from '#layers/regal/app/utils/stack/view'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
 
@@ -127,6 +128,34 @@ onMounted(async () => {
           >
           <span>
             <strong>{{ option.title }}</strong>
+            <small>{{ option.text }}</small>
+          </span>
+        </label>
+      </section>
+
+      <!-- Scroll highlight -->
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Open · Scroll highlight
+        </h3>
+        <p class="choices__hint">
+          Hover for scrolling and touch (phones have no hover): what the Book in the middle of the Stack does while you scroll.
+          Moving the mouse onto a Book hands over to hover again.
+        </p>
+        <label
+          v-for="option in SCROLL_HIGHLIGHTS"
+          :key="option.value"
+          class="choices__option"
+          :data-on="choices.scrollHighlight === option.value"
+        >
+          <input
+            type="radio"
+            name="scroll-highlight"
+            :checked="choices.scrollHighlight === option.value"
+            @change="set('scrollHighlight', option.value); showStack()"
+          >
+          <span>
+            <strong>{{ option.title }}{{ option.value === 'focus' ? ' (recommended)' : '' }}</strong>
             <small>{{ option.text }}</small>
           </span>
         </label>

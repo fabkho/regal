@@ -11,7 +11,7 @@ Built with Nuxt 4 and [TresJS](https://tresjs.org) (three.js for Vue).
 - Drop your Goodreads export (or try the demo) and your Books stand on an antique Bookcase — sized by page count and binding, grouped by Reading status.
 - Real Covers, found by ISBN (Open Library; Google Books with a key). Spines and backs are generated from each Cover: colour from its left edge, title and author typeset along the Spine, the real blurb and ISBN barcode on the back.
 - Hover a Book: it eases forward and catches the light. Click: it comes out to you showing its Cover; click again for the back, again to put it away. Drag to spin it.
-- **Stack** view: the whole Library as one pile you scroll through smoothly.
+- **Stack** view: the whole Library as one pile you scroll through smoothly (wheel, drag, arrow keys; on touch a flicked finger glides on). The Book in the middle of the view comes out like a hovered one, with its title and stars beside it (a caption on narrow screens): the hover for scrolling and phones.
 
 ![bookcase](docs/assets/pick-bookcase.png)
 
@@ -84,7 +84,7 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_MODE=embed`, `NUXT_PUBLIC_REGAL_
 
 Both load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML) and share it, the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
 
-The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; Books a filter brings back pop in scattered around the pile and leaving ones slide out and shrink away, and when no Book stays (a new year) the old pile sweeps out to the left before the new one settles in from the bottom up (instant with reduced motion); classic back covers; title and stars in the hover label.
+The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; Books a filter brings back pop in scattered around the pile and leaving ones slide out and shrink away, and when no Book stays (a new year) the old pile sweeps out to the left before the new one settles in from the bottom up (instant with reduced motion); classic back covers; title and stars in the hover label; while you scroll the Stack (and on touch screens), the Book in the middle of the view comes out with that label.
 
 **Styling.** The components use the paper-ink tokens with fallbacks, e.g. `var(--color-ink, #2C2C2A)`, so they look right with or without them. A host that defines the same tokens (`--color-bg`, `--color-ink`, `--color-ink-muted`, `--color-ink-faint`, `--color-line`, `--color-accent`, `--color-accent-tint`, `--font-mono`, `--font-serif`, `--text-2xs` … `--text-2xl`) restyles them; set them on a wrapper to change only Regal. Regal registers the IBM Plex Mono, Patua One and Antonio `@font-face`s (no other global CSS).
 

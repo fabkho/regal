@@ -400,6 +400,14 @@ const unseen = (bookId: string) => meshes.get(bookId)?.visible === false
 // the poses) can't be taken out; clicks look through it.
 useBookClicks(group, bookId => !unseen(bookId) && props.poses.some(pose => pose.bookId === bookId))
 let hoveredId: string | null = null
+/** Scroll highlight (Stack only): the Book on the focus line comes out like a hovered one. */
+const highlight = useScrollHighlight()
+const { focusedBook, scrollLed } = highlight
+
+watch(focusedBook, (bookId) => {
+  if (!bookId || reduced.value) return
+  gsap.fromTo(motionFor(bookId).glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
+})
 
 function setMesh(bookId: string, element: unknown) {
   const object = (element as { isObject3D?: boolean } | null)?.isObject3D
@@ -665,13 +673,17 @@ onBeforeRender(({ delta }) => {
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-(delta ?? 0.016) * 12)
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
+  // No scroll highlight while a Book is out or a re-sort runs; the mouse wins while it rests on a Book.
+  highlight.update(props.poses, delta ?? 0.016, !!pickedId.value || !!running || !!requested, hoveredId)
+  // Once the user scrolls, the Book under a resting mouse gives way to the focus.
+  const pointerId = scrollLed.value ? null : hoveredId
 
   for (const pose of rendered.value) {
     const mesh = meshes.get(pose.bookId)
     if (!mesh) continue
     const motion = motionFor(pose.bookId)
     const isPicked = pickedId.value === pose.bookId
-    const hovered = hoveredId === pose.bookId || hoveredBook.value === pose.bookId
+    const hovered = pointerId === pose.bookId || (hoveredBook.value === pose.bookId && hoveredId !== pose.bookId)
     const hoverTarget = hovered && !isPicked && motion.pick.value === 0 ? 1 : 0
     motion.hover += (hoverTarget - motion.hover) * ease
     if (Math.abs(motion.hover - hoverTarget) < 0.001) motion.hover = hoverTarget
@@ -708,6 +720,15 @@ onBeforeRender(({ delta }) => {
       basePosition.z += HOVER_OUT * motion.hover
       tiltQuaternion.setFromAxisAngle(X_AXIS, HOVER_TILT * motion.hover)
       baseQuaternion.premultiply(tiltQuaternion)
+    }
+    // Scroll highlight: the same pull-out and tilt; the wave also draws the Book
+    // sideways, the riffle turns it about its left end.
+    const lift = highlight.liftOf(pose, isPicked || motion.pick.value > 0)
+    if (lift.out > 0 || lift.yaw > 0) {
+      basePosition.z += lift.out + pose.height / 2 * Math.sin(lift.yaw)
+      basePosition.x += lift.slide + pose.height / 2 * (Math.cos(lift.yaw) - 1)
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.yaw))
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.tilt))
     }
 
     const pick = motion.pick.value
@@ -749,8 +770,8 @@ onBeforeRender(({ delta }) => {
       }
     }
 
-    // Shine: a hovered or picked Book catches the light.
-    const shine = Math.max(motion.hover, pick * 0.6)
+    // Shine: a hovered, focused or picked Book catches the light.
+    const shine = Math.max(motion.hover, lift.shine, pick * 0.6)
     const entry = materialsByBook.get(pose.bookId)
     if (entry) {
       applyShine(entry.spine, shine)
@@ -758,7 +779,8 @@ onBeforeRender(({ delta }) => {
       applyShine(entry.back, shine)
     }
 
-    if (hoveredId === pose.bookId && motion.glint.value < 1 && !isPicked) glintBook = { mesh, pose, motion }
+    const glinting = pointerId === pose.bookId || focusedBook.value === pose.bookId
+    if (glinting && motion.glint.value < 1 && !isPicked) glintBook = { mesh, pose, motion }
   }
 
   // Glint: a small warm light sweeping down the hovered Book once.

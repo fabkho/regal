@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // The rating on hover: a small label next to the pointer with the hovered
 // Book's title and stars (quarter steps). Only for hovers in the 3D view, not
-// for hovering a record in the Book list.
+// for hovering a record in the Book list, and not once the user scrolls (the
+// scroll focus label takes over, see FocusLabel.vue).
 
 const hovered = useState<string | null>('books:hovered', () => null)
 const { books } = useLibrary()
 const { pickedId } = useBookPick()
+const { scrollLed } = useScrollLead()
 const book = computed(() => (hovered.value ? books.value.find(item => item.id === hovered.value) : null))
 const position = reactive({ x: 0, y: 0, overCanvas: false })
 
@@ -22,23 +24,11 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
 <template>
   <Teleport to="body">
     <p
-      v-if="book && position.overCanvas && !pickedId"
+      v-if="book && position.overCanvas && !pickedId && !scrollLed"
       class="hover-label"
       :style="{ left: `${position.x + 14}px`, top: `${position.y + 14}px` }"
     >
-      <span class="hover-label__title">{{ book.title }}</span>
-      <span
-        v-if="book.rating"
-        class="hover-label__stars"
-        :aria-label="`Rated ${book.rating} out of 5`"
-      >★★★★★<span
-        class="hover-label__fill"
-        :style="{ width: `${book.rating / 5 * 100}%` }"
-      >★★★★★</span></span>
-      <span
-        v-else
-        class="hover-label__unrated"
-      >not rated</span>
+      <BooksTitleStars :book="book" />
     </p>
   </Teleport>
 </template>
@@ -59,23 +49,5 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   border: 1px solid var(--color-ink, #2C2C2A);
   pointer-events: none;
   white-space: nowrap;
-}
-
-.hover-label__stars {
-  position: relative;
-  display: inline-block;
-  color: var(--color-line, rgba(44, 44, 42, 0.14));
-  letter-spacing: 0.08em;
-}
-
-.hover-label__fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  overflow: hidden;
-  color: var(--color-accent, #B93E2E);
-}
-
-.hover-label__unrated {
-  color: var(--color-ink-muted, #6B6B69);
 }
 </style>

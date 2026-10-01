@@ -13,6 +13,7 @@
 
 import type { SeparatorStyle } from '#layers/regal/app/utils/stack/separators'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
+import type { ScrollHighlight } from '#layers/regal/app/utils/stack/scrollHighlight'
 
 /** The open decisions plus the tools; settled ones live in DECIDED_LOOK, not here. */
 export interface DevChoices {
@@ -20,6 +21,8 @@ export interface DevChoices {
   separatorStyle: SeparatorStyle
   /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
   pickOutside: PickOutside
+  /** What scrolling the Stack highlights, without a cursor (open: recommended 'focus'). */
+  scrollHighlight: ScrollHighlight
   /** Optional cover overrides: asset key → chosen cover URL. */
   editionPicks: Record<string, string>
   notes: string
@@ -29,11 +32,13 @@ export interface DevChoices {
 export interface Look {
   separatorStyle: SeparatorStyle
   pickOutside: PickOutside
+  scrollHighlight: ScrollHighlight
 }
 
 /**
  * Not decided yet, recommended defaults: 'numerals' date separators, a click
- * next to a picked Book puts it back (even on the pile).
+ * next to a picked Book puts it back (even on the pile), the 'focus' line
+ * highlight while scrolling.
  * Decided and hard-wired (no longer choices): the re-sort animation (utils/stack/moves.ts),
  * new Books popping in scattered around the pile, the swap of a whole pile
  * (utils/stack/shuffle.ts), the classic back cover and the title + stars hover label.
@@ -41,6 +46,7 @@ export interface Look {
 export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   separatorStyle: 'numerals',
   pickOutside: 'put-back',
+  scrollHighlight: 'focus',
 })
 
 export const DEFAULT_CHOICES: DevChoices = {
@@ -114,7 +120,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { separatorStyle, pickOutside } = choices.value
-    return { separatorStyle, pickOutside }
+    const { separatorStyle, pickOutside, scrollHighlight } = choices.value
+    return { separatorStyle, pickOutside, scrollHighlight }
   })
 }

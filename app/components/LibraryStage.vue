@@ -170,6 +170,7 @@ watch(books, (list) => {
     </p>
 
     <BooksHoverLabel />
+    <BooksFocusLabel />
 
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"
