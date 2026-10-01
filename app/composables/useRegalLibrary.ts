@@ -1,4 +1,5 @@
-import { importLibrary } from '#layers/regal/shared/library/importLibrary'
+import type { ImportLibraryResult } from '#layers/regal/shared/library/importLibrary'
+import { importReadingTracker, looksLikeJson } from '#layers/regal/shared/library/importReadingTracker'
 import type { NuxtApp } from '#app'
 
 /** One load per app (per request on the server), however many embed components ask. */
@@ -22,8 +23,8 @@ export function useRegalLibrary() {
   const loaded = useState('regal:library-loaded', () => false)
   const origin = import.meta.server ? useRequestURL().origin : ''
 
-  function fetchLibrary(): Promise<ReturnType<typeof importLibrary>> {
-    const get = (src: string) => $fetch<string>(src, { responseType: 'text' }).then(text => importLibrary(text))
+  function fetchLibrary(): Promise<ImportLibraryResult> {
+    const get = (src: string) => $fetch<string>(src, { responseType: 'text' }).then(parseLibrary)
     if (import.meta.client || !librarySrc.startsWith('/')) return get(librarySrc)
     return get(librarySrc).catch(() => get(new URL(librarySrc, origin).href))
   }
@@ -53,4 +54,20 @@ export function useRegalLibrary() {
   if (import.meta.server) onServerPrefetch(load)
   onMounted(load)
   return library
+}
+
+/**
+ * A reading-tracker JSON export parses anywhere; a Goodreads CSV only in the
+ * browser. The CSV parser (Papa Parse) is kept out of server bundles: its web
+ * worker source is a string containing `typeof window`, which some server
+ * builds (e.g. a Nuxt host deployed to Cloudflare) rewrite into invalid code.
+ */
+const loadCsvImporter = () => import.meta.server
+  ? Promise.reject(new Error('CSV libraries load in the browser only.'))
+  : import('#layers/regal/shared/library/importLibrary')
+
+async function parseLibrary(text: string): Promise<ImportLibraryResult> {
+  if (looksLikeJson(text)) return importReadingTracker(text)
+  if (import.meta.server) throw new Error('A Goodreads CSV as `librarySrc` is read in the browser only.')
+  return (await loadCsvImporter()).importLibrary(text)
 }
