@@ -5,7 +5,6 @@
 import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
-import { markDragEnd } from '~/utils/books/dragGuard'
 import { FLOOR_SHADOW } from '~/utils/bookcase/scene'
 
 const props = defineProps<{ stackHeight: number }>()
@@ -58,26 +57,24 @@ function onWheel(event: WheelEvent) {
 }
 
 let dragging = false
-let dragMoved = false
 let lastY = 0
 
 function onPointerDown(event: PointerEvent) {
   if (pickedId.value) return
   dragging = true
-  dragMoved = false
   lastY = event.clientY
 }
 
 function onPointerMove(event: PointerEvent) {
+  // A release outside the window never reaches us: no button down, no drag.
+  if (dragging && !(event.buttons & 1)) dragging = false
   if (!dragging) return
   const dy = event.clientY - lastY
   lastY = event.clientY
-  if (Math.abs(dy) > 0) dragMoved = true
   scrollBy(dy * DRAG_SPEED)
 }
 
 function onPointerUp() {
-  if (dragging && dragMoved) markDragEnd()
   dragging = false
 }
 
@@ -125,6 +122,7 @@ onMounted(() => {
   element.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('keydown', onKey)
   emit('ready')
 })
@@ -135,6 +133,7 @@ onBeforeUnmount(() => {
   element?.removeEventListener('pointerdown', onPointerDown)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('keydown', onKey)
 })
 

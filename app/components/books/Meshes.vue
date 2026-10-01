@@ -9,6 +9,7 @@
 // - click: it slides out and comes to the camera showing its front Cover;
 //   click again for the back, a third time to put it away (after
 //   mawise/bookshelf); drag to spin it; Escape or empty space puts it away.
+//   Clicks are told from drags and raycast by useBookClicks.
 import {
   BoxGeometry,
   CanvasTexture,
@@ -22,13 +23,12 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three'
-import type { Material, Mesh, PerspectiveCamera, PointLight } from 'three'
+import type { Group, Material, Mesh, PerspectiveCamera, PointLight } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
 import type { Book } from '~~/shared/types/book'
 import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
-import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
 import { planShuffle, sampleTrack } from '~/utils/stack/shuffle'
 import { chooseShuffle, countMoves } from '~/utils/stack/moves'
 import type { ShufflePlan, ShuffleStyle } from '~/utils/stack/shuffle'
@@ -371,11 +371,13 @@ watch(() => props.poses, (poses) => {
 
 const { camera, controls, renderer } = useTres()
 const { onBeforeRender } = useLoop()
-const { pickedId, face, click, putAway } = useBookPick()
+const { pickedId, face, putAway } = useBookPick()
 const reducedMotion = usePreferredReducedMotion()
 const reduced = computed(() => reducedMotion.value === 'reduce')
 
 const glintLight = shallowRef<PointLight | null>(null)
+const group = shallowRef<Group | null>(null)
+useBookClicks(group)
 let hoveredId: string | null = null
 
 function setMesh(bookId: string, element: unknown) {
@@ -391,7 +393,14 @@ function setCursor(value: string) {
   if (element) element.style.cursor = value
 }
 
-function onEnter(bookId: string) {
+// Hover handlers take the Book from the event's mesh rather than a closure per
+// Book: Tres adds a listener on every patch and never removes the old one, so
+// handlers created per render pile up (one more call per re-sort).
+type BookPointerEvent = { object?: { userData?: { bookId?: string } } }
+
+function onEnter(event: BookPointerEvent) {
+  const bookId = event.object?.userData?.bookId
+  if (!bookId) return
   hoveredId = bookId
   hoveredBook.value = bookId
   setCursor('pointer')
@@ -400,16 +409,11 @@ function onEnter(bookId: string) {
   gsap.fromTo(glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
 }
 
-function onLeave(bookId: string) {
+function onLeave(event: BookPointerEvent) {
+  const bookId = event.object?.userData?.bookId
   if (hoveredId === bookId) hoveredId = null
   if (hoveredBook.value === bookId) hoveredBook.value = null
   setCursor(dragging ? 'grabbing' : pickedId.value ? 'grab' : 'default')
-}
-
-function onClick(bookId: string, event: { stopPropagation?: () => void }) {
-  event.stopPropagation?.()
-  if (justDragged()) return
-  click(bookId)
 }
 
 function tween(target: { value: number }, value: number, seconds: number) {
@@ -450,25 +454,24 @@ watch(face, (value) => {
 
 // Drag to spin the picked Book.
 let dragging = false
-let dragMoved = false
 let lastX = 0
 let lastY = 0
 
 function onPointerDown(event: PointerEvent) {
   if (!pickedId.value) return
   dragging = true
-  dragMoved = false
   lastX = event.clientX
   lastY = event.clientY
 }
 
 function onPointerMove(event: PointerEvent) {
+  // A release outside the window never reaches us: no button down, no drag.
+  if (dragging && !(event.buttons & 1)) dragging = false
   if (!dragging || !pickedId.value) return
   const dx = event.clientX - lastX
   const dy = event.clientY - lastY
   lastX = event.clientX
   lastY = event.clientY
-  if (Math.abs(dx) + Math.abs(dy) > 0) dragMoved = true
   const spin = motionFor(pickedId.value).spin
   spin.x += dx * SPIN_PER_PX
   spin.y = MathUtils.clamp(spin.y + dy * SPIN_PER_PX, -1.3, 1.3)
@@ -476,7 +479,6 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onPointerUp() {
-  if (dragging && dragMoved) markDragEnd()
   dragging = false
   if (pickedId.value) setCursor('grab')
 }
@@ -490,6 +492,7 @@ onMounted(() => {
   element.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('keydown', onKey)
 })
 
@@ -669,6 +672,7 @@ onBeforeUnmount(() => {
   element?.removeEventListener('pointerdown', onPointerDown)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('keydown', onKey)
   if (controls.value) (controls.value as { enabled: boolean }).enabled = true
   for (const motion of motionByBook.values()) gsap.killTweensOf([motion.pick, motion.flip, motion.spin, motion.glint])
@@ -679,7 +683,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TresGroup name="books">
+  <TresGroup
+    ref="group"
+    name="books"
+  >
     <TresMesh
       v-for="pose in props.poses"
       :key="pose.bookId"
@@ -691,9 +698,8 @@ onBeforeUnmount(() => {
       :scale="[pose.thickness, pose.height, pose.depth]"
       cast-shadow
       receive-shadow
-      @pointerenter="onEnter(pose.bookId)"
-      @pointerleave="onLeave(pose.bookId)"
-      @click="(event: { stopPropagation?: () => void }) => onClick(pose.bookId, event)"
+      @pointerenter="onEnter"
+      @pointerleave="onLeave"
     />
     <TresPointLight
       ref="glintLight"

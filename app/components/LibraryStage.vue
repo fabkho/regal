@@ -6,7 +6,6 @@
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
 import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
 import { layoutLibrary } from '~/utils/bookcase/layout'
-import { justDragged } from '~/utils/books/dragGuard'
 import { layoutStack } from '~/utils/stack/layout'
 import { applyStackView } from '~/utils/stack/view'
 import type { ShuffleStyle } from '~/utils/stack/shuffle'
@@ -62,10 +61,6 @@ function setMode(value: ViewMode) {
   mode.value = value
 }
 
-function onPointerMissed() {
-  if (pickedId.value && !justDragged()) putAway()
-}
-
 // A Book picked from the list might not exist any more after a new import.
 watch(books, (list) => {
   if (pickedId.value && !list.some(book => book.id === pickedId.value)) putAway()
@@ -92,7 +87,6 @@ watch(books, (list) => {
         :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
         :output-color-space="SRGBColorSpace"
         :dpr="[1, 2]"
-        @pointermissed="onPointerMissed"
       >
         <BookcaseScene
           v-if="mode === 'bookcase'"

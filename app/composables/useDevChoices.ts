@@ -7,6 +7,8 @@
 // covers default to the best automatic image + Gemini back/spine, with
 // photos for a few special editions.
 
+import type { PickOutside } from '~/utils/books/pick'
+
 export type PageLayout = 'sidebar-all' | 'sidebar-list' | 'sidebar-filters'
 /** Fancy re-sort for big changes (more variants arrive from utils/stack/shuffle.ts). */
 export type FancyShuffle = string
@@ -25,6 +27,8 @@ export interface DevChoices {
   backStyle: 'classic' | 'clean'
   /** Hover label content. */
   label: 'stars-title' | 'stars'
+  /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
+  pickOutside: PickOutside
   ai: 'standard' | 'batch' | null
   /** Optional cover overrides: asset key → chosen cover URL. */
   editionPicks: Record<string, string>
@@ -37,6 +41,7 @@ export interface Look {
   shuffleThreshold: number | null
   backStyle: 'classic' | 'clean'
   label: 'stars-title' | 'stars'
+  pickOutside: PickOutside
 }
 
 /** Decided: 'hand' for re-sorts that move up to 3 Books, 'carousel' above; classic back; title + stars on hover. */
@@ -45,6 +50,8 @@ export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   shuffleThreshold: 3,
   backStyle: 'classic',
   label: 'stars-title',
+  // Open (dev choices), recommended: a click next to a picked Book puts it back, even on the pile.
+  pickOutside: 'put-back',
 })
 
 export const DEFAULT_CHOICES: DevChoices = {
@@ -119,7 +126,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { shuffleFancy, shuffleThreshold, backStyle, label } = choices.value
-    return { shuffleFancy, shuffleThreshold, backStyle, label }
+    const { shuffleFancy, shuffleThreshold, backStyle, label, pickOutside } = choices.value
+    return { shuffleFancy, shuffleThreshold, backStyle, label, pickOutside }
   })
 }

@@ -11,6 +11,7 @@ import { bookAt, toNdc } from '~/utils/books/hit'
 const { scene, camera, renderer } = useTres()
 const { onRender } = useLoop()
 const { state } = useBookPick()
+const look = useLook()
 
 const books = () => scene.value.getObjectByName('books')
 const canvas = () => renderer.domElement as HTMLCanvasElement
@@ -117,6 +118,8 @@ const api = {
   lastClick: () => ({ press: lastPress, release: lastRelease }),
   pointers,
   state: () => ({ ...state.value }),
+  /** What a click on another Book does while one is out. */
+  policy: () => look.value.pickOutside,
   hitAt,
   canvasAt,
   clickableBooks,
