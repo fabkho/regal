@@ -43,6 +43,21 @@ import type { RGB } from '~/utils/covers/palette'
 
 const props = defineProps<{ poses: BookPose[], books: Book[] }>()
 
+// --- Dev choices (#26, #27): live previews of open design options -----------
+
+const { choices } = useDevChoices()
+/** Re-sorted Books fly to their new place instead of jumping there. */
+const animateMoves = computed(() => choices.value.sortMotion === 'animate')
+/** Favourites stand proud of their neighbours. */
+const proudFavourites = computed(() => choices.value.rating.includes('proud'))
+const bookmarks = computed(() => choices.value.rating.includes('bookmark'))
+/** Rating from which a Book counts as a favourite. */
+const FAVOURITE = 4.5
+const PROUD_OUT = 0.012
+const PROUD_SIDEWAYS = 0.03
+/** Hovered Book, shared with the hover label overlay. */
+const hoveredBook = useState<string | null>('books:hovered', () => null)
+
 // --- Look ------------------------------------------------------------------
 
 /**
@@ -103,6 +118,8 @@ interface BookMaterials {
 }
 
 interface Motion {
+  /** Where the Book is drawn on its way to its pose (eased when the view re-sorts). */
+  shown: { position: Vector3, quaternion: Quaternion, ready: boolean }
   hover: number
   pick: { value: number }
   flip: { value: number }
@@ -250,7 +267,7 @@ function materialsFor(pose: BookPose): Material[] {
 function motionFor(bookId: string): Motion {
   let motion = motionByBook.get(bookId)
   if (!motion) {
-    motion = { hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
+    motion = { shown: { position: new Vector3(), quaternion: new Quaternion(), ready: false }, hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
     motionByBook.set(bookId, motion)
   }
   return motion
@@ -326,6 +343,25 @@ watch(() => props.poses, (poses) => {
   }
 }, { immediate: true })
 
+// --- Bookmark (rating option B) ----------------------------------------------
+
+function isFavourite(bookId: string) {
+  return (booksById.value.get(bookId)?.rating ?? 0) >= FAVOURITE
+}
+
+const bookmarkMaterial = new MeshStandardMaterial({ color: new Color('#B93E2E').multiplyScalar(0.7), roughness: 0.55, metalness: 0 })
+const BOOKMARK = { width: 0.0007, height: 0.05, depth: 0.014 }
+
+/** A red bookmark sticking out of the head near the Spine; 5★ Books show more of it. Local units (the Book mesh is scaled). */
+function bookmarkTransform(pose: BookPose) {
+  const rating = booksById.value.get(pose.bookId)?.rating ?? 0
+  const out = rating >= 5 ? 0.024 : 0.014
+  return {
+    scale: [BOOKMARK.width / pose.thickness, BOOKMARK.height / pose.height, BOOKMARK.depth / pose.depth] as [number, number, number],
+    position: [0, (pose.height / 2 + out - BOOKMARK.height / 2) / pose.height, (pose.depth / 2 - 0.012 - BOOKMARK.depth / 2) / pose.depth] as [number, number, number],
+  }
+}
+
 // --- Interaction -------------------------------------------------------------
 
 const { camera, controls, renderer } = useTres()
@@ -352,6 +388,7 @@ function setCursor(value: string) {
 
 function onEnter(bookId: string) {
   hoveredId = bookId
+  hoveredBook.value = bookId
   setCursor('pointer')
   if (reduced.value || pickedId.value === bookId) return
   const glint = motionFor(bookId).glint
@@ -360,6 +397,7 @@ function onEnter(bookId: string) {
 
 function onLeave(bookId: string) {
   if (hoveredId === bookId) hoveredId = null
+  if (hoveredBook.value === bookId) hoveredBook.value = null
   setCursor(dragging ? 'grabbing' : pickedId.value ? 'grab' : 'default')
 }
 
@@ -453,6 +491,9 @@ onMounted(() => {
 // --- Per-frame pose ------------------------------------------------------------
 
 const basePosition = new Vector3()
+const targetPosition = new Vector3()
+const targetQuaternion = new Quaternion()
+const proudOffset = new Vector3()
 const pulledPosition = new Vector3()
 const inspectPosition = new Vector3()
 const forward = new Vector3()
@@ -484,8 +525,28 @@ onBeforeRender(({ delta }) => {
     motion.hover += (hoverTarget - motion.hover) * ease
     if (Math.abs(motion.hover - hoverTarget) < 0.001) motion.hover = hoverTarget
 
-    basePosition.set(pose.x, pose.y, pose.z)
-    baseQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
+    targetPosition.set(pose.x, pose.y, pose.z)
+    targetQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
+    if (proudFavourites.value && isFavourite(pose.bookId)) {
+      // Standing on a Shelf, favourites come out towards the room (the Spine is local +z).
+      // Lying in the Stack (top pointing left), they slide out of the pile to the right instead.
+      const lying = Math.abs(pose.rotation[2]) > 1
+      proudOffset.set(0, lying ? -PROUD_SIDEWAYS : 0, lying ? 0.004 : PROUD_OUT)
+      targetPosition.add(proudOffset.applyQuaternion(targetQuaternion))
+    }
+    const shown = motion.shown
+    if (!shown.ready || !animateMoves.value || reduced.value) {
+      shown.position.copy(targetPosition)
+      shown.quaternion.copy(targetQuaternion)
+      shown.ready = true
+    }
+    else {
+      const move = 1 - Math.exp(-(delta ?? 0.016) * 5)
+      shown.position.lerp(targetPosition, move)
+      shown.quaternion.slerp(targetQuaternion, move)
+    }
+    basePosition.copy(shown.position)
+    baseQuaternion.copy(shown.quaternion)
 
     // Hover: towards the viewer, top tilting out a little.
     if (!reduced.value && motion.hover > 0) {
@@ -571,6 +632,7 @@ onBeforeUnmount(() => {
   if (controls.value) (controls.value as { enabled: boolean }).enabled = true
   for (const motion of motionByBook.values()) gsap.killTweensOf([motion.pick, motion.flip, motion.spin, motion.glint])
   geometry.dispose()
+  bookmarkMaterial.dispose()
   for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
 })
@@ -592,7 +654,15 @@ onBeforeUnmount(() => {
       @pointerenter="onEnter(pose.bookId)"
       @pointerleave="onLeave(pose.bookId)"
       @click="(event: { stopPropagation?: () => void }) => onClick(pose.bookId, event)"
-    />
+    >
+      <TresMesh
+        v-if="bookmarks && isFavourite(pose.bookId)"
+        :geometry="geometry"
+        :material="bookmarkMaterial"
+        v-bind="bookmarkTransform(pose)"
+        cast-shadow
+      />
+    </TresMesh>
     <TresPointLight
       ref="glintLight"
       color="#FFE6C4"

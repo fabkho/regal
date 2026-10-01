@@ -15,6 +15,8 @@ const emit = defineEmits<{ ready: [] }>()
 const CAMERA_DISTANCE = 1.15
 const CAMERA_RISE = 0.22
 const CAMERA_FOV = 34
+/** Width the pile needs on screen: the longest Books plus their offsets, bookmarks and a margin. */
+const FIT_WIDTH = 0.42
 /** Metres scrolled per wheel pixel / per dragged pixel. */
 const WHEEL_SPEED = 0.0011
 const DRAG_SPEED = 0.0022
@@ -141,7 +143,11 @@ onBeforeRender(({ delta }) => {
   view.y += (view.target - view.y) * smoothing
   const cam = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (cam) {
-    cam.position.set(0, view.y + CAMERA_RISE, CAMERA_DISTANCE)
+    // Narrow views (a portfolio sidebar) step back until the pile fits the width.
+    const halfWidth = Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) * (cam.aspect || 1)
+    const distance = Math.max(CAMERA_DISTANCE, FIT_WIDTH / 2 / halfWidth)
+    const scale = distance / CAMERA_DISTANCE
+    cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
   }
   // Lights travel with the view so every part of the pile is lit the same.

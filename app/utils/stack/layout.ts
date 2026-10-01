@@ -27,8 +27,9 @@ const MAX_TWIST = 0.07
  * quarter turn about the view axis: its front Cover (+x) faces up, its top
  * (+y) points left, and the Spine (+z) still faces the viewer.
  */
-export function layoutStack(books: Book[]): StackResult {
-  const topFirst = sortForShelves(books)
+export function layoutStack(books: Book[], options: { keepOrder?: boolean } = {}): StackResult {
+  // keepOrder: the Books are already sorted top of the pile first (Stack view settings).
+  const topFirst = options.keepOrder ? books : sortForShelves(books)
   const bottomFirst = [...topFirst].reverse()
   const poses: BookPose[] = []
   let y = 0

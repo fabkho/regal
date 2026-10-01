@@ -8,6 +8,7 @@ import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
 import { layoutLibrary } from '~/utils/bookcase/layout'
 import { justDragged } from '~/utils/books/dragGuard'
 import { layoutStack } from '~/utils/stack/layout'
+import { applyStackView } from '~/utils/stack/view'
 import type { ViewMode } from '~/composables/useBookPick'
 
 const route = useRoute()
@@ -26,7 +27,19 @@ watch(mode, (value) => {
 })
 
 const shelves = computed(() => layoutLibrary(books.value))
-const stack = computed(() => layoutStack(books.value))
+const { view: stackView } = useStackView()
+const stackBooks = computed(() => applyStackView(books.value, stackView.value))
+const stack = computed(() => layoutStack(stackBooks.value, { keepOrder: true }))
+
+// Open design options, previewed live in dev (see components/dev/Choices.vue).
+const { choices } = useDevChoices()
+const sortUi = computed(() => (import.meta.dev ? choices.value.sortUi : 'chips'))
+const urlExample = computed(() => {
+  const query = new URLSearchParams({ view: 'stack', sort: stackView.value.sort })
+  if (stackView.value.year) query.set('year', String(stackView.value.year))
+  if (stackView.value.minRating) query.set('min', String(stackView.value.minRating))
+  return `?${query}`
+})
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
@@ -122,6 +135,26 @@ watch(books, (list) => {
       </button>
     </div>
 
+    <StackControls
+      v-if="mode === 'stack' && books.length && sortUi !== 'url'"
+      :variant="sortUi === 'menu' ? 'menu' : 'chips'"
+      class="stage__controls"
+    />
+    <p
+      v-if="mode === 'stack' && books.length && sortUi === 'url'"
+      class="stage__controls stage__url"
+    >
+      URL only: {{ urlExample }}
+    </p>
+    <p
+      v-if="mode === 'stack' && books.length && !poses.length"
+      class="stage__status stage__status--overlay"
+    >
+      No books match these filters
+    </p>
+
+    <BooksHoverLabel :enabled="choices.rating.includes('label')" />
+
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"
       class="stage__hint"
@@ -144,6 +177,7 @@ watch(books, (list) => {
 <style scoped>
 .stage {
   position: relative;
+  container-type: inline-size;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -213,6 +247,27 @@ watch(books, (list) => {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   pointer-events: none;
+}
+
+.stage__controls {
+  position: absolute;
+  top: 3.4rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 2;
+}
+
+.stage__url {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-xs);
+}
+
+/* Narrow stages (portfolio sidebar): no room for the hint next to the view switch. */
+@container (max-width: 560px) {
+  .stage__hint {
+    display: none;
+  }
 }
 
 .stage__details {
