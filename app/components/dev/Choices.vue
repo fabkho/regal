@@ -1,14 +1,17 @@
 <script setup lang="ts">
-// Dev-only drawer with the open design decisions, previewed live where they
-// can be: rating styles and sort/filter change the 3D scene right away; the
-// portfolio option can preview the Stack at sidebar width; cover editions
-// show every edition found. Picks are saved to .data/choices.json.
-import type { DevChoices, RatingStyle } from '~/composables/useDevChoices'
+// Dev-only drawer with the open design decisions, previewed live: the
+// portfolio Books page, the re-sort animation, the back cover style and the
+// hover label change the app right away. Picks are saved to
+// .data/choices.json. Decided points are listed at the top.
+import type { DevChoices, PageLayout } from '~/composables/useDevChoices'
+import type { StackSort } from '~/utils/stack/view'
+import { SHUFFLE_STYLES } from '~/utils/stack/shuffle'
 
-const { choices, saved, set, toggleRating, restore } = useDevChoices()
+const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
 const mode = useViewMode()
-const { putAway } = useBookPick()
+const { pick, flip, putAway, pickedId, face } = useBookPick()
+const { view: stackView, set: setStackView } = useStackView()
 const open = useState('dev-choices:open', () => false)
 
 onMounted(restore)
@@ -18,39 +21,70 @@ function showStack() {
   mode.value = 'stack'
 }
 
-// --- 1. Ratings -------------------------------------------------------------
-const RATING_OPTIONS: { value: RatingStyle, title: string, text: string }[] = [
-  { value: 'card', title: 'A · Details card', text: 'Quarter stars and the value in the card. Always on.' },
-  { value: 'bookmark', title: 'B · Bookmark', text: 'Favourites (★ 4.5+) get a red bookmark out of the head; 5★ shows more of it.' },
-  { value: 'proud', title: 'C · Stand proud', text: 'Favourites stick out: 12 mm from the Shelf, 3 cm out of the Stack.' },
-  { value: 'label', title: 'D · Hover label', text: 'Hovering a Book shows its title and rating next to the pointer.' },
-]
-const favourites = computed(() => books.value.filter(book => book.rating >= 4.5).length)
-
-// --- 2. Sort & filter -------------------------------------------------------
-const SORT_UI: { value: DevChoices['sortUi'], title: string, text: string }[] = [
-  { value: 'chips', title: '1 · Chip row', text: 'Always visible above the Stack; every option one click away.' },
-  { value: 'menu', title: '2 · Menu', text: 'One “Sort & filter” button with a popover; calmer, fits a sidebar.' },
-  { value: 'url', title: '3 · URL only', text: 'No controls; the portfolio links a fixed view (?sort=rating).' },
-]
-const MOTION: { value: DevChoices['sortMotion'], title: string }[] = [
-  { value: 'animate', title: 'Books fly to their new place' },
-  { value: 'instant', title: 'Instant re-stack' },
+const DECIDED = [
+  'Regal becomes a Nuxt layer; the portfolio gets its own Books page (no sidebar widget)',
+  'Ratings: hover label with stars (+ the details card); no bookmark, no sticking out',
+  'Covers: best automatic image by default, Gemini back + spine for every book',
+  'Photos only for a few special editions (Sun Eater, …): drop-in, see Tools',
 ]
 
-// --- 3. Portfolio -----------------------------------------------------------
-const PORTFOLIO: { value: Exclude<DevChoices['portfolio'], null>, title: string, text: string, flow: string[] }[] = [
-  { value: 'static', title: 'A · Static snapshot', text: 'Script copies library.json + images into the portfolio repo; commit, deploy. Simplest, no runtime deps.', flow: ['Fable', 'tracker DB', 'assets:build', 'portfolio repo', 'deploy'] },
-  { value: 'blob', title: 'B · Blob storage', text: 'Pipeline uploads to NuxtHub/R2; the portfolio reads at runtime. No commit per book.', flow: ['Fable', 'tracker DB', 'assets:build', 'R2 / NuxtHub', 'portfolio (runtime)'] },
-  { value: 'layer', title: 'C · Regal as Nuxt layer', text: 'Portfolio extends Regal (layer/package) and gets the Stack component; data via A or B.', flow: ['regal (layer)', 'extends', 'portfolio', 'data: A or B'] },
+// --- 1. Books page --------------------------------------------------------------
+const LAYOUTS: { value: PageLayout, title: string, text: string, side: string[], body: string[] }[] = [
+  { value: 'sidebar-all', title: 'A · Filters + list in the sidebar', text: 'Body is only the 3D Stack.', side: ['count', 'filters', 'list'], body: ['3D'] },
+  { value: 'sidebar-list', title: 'B · List in the sidebar, filters over the 3D', text: 'Filters as a chip row on the Stack.', side: ['count', 'list'], body: ['filters', '3D'] },
+  { value: 'sidebar-filters', title: 'C · Filters in the sidebar, list in the body', text: 'Body switches between Stack and List.', side: ['count', 'filters'], body: ['3D | list'] },
+]
+const DETAILS: { value: DevChoices['details'], title: string }[] = [
+  { value: 'overlay', title: 'Details as a card over the 3D' },
+  { value: 'sidebar', title: 'Details replace the list in the sidebar' },
 ]
 
-// --- 4. Cover editions ------------------------------------------------------
-const EDITIONS: { value: Exclude<DevChoices['editions'], null>, title: string, text: string }[] = [
-  { value: 'photo', title: 'a · Photograph my copies', text: 'Real covers of your editions (#21).' },
-  { value: 'auto', title: 'b · Auto: earliest non-film edition', text: 'Marked AUTO below.' },
-  { value: 'manual', title: 'c · I pick per book', text: 'Click a cover below; your pick is saved.' },
+function setLayout(value: PageLayout) {
+  set('pageLayout', value)
+  if (!choices.value.pagePreview) set('pagePreview', true)
+  showStack()
+}
+
+// --- 2. Re-sort animation ---------------------------------------------------
+const THRESHOLDS: { value: number | null, title: string }[] = [
+  { value: 3, title: 'More than 3 move' },
+  { value: 5, title: 'More than 5 move' },
+  { value: null, title: 'Never (always by hand)' },
 ]
+/** Fancy styles for big re-sorts: the carousel and its variations. */
+const FANCY = SHUFFLE_STYLES.filter(style => style.value !== 'hand')
+const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
+const SORT_CYCLE: StackSort[] = ['date', 'rating', 'author', 'title']
+
+function shuffleNow() {
+  if (mode.value !== 'stack') showStack()
+  const next = SORT_CYCLE[(SORT_CYCLE.indexOf(stackView.value.sort) + 1) % SORT_CYCLE.length]!
+  setStackView({ sort: next })
+}
+
+// --- 3. Back cover ------------------------------------------------------------
+const BACKS: { value: DevChoices['backStyle'], title: string, text: string }[] = [
+  { value: 'classic', title: 'Classic paperback', text: 'Genre label, 1–2 praise quotes, the blurb filling the space, publisher, barcode with “ISBN 978-…” above it.' },
+  { value: 'clean', title: 'Clean', text: 'Title, author and the blurb filling the space; barcode.' },
+]
+
+function showBack() {
+  const book = books.value.find(item => item.isbn13) ?? books.value[0]
+  if (!book) return
+  if (mode.value !== 'stack' && !choices.value.pagePreview) mode.value = 'stack'
+  if (pickedId.value !== book.id) pick(book.id)
+  setTimeout(() => {
+    if (face.value !== 'back') flip()
+  }, 1300)
+}
+
+// --- 4. Hover label -----------------------------------------------------------
+const LABELS: { value: DevChoices['label'], title: string, sample: string }[] = [
+  { value: 'stars-title', title: 'Title + stars', sample: 'Dune  ★★★★☆' },
+  { value: 'stars', title: 'Stars only', sample: '★★★★☆' },
+]
+
+// --- Tools: cover overrides -------------------------------------------------
 interface Edition { id: string, name: string, released: string | null, thumb: string, full: string, film: boolean }
 const manifest = ref<Record<string, { front?: string, back?: string }>>({})
 const editions = ref<Record<string, { list: Edition[], auto: string | null } | 'loading'>>({})
@@ -60,7 +94,6 @@ const keyOf = (book: { isbn13: string | null, id: string }) => book.isbn13 ?? bo
 async function loadEditions() {
   editionsOpen.value = !editionsOpen.value
   if (!editionsOpen.value) return
-  manifest.value = await $fetch<Record<string, { front?: string }>>('/book-assets/manifest.json').catch(() => ({}))
   for (const book of books.value) {
     const key = keyOf(book)
     if (editions.value[key]) continue
@@ -77,7 +110,6 @@ function pickEdition(key: string, url: string) {
   const picks = Object.fromEntries(Object.entries(current).filter(([book]) => book !== key))
   if (current[key] !== url) picks[key] = url
   set('editionPicks', picks)
-  if (choices.value.editions !== 'manual') set('editions', 'manual')
 }
 
 // --- 5. AI ------------------------------------------------------------------
@@ -110,139 +142,189 @@ onMounted(async () => {
         <span class="choices__saved">{{ saved === 'saved' ? 'saved ✓' : saved === 'saving' ? 'saving…' : saved === 'error' ? 'not saved' : '' }}</span>
       </header>
       <p class="choices__intro">
-        Each pick applies live where it can and is saved for Claude in <code>.data/choices.json</code>.
+        Every pick applies live and is saved for Claude in <code>.data/choices.json</code>.
       </p>
+
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Decided ✓
+        </h3>
+        <ul class="choices__decided">
+          <li
+            v-for="item in DECIDED"
+            :key="item"
+          >
+            {{ item }}
+          </li>
+        </ul>
+      </section>
 
       <!-- 1 -->
       <section class="choices__section">
         <h3 class="choices__heading">
-          1 · Ratings in 3D <span class="choices__issue">#26 · combine freely</span>
+          1 · Books page in the portfolio
         </h3>
-        <p class="choices__hint">
-          {{ favourites }} of {{ books.length }} books are favourites (★ 4.5+).
-          <button
-            type="button"
-            class="choices__link"
-            @click="showStack"
-          >
-            Show Stack
-          </button>
-        </p>
         <label
-          v-for="option in RATING_OPTIONS"
-          :key="option.value"
           class="choices__option"
-          :data-on="choices.rating.includes(option.value)"
+          :data-on="choices.pagePreview"
         >
           <input
             type="checkbox"
-            :checked="choices.rating.includes(option.value)"
-            :disabled="option.value === 'card'"
-            @change="toggleRating(option.value)"
+            :checked="choices.pagePreview"
+            @change="set('pagePreview', !choices.pagePreview); showStack()"
           >
           <span>
-            <strong>{{ option.title }}</strong>
-            <small>{{ option.text }}</small>
+            <strong>Show the page preview</strong>
+            <small>Portfolio grid: 3D in the body, 320 px text sidebar on the right.</small>
           </span>
         </label>
-      </section>
-
-      <!-- 2 -->
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          2 · Sort &amp; filter <span class="choices__issue">#27</span>
-        </h3>
-        <p class="choices__hint">
-          Try “Rating” in the Stack to see the motion.
-          <button
-            type="button"
-            class="choices__link"
-            @click="showStack"
-          >
-            Show Stack
-          </button>
-        </p>
         <label
-          v-for="option in SORT_UI"
+          v-for="option in LAYOUTS"
           :key="option.value"
           class="choices__option"
-          :data-on="choices.sortUi === option.value"
+          :data-on="choices.pageLayout === option.value"
         >
           <input
             type="radio"
-            name="sort-ui"
-            :checked="choices.sortUi === option.value"
-            @change="set('sortUi', option.value)"
+            name="page-layout"
+            :checked="choices.pageLayout === option.value"
+            @change="setLayout(option.value)"
           >
-          <span>
+          <span class="choices__grow">
             <strong>{{ option.title }}</strong>
             <small>{{ option.text }}</small>
+            <span
+              class="choices__wire"
+              aria-hidden="true"
+            >
+              <span class="choices__wire-body">
+                <span
+                  v-for="part in option.body"
+                  :key="part"
+                  :class="part === '3D' || part === '3D | list' ? 'choices__wire-3d' : 'choices__wire-bar'"
+                >{{ part }}</span>
+              </span>
+              <span class="choices__wire-side">
+                <span
+                  v-for="part in option.side"
+                  :key="part"
+                  class="choices__wire-bar"
+                  :class="{ 'choices__wire-list': part === 'list' }"
+                >{{ part }}</span>
+              </span>
+            </span>
           </span>
         </label>
         <div class="choices__row">
           <label
-            v-for="option in MOTION"
+            v-for="option in DETAILS"
             :key="option.value"
             class="choices__option choices__option--small"
-            :data-on="choices.sortMotion === option.value"
+            :data-on="choices.details === option.value"
           >
             <input
               type="radio"
-              name="sort-motion"
-              :checked="choices.sortMotion === option.value"
-              @change="set('sortMotion', option.value)"
+              name="details"
+              :checked="choices.details === option.value"
+              @change="set('details', option.value)"
             >
             <span><strong>{{ option.title }}</strong></span>
           </label>
         </div>
       </section>
 
-      <!-- 3 -->
+      <!-- 2 -->
       <section class="choices__section">
         <h3 class="choices__heading">
-          3 · Portfolio <span class="choices__issue">#28</span>
+          2 · Re-sort animation
         </h3>
-        <label
-          class="choices__option"
-          :data-on="choices.sidebarPreview"
-        >
-          <input
-            type="checkbox"
-            :checked="choices.sidebarPreview"
-            @change="set('sidebarPreview', !choices.sidebarPreview); showStack()"
+        <p class="choices__hint">
+          Books are solid: they never pass through each other. Small re-sorts use
+          <strong>by hand</strong> (decided): only the books that must move are pulled out and slid back in.
+          <button
+            type="button"
+            class="choices__link"
+            @click="shuffleNow"
           >
-          <span>
-            <strong>Preview the Stack as portfolio sidebar</strong>
-            <small>360 px wide, next to placeholder page content.</small>
-          </span>
-        </label>
+            Re-sort now ({{ stackView.sort }} → next)
+          </button>
+        </p>
+        <p
+          v-if="lastShuffle"
+          class="choices__hint choices__last"
+        >
+          Last re-sort: {{ lastShuffle.moves }} {{ lastShuffle.moves === 1 ? 'book' : 'books' }} moved → {{ lastShuffle.style === 'hand' ? 'by hand' : lastShuffle.style }}
+        </p>
+        <p class="choices__subheading">
+          Switch to the fancy animation when…
+        </p>
+        <div class="choices__row choices__row--three">
+          <label
+            v-for="option in THRESHOLDS"
+            :key="String(option.value)"
+            class="choices__option choices__option--small"
+            :data-on="choices.shuffleThreshold === option.value"
+          >
+            <input
+              type="radio"
+              name="shuffle-threshold"
+              :checked="choices.shuffleThreshold === option.value"
+              @change="set('shuffleThreshold', option.value)"
+            >
+            <span><strong>{{ option.title }}</strong></span>
+          </label>
+        </div>
+        <p class="choices__subheading">
+          Fancy animation
+        </p>
         <label
-          v-for="option in PORTFOLIO"
+          v-for="option in FANCY"
           :key="option.value"
           class="choices__option"
-          :data-on="choices.portfolio === option.value"
+          :data-on="choices.shuffleFancy === option.value"
         >
           <input
             type="radio"
-            name="portfolio"
-            :checked="choices.portfolio === option.value"
-            @change="set('portfolio', option.value)"
+            name="shuffle-fancy"
+            :checked="choices.shuffleFancy === option.value"
+            @change="set('shuffleFancy', option.value)"
           >
           <span>
             <strong>{{ option.title }}</strong>
             <small>{{ option.text }}</small>
-            <span class="choices__flow">
-              <template
-                v-for="(step, index) in option.flow"
-                :key="step"
-              >
-                <span class="choices__step">{{ step }}</span>
-                <span
-                  v-if="index < option.flow.length - 1"
-                  class="choices__arrow"
-                >→</span>
-              </template>
-            </span>
+          </span>
+        </label>
+      </section>
+
+      <!-- 3 -->
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          3 · Back cover
+        </h3>
+        <p class="choices__hint">
+          <button
+            type="button"
+            class="choices__link"
+            @click="showBack"
+          >
+            Show a back
+          </button>
+        </p>
+        <label
+          v-for="option in BACKS"
+          :key="option.value"
+          class="choices__option"
+          :data-on="choices.backStyle === option.value"
+        >
+          <input
+            type="radio"
+            name="back"
+            :checked="choices.backStyle === option.value"
+            @change="set('backStyle', option.value)"
+          >
+          <span>
+            <strong>{{ option.title }}</strong>
+            <small>{{ option.text }}</small>
           </span>
         </label>
       </section>
@@ -250,36 +332,97 @@ onMounted(async () => {
       <!-- 4 -->
       <section class="choices__section">
         <h3 class="choices__heading">
-          4 · Cover editions
+          4 · Hover label
         </h3>
-        <label
-          v-for="option in EDITIONS"
-          :key="option.value"
-          class="choices__option"
-          :data-on="choices.editions === option.value"
-        >
-          <input
-            type="radio"
-            name="editions"
-            :checked="choices.editions === option.value"
-            @change="set('editions', option.value)"
+        <div class="choices__row">
+          <label
+            v-for="option in LABELS"
+            :key="option.value"
+            class="choices__option choices__option--small"
+            :data-on="choices.label === option.value"
           >
-          <span>
-            <strong>{{ option.title }}</strong>
-            <small>{{ option.text }}</small>
-          </span>
-        </label>
+            <input
+              type="radio"
+              name="label"
+              :checked="choices.label === option.value"
+              @change="set('label', option.value)"
+            >
+            <span>
+              <strong>{{ option.title }}</strong>
+              <small class="choices__sample">{{ option.sample }}</small>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- 5 -->
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          5 · AI back &amp; spine for new books
+        </h3>
+        <p class="choices__hint">
+          Same model, same image. The only difference is waiting: <strong>Standard</strong> answers in ~30 s per book;
+          <strong>Batch</strong> sends all books as one job that Google runs when it has spare capacity (usually minutes,
+          at most 24 h) and charges half for that. Good for the nightly job after the Fable sync; Standard when you want
+          to see a new book right away. Both can be combined.
+        </p>
+        <p class="choices__hint">
+          {{ withoutBack }} of {{ books.length }} books in this Library have no back yet.
+        </p>
+        <div class="choices__row">
+          <label
+            class="choices__option choices__option--card"
+            :data-on="choices.ai === 'standard'"
+          >
+            <input
+              type="radio"
+              name="ai"
+              :checked="choices.ai === 'standard'"
+              @change="set('ai', 'standard')"
+            >
+            <span>
+              <strong>Standard</strong>
+              <span class="choices__figure">${{ (withoutBack * 0.134).toFixed(2) }}</span>
+              <small>$0.134 / book · ~30 s each · right away</small>
+            </span>
+          </label>
+          <label
+            class="choices__option choices__option--card"
+            :data-on="choices.ai === 'batch'"
+          >
+            <input
+              type="radio"
+              name="ai"
+              :checked="choices.ai === 'batch'"
+              @change="set('ai', 'batch')"
+            >
+            <span>
+              <strong>Batch</strong>
+              <span class="choices__figure">${{ (withoutBack * 0.067).toFixed(2) }}</span>
+              <small>$0.067 / book · minutes to hours · fine for the nightly job</small>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Tools -->
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Tools (optional)
+        </h3>
+        <p class="choices__hint">
+          <strong>Photos of special editions:</strong> put <code>front.jpg</code>, <code>spine.jpg</code>, <code>back.jpg</code> in
+          <code>public/book-assets/&lt;ISBN-13&gt;/photo/</code> and run <code>pnpm assets:build --photos-only</code>.
+          Photos win over AI and get no extra text.
+        </p>
         <button
           type="button"
           class="choices__button"
           @click="loadEditions"
         >
-          {{ editionsOpen ? 'Hide editions' : `Show editions for ${books.length} books` }}
+          {{ editionsOpen ? 'Hide cover overrides' : `Override a cover (editions for ${books.length} books)` }}
         </button>
-        <div
-          v-if="editionsOpen"
-          class="choices__editions"
-        >
+        <div v-if="editionsOpen">
           <div
             v-for="book in books"
             :key="book.id"
@@ -321,60 +464,12 @@ onMounted(async () => {
                   >
                   <span class="choices__badges">
                     <span v-if="edition.film">film</span>
-                    <span
-                      v-if="(editions[keyOf(book)] as { auto: string | null }).auto === edition.id"
-                      class="choices__badge--auto"
-                    >auto</span>
                     {{ edition.released?.slice(0, 4) }}
                   </span>
                 </button>
               </template>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- 5 -->
-      <section class="choices__section">
-        <h3 class="choices__heading">
-          5 · AI back &amp; spine
-        </h3>
-        <p class="choices__hint">
-          {{ withoutBack }} of {{ books.length }} books in this Library have no back yet.
-        </p>
-        <div class="choices__row">
-          <label
-            class="choices__option choices__option--card"
-            :data-on="choices.ai === 'standard'"
-          >
-            <input
-              type="radio"
-              name="ai"
-              :checked="choices.ai === 'standard'"
-              @change="set('ai', 'standard')"
-            >
-            <span>
-              <strong>Standard</strong>
-              <span class="choices__figure">${{ (withoutBack * 0.134).toFixed(2) }}</span>
-              <small>$0.134 / book · ~30 s each · right away</small>
-            </span>
-          </label>
-          <label
-            class="choices__option choices__option--card"
-            :data-on="choices.ai === 'batch'"
-          >
-            <input
-              type="radio"
-              name="ai"
-              :checked="choices.ai === 'batch'"
-              @change="set('ai', 'batch')"
-            >
-            <span>
-              <strong>Batch</strong>
-              <span class="choices__figure">${{ (withoutBack * 0.067).toFixed(2) }}</span>
-              <small>$0.067 / book · minutes to hours · fine for the nightly job</small>
-            </span>
-          </label>
         </div>
       </section>
 
@@ -385,7 +480,7 @@ onMounted(async () => {
         <textarea
           class="choices__notes"
           rows="4"
-          placeholder="Anything else? e.g. “bookmark, but only for 5★”"
+          placeholder="Anything else?"
           :value="choices.notes"
           @change="set('notes', ($event.target as HTMLTextAreaElement).value)"
         />
@@ -620,5 +715,72 @@ onMounted(async () => {
   padding: 0.5rem;
   border: 1px solid var(--color-line);
   background: transparent;
+}
+
+.choices__subheading {
+  margin: 0.8rem 0 0.2rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.choices__row--three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.choices__last {
+  color: var(--color-accent);
+}
+
+.choices__decided {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-ink-muted);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.choices__grow {
+  flex: 1;
+}
+
+.choices__wire {
+  display: grid;
+  grid-template-columns: 1fr 34%;
+  gap: 3px;
+  height: 64px;
+  margin-top: 0.45rem;
+  padding: 3px;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--color-ink);
+}
+
+.choices__wire-body,
+.choices__wire-side {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choices__wire-3d {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--color-bg);
+  background: var(--color-ink-muted);
+}
+
+.choices__wire-bar {
+  padding: 1px 3px;
+  border: 1px solid var(--color-line);
+}
+
+.choices__wire-list {
+  flex: 1;
+}
+
+.choices__sample {
+  color: var(--color-accent) !important;
 }
 </style>

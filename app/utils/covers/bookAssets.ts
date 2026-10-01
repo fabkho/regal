@@ -6,13 +6,38 @@ import { schedule } from './coverTextures'
 
 export type AssetSource = 'photo' | 'ai'
 
+/** A face of the Book that the owner photographed rather than us generating it. */
+export type PhotoFace = 'front' | 'spine' | 'back'
+
+/** A line of praise from the publisher copy, printed on the back cover. */
+export interface AssetQuote {
+  text: string
+  source: string
+}
+
 export interface BookAssetEntry {
   /** URLs relative to /book-assets/. */
   front?: string
   spine?: string
   back?: string
   source?: AssetSource
+  /** The cleaned blurb for this edition. */
+  description?: string
+  /** Up to two verified praise quotes from the publisher description. */
+  quotes?: AssetQuote[]
+  /** Shelf category as printed on a back cover: 'SCIENCE FICTION'. */
+  genre?: string
+  /** Publisher imprint, as printed at the foot of the back cover. */
+  publisher?: string
+  /** Faces that come from the owner's own photographs: drawn as they are. */
+  photoFaces?: PhotoFace[]
+  /** Pipeline bookkeeping (prompt version, sources, sizes…). */
+  meta?: Record<string, unknown>
 }
+
+/** True when `face` of this Book is a photo of the real thing, not artwork. */
+export const isPhotoFace = (entry: BookAssetEntry | null | undefined, face: PhotoFace): boolean =>
+  Boolean(entry?.photoFaces?.includes(face))
 
 export type AssetManifest = Record<string, BookAssetEntry>
 

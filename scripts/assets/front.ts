@@ -17,9 +17,11 @@ export interface FrontResult {
   url: string
   /** Apple's description for the same edition, when found there. */
   appleDescription: string | null
+  /** Apple's genre list for the edition ("Sci-Fi & Fantasy", "Books", …). */
+  appleGenres: string[]
 }
 
-interface AppleBook { trackName?: string, artistName?: string, artworkUrl100?: string, description?: string }
+export interface AppleBook { trackName?: string, artistName?: string, artworkUrl100?: string, description?: string, genres?: string[] }
 
 const MIN_HEIGHT = 800
 const comparable = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '')
@@ -96,7 +98,7 @@ export async function resolveFront(book: Book): Promise<FrontResult | null> {
   for (const candidate of candidates) {
     const found = await image(candidate.url)
     if (!found || found.width < 100) continue
-    const result = { ...found, ...candidate, appleDescription: apple?.description ?? null }
+    const result = { ...found, ...candidate, appleDescription: apple?.description ?? null, appleGenres: apple?.genres ?? [] }
     if (found.height >= MIN_HEIGHT) return result
     if (!best || found.height > best.height) best = result
   }

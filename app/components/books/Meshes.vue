@@ -29,10 +29,13 @@ import type { Book } from '#shared/types/book'
 import { hashString } from '~/utils/bookcase/layout'
 import type { BookPose } from '~/utils/books/pose'
 import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
+import { planShuffle, sampleTrack } from '~/utils/stack/shuffle'
+import { chooseShuffle, countMoves } from '~/utils/stack/moves'
+import type { ShufflePlan, ShuffleStyle } from '~/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
 import type { FaceInput } from '~/utils/covers/bookFaces'
 import { loadCover } from '~/utils/covers/coverTextures'
-import { loadAssets } from '~/utils/covers/bookAssets'
+import { isPhotoFace, loadAssets } from '~/utils/covers/bookAssets'
 import type { LoadedAssets } from '~/utils/covers/bookAssets'
 import { drawPageEdges, pageEdgePlan } from '~/utils/books/pageEdges'
 import type { PageEdgePlan } from '~/utils/books/pageEdges'
@@ -41,21 +44,23 @@ import type { LoadedCover } from '~/utils/covers/coverTextures'
 import { fromHex, readableOn } from '~/utils/covers/palette'
 import type { RGB } from '~/utils/covers/palette'
 
-const props = defineProps<{ poses: BookPose[], books: Book[] }>()
+const props = withDefaults(defineProps<{
+  poses: BookPose[]
+  books: Book[]
+  /** Move a picked Book left of centre, clear of a details card on the right. */
+  aside?: boolean
+  /** How a re-sorted Stack moves (collision-free plans); 'instant' jumps. */
+  shuffle?: ShuffleStyle | 'instant'
+  /** Up to this many moved Books a re-sort uses the calm 'hand' style; null = always 'hand'. */
+  shuffleThreshold?: number | null
+}>(), { aside: true, shuffle: 'instant', shuffleThreshold: null })
 
-// --- Dev choices (#26, #27): live previews of open design options -----------
+// --- Dev choices: live previews of open design options ----------------------
 
+/** Back cover typography: 'classic' paperback or 'clean' (dev choice; classic until decided). */
 const { choices } = useDevChoices()
-/** Re-sorted Books fly to their new place instead of jumping there. */
-const animateMoves = computed(() => choices.value.sortMotion === 'animate')
-/** Favourites stand proud of their neighbours. */
-const proudFavourites = computed(() => choices.value.rating.includes('proud'))
-const bookmarks = computed(() => choices.value.rating.includes('bookmark'))
-/** Rating from which a Book counts as a favourite. */
-const FAVOURITE = 4.5
-const PROUD_OUT = 0.012
-const PROUD_SIDEWAYS = 0.03
-/** Hovered Book, shared with the hover label overlay. */
+const backStyle = computed(() => (import.meta.dev ? choices.value.backStyle : 'classic'))
+/** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
 
 // --- Look ------------------------------------------------------------------
@@ -113,6 +118,8 @@ interface BookMaterials {
   edges: { plan: PageEdgePlan, canvas: HTMLCanvasElement, textures: CanvasTexture[], materials: MeshStandardMaterial[] }
   /** Asset set faces (real or AI), when the Book has any. */
   assets: LoadedAssets | null
+  /** The blurb once it has arrived, for redraws. */
+  description?: string | null
   /** Last loaded Cover (null until/unless there is one), reused for redraws. */
   loaded: LoadedCover | null
 }
@@ -223,6 +230,15 @@ function setFace(entry: BookMaterials, face: 'spine' | 'back', image: HTMLCanvas
   current.dispose()
 }
 
+// Switching the back style redraws every back with what each Book already has.
+watch(backStyle, () => {
+  for (const pose of props.poses) {
+    const entry = materialsByBook.get(pose.bookId)
+    const input = entry && faceInput(pose, entry.loaded, entry.description ?? null, entry.assets)
+    if (entry && input) setFace(entry, 'back', drawBack(input))
+  }
+})
+
 function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
   drawPageEdges(entry.edges.plan, board, bookId, entry.edges.canvas)
   for (const texture of entry.edges.textures) texture.needsUpdate = true
@@ -244,6 +260,13 @@ function faceInput(pose: BookPose, loaded: LoadedCover | null, description: stri
     description,
     spineArt: assets?.spine,
     backArt: assets?.back,
+    // Asset set extras for a realistic back; photos of a real copy get no typography.
+    quotes: assets?.entry.quotes,
+    genre: assets?.entry.genre,
+    publisher: assets?.entry.publisher,
+    backIsPhoto: isPhotoFace(assets?.entry, 'back'),
+    spineIsPhoto: isPhotoFace(assets?.entry, 'spine'),
+    backStyle: backStyle.value,
   }
 }
 
@@ -313,6 +336,7 @@ async function applyCover(pose: BookPose) {
   if (!blurb || !current) return
   const withBlurb = faceInput(pose, current.loaded, blurb, current.assets)
   if (!withBlurb) return
+  current.description = blurb
   setFace(current, 'back', drawBack(withBlurb))
 }
 
@@ -342,25 +366,6 @@ watch(() => props.poses, (poses) => {
     }
   }
 }, { immediate: true })
-
-// --- Bookmark (rating option B) ----------------------------------------------
-
-function isFavourite(bookId: string) {
-  return (booksById.value.get(bookId)?.rating ?? 0) >= FAVOURITE
-}
-
-const bookmarkMaterial = new MeshStandardMaterial({ color: new Color('#B93E2E').multiplyScalar(0.7), roughness: 0.55, metalness: 0 })
-const BOOKMARK = { width: 0.0007, height: 0.05, depth: 0.014 }
-
-/** A red bookmark sticking out of the head near the Spine; 5★ Books show more of it. Local units (the Book mesh is scaled). */
-function bookmarkTransform(pose: BookPose) {
-  const rating = booksById.value.get(pose.bookId)?.rating ?? 0
-  const out = rating >= 5 ? 0.024 : 0.014
-  return {
-    scale: [BOOKMARK.width / pose.thickness, BOOKMARK.height / pose.height, BOOKMARK.depth / pose.depth] as [number, number, number],
-    position: [0, (pose.height / 2 + out - BOOKMARK.height / 2) / pose.height, (pose.depth / 2 - 0.012 - BOOKMARK.depth / 2) / pose.depth] as [number, number, number],
-  }
-}
 
 // --- Interaction -------------------------------------------------------------
 
@@ -493,7 +498,6 @@ onMounted(() => {
 const basePosition = new Vector3()
 const targetPosition = new Vector3()
 const targetQuaternion = new Quaternion()
-const proudOffset = new Vector3()
 const pulledPosition = new Vector3()
 const inspectPosition = new Vector3()
 const forward = new Vector3()
@@ -511,7 +515,50 @@ const Y_AXIS = new Vector3(0, 1, 0)
 
 const smooth = (t: number) => t * t * (3 - 2 * t)
 
+// --- Re-sort --------------------------------------------------------------------
+// When the Stack is re-sorted or filtered, Books travel along a plan in which
+// they never pass through each other (see utils/stack/shuffle.ts).
+
+let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = null
+/** The last re-sort: how many Books moved and which style ran (shown in the dev choices). */
+const lastShuffle = useState<{ moves: number, style: string } | null>('shuffle:last', () => null)
+/** A re-sort that arrived while another was running; starts when that one ends. */
+let queued: BookPose[] | null = null
+let shuffleTime = 0
+
+function startShuffle(from: BookPose[], to: BookPose[]) {
+  if (props.shuffle === 'instant') return
+  const moves = countMoves(from, to)
+  const style = chooseShuffle(moves, props.shuffleThreshold, props.shuffle)
+  const plan = planShuffle(from, to, style)
+  lastShuffle.value = { moves, style }
+  running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
+}
+
+watch(() => props.poses, (next, previous) => {
+  if (!previous?.length || props.shuffle === 'instant' || reduced.value) {
+    running = null
+    queued = null
+    return
+  }
+  if (running) {
+    queued = next
+    return
+  }
+  startShuffle(previous, next)
+})
+
 onBeforeRender(({ delta }) => {
+  shuffleTime = running ? (performance.now() - running.startedAt) / 1000 : 0
+  if (running && shuffleTime >= running.plan.duration) {
+    const from = running.to
+    running = null
+    if (queued) {
+      startShuffle(from, queued)
+      queued = null
+      shuffleTime = 0
+    }
+  }
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-(delta ?? 0.016) * 12)
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
@@ -521,30 +568,24 @@ onBeforeRender(({ delta }) => {
     if (!mesh) continue
     const motion = motionFor(pose.bookId)
     const isPicked = pickedId.value === pose.bookId
-    const hoverTarget = hoveredId === pose.bookId && !isPicked && motion.pick.value === 0 ? 1 : 0
+    const hovered = hoveredId === pose.bookId || hoveredBook.value === pose.bookId
+    const hoverTarget = hovered && !isPicked && motion.pick.value === 0 ? 1 : 0
     motion.hover += (hoverTarget - motion.hover) * ease
     if (Math.abs(motion.hover - hoverTarget) < 0.001) motion.hover = hoverTarget
 
     targetPosition.set(pose.x, pose.y, pose.z)
     targetQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
-    if (proudFavourites.value && isFavourite(pose.bookId)) {
-      // Standing on a Shelf, favourites come out towards the room (the Spine is local +z).
-      // Lying in the Stack (top pointing left), they slide out of the pile to the right instead.
-      const lying = Math.abs(pose.rotation[2]) > 1
-      proudOffset.set(0, lying ? -PROUD_SIDEWAYS : 0, lying ? 0.004 : PROUD_OUT)
-      targetPosition.add(proudOffset.applyQuaternion(targetQuaternion))
+    // A running re-sort moves the Book along its collision-free track.
+    const track = running?.plan.tracks.get(pose.bookId)
+    if (track && running && shuffleTime < running.plan.duration) {
+      const sample = sampleTrack(track, shuffleTime)
+      targetPosition.set(...sample.position)
+      targetQuaternion.setFromEuler(euler.set(...sample.rotation))
     }
     const shown = motion.shown
-    if (!shown.ready || !animateMoves.value || reduced.value) {
-      shown.position.copy(targetPosition)
-      shown.quaternion.copy(targetQuaternion)
-      shown.ready = true
-    }
-    else {
-      const move = 1 - Math.exp(-(delta ?? 0.016) * 5)
-      shown.position.lerp(targetPosition, move)
-      shown.quaternion.slerp(targetQuaternion, move)
-    }
+    shown.position.copy(targetPosition)
+    shown.quaternion.copy(targetQuaternion)
+    shown.ready = true
     basePosition.copy(shown.position)
     baseQuaternion.copy(shown.quaternion)
 
@@ -576,7 +617,7 @@ onBeforeRender(({ delta }) => {
         // On wide views, sit left of centre so the details card (bottom right) doesn't cover it.
         right.crossVectors(forward, up).normalize()
         const halfWidth = distance * Math.tan(fov / 2) * (cam.aspect ?? 1)
-        const aside = (cam.aspect ?? 1) > 1.1 ? -halfWidth * INSPECT_ASIDE : 0
+        const aside = props.aside && (cam.aspect ?? 1) > 1.1 ? -halfWidth * INSPECT_ASIDE : 0
         inspectPosition.copy(cam.position)
           .addScaledVector(forward, distance)
           .addScaledVector(up, distance * 0.04)
@@ -632,7 +673,6 @@ onBeforeUnmount(() => {
   if (controls.value) (controls.value as { enabled: boolean }).enabled = true
   for (const motion of motionByBook.values()) gsap.killTweensOf([motion.pick, motion.flip, motion.spin, motion.glint])
   geometry.dispose()
-  bookmarkMaterial.dispose()
   for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
 })
@@ -654,15 +694,7 @@ onBeforeUnmount(() => {
       @pointerenter="onEnter(pose.bookId)"
       @pointerleave="onLeave(pose.bookId)"
       @click="(event: { stopPropagation?: () => void }) => onClick(pose.bookId, event)"
-    >
-      <TresMesh
-        v-if="bookmarks && isFavourite(pose.bookId)"
-        :geometry="geometry"
-        :material="bookmarkMaterial"
-        v-bind="bookmarkTransform(pose)"
-        cast-shadow
-      />
-    </TresMesh>
+    />
     <TresPointLight
       ref="glintLight"
       color="#FFE6C4"

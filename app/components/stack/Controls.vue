@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Sort & filter for the Stack (#27). Two looks under evaluation:
-// 'chips' (always-visible row) and 'menu' (one button, popover).
+// Sort & filter for the Stack (#27): 'chips' (a row over the 3D), 'stacked'
+// (one group per line, for a sidebar) or 'menu' (one button, popover).
 import { readYears, STACK_SORTS } from '~/utils/stack/view'
 
-const props = defineProps<{ variant: 'chips' | 'menu' }>()
+const props = defineProps<{ variant: 'chips' | 'stacked' | 'menu' }>()
 
 const { books } = useLibrary()
 const { view, set } = useStackView()
@@ -36,7 +36,7 @@ const summary = computed(() => {
     </button>
 
     <div
-      v-if="props.variant === 'chips' || open"
+      v-if="props.variant !== 'menu' || open"
       class="controls__body"
     >
       <div
@@ -114,6 +114,11 @@ const summary = computed(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem 1.1rem;
+}
+
+.controls--stacked .controls__body {
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
 .controls--menu .controls__body {

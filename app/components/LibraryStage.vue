@@ -9,7 +9,17 @@ import { layoutLibrary } from '~/utils/bookcase/layout'
 import { justDragged } from '~/utils/books/dragGuard'
 import { layoutStack } from '~/utils/stack/layout'
 import { applyStackView } from '~/utils/stack/view'
+import type { ShuffleStyle } from '~/utils/stack/shuffle'
 import type { ViewMode } from '~/composables/useBookPick'
+
+const props = withDefaults(defineProps<{
+  /** Sort & filter controls over the 3D (off when a sidebar shows them). */
+  showControls?: boolean
+  /** The picked Book's details card over the 3D (off when a sidebar shows them). */
+  showDetails?: boolean
+  /** Hide the Bookcase/Stack switch (a page that only shows the Stack). */
+  stackOnly?: boolean
+}>(), { showControls: true, showDetails: true, stackOnly: false })
 
 const route = useRoute()
 const router = useRouter()
@@ -33,13 +43,10 @@ const stack = computed(() => layoutStack(stackBooks.value, { keepOrder: true }))
 
 // Open design options, previewed live in dev (see components/dev/Choices.vue).
 const { choices } = useDevChoices()
-const sortUi = computed(() => (import.meta.dev ? choices.value.sortUi : 'chips'))
-const urlExample = computed(() => {
-  const query = new URLSearchParams({ view: 'stack', sort: stackView.value.sort })
-  if (stackView.value.year) query.set('year', String(stackView.value.year))
-  if (stackView.value.minRating) query.set('min', String(stackView.value.minRating))
-  return `?${query}`
-})
+if (props.stackOnly) mode.value = 'stack'
+/** Re-sort animation: calm 'hand' for small re-sorts, a fancy style for big ones (dev choices). */
+const shuffleStyle = computed(() => (import.meta.dev ? choices.value.shuffleFancy : 'carousel') as ShuffleStyle)
+const shuffleThreshold = computed(() => (import.meta.dev ? choices.value.shuffleThreshold : 5))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
@@ -91,6 +98,7 @@ watch(books, (list) => {
           <BooksMeshes
             :poses="poses"
             :books="books"
+            :aside="props.showDetails"
           />
         </BookcaseScene>
         <StackScene
@@ -101,6 +109,9 @@ watch(books, (list) => {
           <BooksMeshes
             :poses="poses"
             :books="books"
+            :aside="props.showDetails"
+            :shuffle="shuffleStyle"
+            :shuffle-threshold="shuffleThreshold"
           />
         </StackScene>
       </TresCanvas>
@@ -113,6 +124,7 @@ watch(books, (list) => {
     </ClientOnly>
 
     <div
+      v-if="!props.stackOnly"
       class="stage__views"
       role="group"
       aria-label="View"
@@ -136,16 +148,11 @@ watch(books, (list) => {
     </div>
 
     <StackControls
-      v-if="mode === 'stack' && books.length && sortUi !== 'url'"
-      :variant="sortUi === 'menu' ? 'menu' : 'chips'"
+      v-if="props.showControls && mode === 'stack' && books.length"
+      variant="chips"
       class="stage__controls"
+      :class="{ 'stage__controls--top': props.stackOnly }"
     />
-    <p
-      v-if="mode === 'stack' && books.length && sortUi === 'url'"
-      class="stage__controls stage__url"
-    >
-      URL only: {{ urlExample }}
-    </p>
     <p
       v-if="mode === 'stack' && books.length && !poses.length"
       class="stage__status stage__status--overlay"
@@ -153,7 +160,7 @@ watch(books, (list) => {
       No books match these filters
     </p>
 
-    <BooksHoverLabel :enabled="choices.rating.includes('label')" />
+    <BooksHoverLabel :variant="choices.label" />
 
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"
@@ -162,7 +169,10 @@ watch(books, (list) => {
       Scroll to browse · click a book to take it out
     </p>
 
-    <BooksDetails class="stage__details" />
+    <BooksDetails
+      v-if="props.showDetails"
+      class="stage__details"
+    />
 
     <p
       v-show="!isReady"
@@ -257,10 +267,8 @@ watch(books, (list) => {
   z-index: 2;
 }
 
-.stage__url {
-  margin: 0;
-  color: var(--color-ink-muted);
-  font-size: var(--text-xs);
+.stage__controls--top {
+  top: 1rem;
 }
 
 /* Narrow stages (portfolio sidebar): no room for the hint next to the view switch. */

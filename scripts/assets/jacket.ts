@@ -7,6 +7,7 @@ import sharp from 'sharp'
 import type { Book } from '../../shared/types/book'
 import { bookDimensions } from '../../app/utils/bookcase/layout'
 import { generateImage } from './gemini'
+import type { ImageRequest } from './gemini'
 
 export const PROMPT_VERSION = 2
 
@@ -98,21 +99,33 @@ function peak(profile: Float32Array, from: number, to: number): number {
   return best
 }
 
-export async function generateJacket(book: Book, front: Buffer): Promise<JacketResult> {
+/**
+ * The Gemini request for a Book's jacket: its layout and the flat input image
+ * (real front on the right, magenta back, cyan spine). PNG for direct calls;
+ * JPEG keeps batch jobs under the inline size limit (flat colours survive it).
+ */
+export async function jacketRequest(book: Book, front: Buffer, key: string, format: 'png' | 'jpeg' = 'png'): Promise<{ layout: JacketLayout, request: ImageRequest }> {
   const meta = await sharp(front).metadata()
   const layout = planLayout(meta.width! / meta.height!, spineRatio(book))
   const { width, height, frontWidth, spineWidth, spineX, frontX } = layout
 
   const frontFitted = await sharp(front).resize(frontWidth, height, { fit: 'fill' }).png().toBuffer()
-  const input = await sharp({ create: { width, height, channels: 3, background: '#FF00FF' } })
+  const canvas = sharp({ create: { width, height, channels: 3, background: '#FF00FF' } })
     .composite([
       { input: await sharp({ create: { width: spineWidth, height, channels: 3, background: '#00FFFF' } }).png().toBuffer(), left: spineX, top: 0 },
       { input: frontFitted, left: frontX, top: 0 },
     ])
-    .png()
-    .toBuffer()
+  const input = format === 'jpeg' ? await canvas.jpeg({ quality: 92 }).toBuffer() : await canvas.png().toBuffer()
+  return {
+    layout,
+    request: { key, prompt: prompt(layout), images: [{ mime: `image/${format}`, data: input }], aspectRatio: layout.ratio },
+  }
+}
 
-  const raw = await generateImage(prompt(layout), [{ mime: 'image/png', data: input }], layout.ratio)
+/** Generates a jacket right away (standard price) and cuts it. */
+export async function generateJacket(book: Book, front: Buffer): Promise<JacketResult> {
+  const { layout, request } = await jacketRequest(book, front, 'single')
+  const raw = await generateImage(request.prompt, request.images, request.aspectRatio)
   return cropJacket(raw, layout)
 }
 

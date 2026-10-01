@@ -1,39 +1,50 @@
-// Dev-only: the owner's picks for open design decisions (#26–#28 and more),
-// shown live in the app. Saved in localStorage and, through a dev-only API,
-// to .data/choices.json so they can be read back outside the browser.
+// Dev-only: the owner's picks for open design decisions, shown live in the
+// app. Saved in localStorage and, through a dev-only API, to
+// .data/choices.json so they can be read back outside the browser.
+//
+// Decided (no longer choices): Regal becomes a Nuxt layer for a separate
+// portfolio page; ratings show as a hover label (plus the details card);
+// covers default to the best automatic image + Gemini back/spine, with
+// photos for a few special editions.
 
-export type RatingStyle = 'card' | 'bookmark' | 'proud' | 'label'
+export type PageLayout = 'sidebar-all' | 'sidebar-list' | 'sidebar-filters'
+/** Fancy re-sort for big changes (more variants arrive from utils/stack/shuffle.ts). */
+export type FancyShuffle = string
 
 export interface DevChoices {
-  /** #26, combinable; 'card' is always on. */
-  rating: RatingStyle[]
-  /** #27 */
-  sortUi: 'chips' | 'menu' | 'url'
-  sortMotion: 'animate' | 'instant'
-  /** #28 */
-  portfolio: 'static' | 'blob' | 'layer' | null
-  /** Preview the Stack at portfolio-sidebar width. */
-  sidebarPreview: boolean
-  editions: 'photo' | 'auto' | 'manual' | null
-  /** Manual edition picks: asset key → chosen cover URL. */
-  editionPicks: Record<string, string>
+  /** Preview the portfolio page (/books): 3D in the body, text in the sidebar. */
+  pagePreview: boolean
+  pageLayout: PageLayout
+  /** Where a picked Book's details go on that page. */
+  details: 'overlay' | 'sidebar'
+  /** Big re-sorts (more than `shuffleThreshold` Books move) use this; small ones 'hand'. */
+  shuffleFancy: FancyShuffle
+  /** Moved Books up to which 'hand' is used; null = always 'hand'. */
+  shuffleThreshold: number | null
+  /** Back cover typography. */
+  backStyle: 'classic' | 'clean'
+  /** Hover label content. */
+  label: 'stars-title' | 'stars'
   ai: 'standard' | 'batch' | null
+  /** Optional cover overrides: asset key → chosen cover URL. */
+  editionPicks: Record<string, string>
   notes: string
 }
 
 export const DEFAULT_CHOICES: DevChoices = {
-  rating: ['card'],
-  sortUi: 'chips',
-  sortMotion: 'animate',
-  portfolio: null,
-  sidebarPreview: false,
-  editions: null,
-  editionPicks: {},
+  pagePreview: false,
+  pageLayout: 'sidebar-all',
+  details: 'overlay',
+  shuffleFancy: 'carousel',
+  shuffleThreshold: 5,
+  backStyle: 'classic',
+  label: 'stars-title',
   ai: null,
+  editionPicks: {},
   notes: '',
 }
 
-const STORAGE_KEY = 'regal:dev-choices'
+const STORAGE_KEY = 'regal:dev-choices:v2'
 
 export function useDevChoices() {
   const choices = useState<DevChoices>('dev-choices', () => ({ ...DEFAULT_CHOICES }))
@@ -41,11 +52,14 @@ export function useDevChoices() {
 
   async function save() {
     if (import.meta.server) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(choices.value))
-    if (!import.meta.dev) return
+    // Only the current keys (old panel versions left extra ones in the state).
+    const clean = Object.fromEntries(Object.keys(DEFAULT_CHOICES).map(key => [key, choices.value[key as keyof DevChoices]]))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean))
+    // Automated browsers (screenshots, tests) must not overwrite the owner's picks.
+    if (!import.meta.dev || navigator.webdriver) return
     saved.value = 'saving'
     try {
-      await $fetch('/api/dev/choices', { method: 'POST', body: { ...choices.value, savedAt: new Date().toISOString() } })
+      await $fetch('/api/dev/choices', { method: 'POST', body: { ...clean, savedAt: new Date().toISOString() } })
       saved.value = 'saved'
     }
     catch {
@@ -58,22 +72,26 @@ export function useDevChoices() {
     save()
   }
 
-  function toggleRating(style: RatingStyle) {
-    if (style === 'card') return
-    const list = choices.value.rating
-    set('rating', list.includes(style) ? list.filter(item => item !== style) : [...list, style])
-  }
-
-  function restore() {
+  /** Loads the picks: the saved file wins (it is the record), localStorage is the fallback. */
+  async function restore() {
     if (import.meta.server) return
+    let stored: Partial<DevChoices> | null = null
     try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<DevChoices> | null
-      if (stored) choices.value = { ...DEFAULT_CHOICES, ...stored }
+      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
     }
     catch {
       // Ignore a broken entry.
     }
+    // Automated browsers (screenshots, tests) keep their own settings.
+    if (import.meta.dev && !navigator.webdriver) {
+      const file = await $fetch<Partial<DevChoices> | null>('/api/dev/choices').catch(() => null)
+      if (file) stored = file
+    }
+    if (stored) {
+      const known = Object.fromEntries(Object.entries(stored).filter(([key]) => key in DEFAULT_CHOICES))
+      choices.value = { ...DEFAULT_CHOICES, ...known }
+    }
   }
 
-  return { choices: readonly(choices), saved: readonly(saved), set, toggleRating, restore }
+  return { choices: readonly(choices), saved: readonly(saved), set, restore }
 }
