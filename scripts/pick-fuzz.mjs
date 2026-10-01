@@ -58,7 +58,14 @@ async function run(seed) {
   })
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   const errors = []
+  let currentStep = 0
   page.on('pageerror', error => errors.push(error.message))
+  if (args.trace) {
+    page.on('framenavigated', frame => frame === page.mainFrame() && console.log(`seed ${seed} step ${currentStep}: navigated to ${frame.url()}`))
+    page.on('load', () => console.log(`seed ${seed} step ${currentStep}: page load`))
+    page.on('crash', () => console.log(`seed ${seed} step ${currentStep}: page crashed`))
+    page.on('console', message => ['error', 'warning'].includes(message.type()) && console.log(`seed ${seed}: console ${message.type()}: ${message.text().slice(0, 300)}`))
+  }
   await page.goto(`${BASE}/?view=${VIEW}&debug=pick`, { waitUntil: 'networkidle' })
   if (DATA === 'latest') {
     const clear = page.getByRole('button', { name: 'Clear', exact: true })
@@ -103,7 +110,7 @@ async function run(seed) {
   }
 
   const history = []
-  let currentStep = 0
+  let probeLost = false
   const failures = []
 
   /** A checked click at the pointer: settled scene, so what's under the pointer is unambiguous. */
@@ -112,11 +119,11 @@ async function run(seed) {
     const before = await state()
     const hit = await probe('hitAt', pointer.x, pointer.y)
     const onCanvas = await probe('canvasAt', pointer.x, pointer.y)
+    if (!onCanvas) return `${label} skipped (pointer not on the canvas)`
     const shoot = Number(args.shot) === currentStep
     if (shoot) await page.screenshot({ path: `/tmp/pick-fuzz-${seed}-${currentStep}-before.png` })
     await press(options)
     if (shoot) await page.screenshot({ path: `/tmp/pick-fuzz-${seed}-${currentStep}-after.png` })
-    if (!onCanvas) return `${label} (not on canvas, unchecked)`
     const expected = expectedAfterClick(before, hit, await policy())
     const failure = await expectState(expected, `${label} on ${hit ?? 'empty space'} from ${show(before)}`)
     if (failure) return { failure: `${failure} (changes: ${(await probe('changes')).slice(-3).map(c => c.state).join(' → ')}; last click: ${JSON.stringify(await probe('lastClick'))}; pointers: ${JSON.stringify(await probe('pointers'))})` }
@@ -167,8 +174,11 @@ async function run(seed) {
     ['drag', 3, async () => {
       await settle()
       const before = await state()
-      const dx = Math.round((random() - 0.5) * 240)
-      const dy = Math.round((random() - 0.5) * 200)
+      // Stay on the canvas: a pointer wandering off would click page controls.
+      const box = await page.locator('canvas').first().boundingBox()
+      const clamp = (value, low, high) => Math.min(Math.max(value, low + 10), high - 10)
+      const dx = Math.round(clamp(pointer.x + (random() - 0.5) * 240, box.x, box.x + box.width) - pointer.x)
+      const dy = Math.round(clamp(pointer.y + (random() - 0.5) * 200, box.y, box.y + box.height) - pointer.y)
       await page.mouse.down()
       await page.mouse.move(pointer.x + dx, pointer.y + dy, { steps: 6 })
       await page.mouse.up()
@@ -215,6 +225,7 @@ async function run(seed) {
       return 'click mid-motion'
     }],
     ['double-click', 2, async () => {
+      if (!(await probe('canvasAt', pointer.x, pointer.y))) return 'double click off the canvas skipped'
       await page.mouse.dblclick(pointer.x, pointer.y)
       return 'double click'
     }],
@@ -233,6 +244,12 @@ async function run(seed) {
       result = await fn()
     }
     catch (error) {
+      if (args.trace && !probeLost && /reading '/.test(error.message)) {
+        probeLost = true
+        const file = `/tmp/pick-fuzz-lost-${seed}-${step}.png`
+        await page.screenshot({ path: file }).catch(() => {})
+        console.log(`seed ${seed} step ${step}: probe gone at ${page.url()}, canvases: ${await page.locator('canvas').count()}, screenshot ${file}`)
+      }
       result = { failure: `${name} threw: ${error.message.split('\n').slice(0, args.verbose ? 12 : 1).join(' | ')}` }
     }
     const line = typeof result === 'string' ? result : `FAIL ${result.failure}`
