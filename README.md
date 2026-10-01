@@ -28,6 +28,8 @@ pnpm lint
 
 Optional: `NUXT_GOOGLE_BOOKS_API_KEY` enables Google Books as a Cover source.
 
+Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (it loads `/?view=stack&debug=pick`; `--view bookcase`, `--data latest` for your own Library on the dev server).
+
 ## Getting your Goodreads export
 
 Goodreads → My Books → Import and export → **Export Library**. You get `goodreads_library_export.csv`. The file is parsed in your browser; only ISBN, title and author are sent to the server to look up covers.

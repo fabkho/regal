@@ -24,7 +24,10 @@ const props = withDefaults(defineProps<{
 const route = useRoute()
 const router = useRouter()
 /** Dev-only: ?debug=slots draws a box on every measured ShelfSlot. */
-const debugSlots = computed(() => String(route.query.debug ?? '').split(',').includes('slots'))
+const debug = computed(() => String(route.query.debug ?? '').split(','))
+const debugSlots = computed(() => debug.value.includes('slots'))
+/** ?debug=pick exposes the Pick state to browser scripts (BooksPickProbe). */
+const debugPick = computed(() => debug.value.includes('pick'))
 
 const { books } = useLibrary()
 const { pickedId, putAway } = useBookPick()
@@ -116,6 +119,7 @@ watch(books, (list) => {
             :shuffle-threshold="shuffleThreshold"
           />
         </StackScene>
+        <BooksPickProbe v-if="debugPick" />
       </TresCanvas>
 
       <template #fallback>
