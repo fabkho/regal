@@ -13,16 +13,13 @@
 
 import type { SeparatorStyle } from '#layers/regal/app/utils/stack/separators'
 import type { PickOutside } from '#layers/regal/app/utils/books/pick'
-import type { ScrollHighlight } from '#layers/regal/app/utils/stack/scrollHighlight'
 
 /** The open decisions plus the tools; settled ones live in DECIDED_LOOK, not here. */
 export interface DevChoices {
-  /** Date separators in the Stack (open: recommended 'numerals'). */
+  /** Date separators in the Stack (decided: 'label'). */
   separatorStyle: SeparatorStyle
   /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
   pickOutside: PickOutside
-  /** What scrolling the Stack highlights, without a cursor (open: recommended 'focus'). */
-  scrollHighlight: ScrollHighlight
   /** Optional cover overrides: asset key → chosen cover URL. */
   editionPicks: Record<string, string>
   notes: string
@@ -32,13 +29,12 @@ export interface DevChoices {
 export interface Look {
   separatorStyle: SeparatorStyle
   pickOutside: PickOutside
-  scrollHighlight: ScrollHighlight
 }
 
 /**
- * Not decided yet, recommended default: the 'focus' line highlight while scrolling.
  * Decided and hard-wired (no longer choices): a click on another Book while
- * one is out swaps them ('swap'), the 'label' date separators, the re-sort animation (utils/stack/moves.ts),
+ * one is out swaps them ('swap'), the 'label' date separators, the riffle
+ * scroll highlight (utils/stack/scrollHighlight.ts), the re-sort animation (utils/stack/moves.ts),
  * new Books popping in scattered around the pile, the swap of a whole pile
  * (utils/stack/shuffle.ts), the classic back cover and the title + stars hover label.
  */
@@ -47,7 +43,6 @@ export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   separatorStyle: 'label',
   // Decided (owner): clicking another Book while one is out swaps them.
   pickOutside: 'swap',
-  scrollHighlight: 'focus',
 })
 
 export const DEFAULT_CHOICES: DevChoices = {
@@ -112,16 +107,10 @@ export function useDevChoices() {
 }
 
 /**
- * The look of the 3D: the decided picks (DECIDED_LOOK) everywhere, including
- * any app that extends Regal as a layer; in Regal's own dev server the panel
- * previews the still-open scroll highlight.
+ * The look of the 3D. Every look is decided (DECIDED_LOOK), in Regal's own dev
+ * server and in any app that extends Regal as a layer; the dev panel keeps
+ * only its tools. A computed so a future open choice can join again.
  */
 export function useLook() {
-  const { devPanel } = useRegalConfig()
-  const { choices } = useDevChoices()
-  return computed<Look>(() => {
-    if (!devPanel) return DECIDED_LOOK
-    // Only the scroll highlight is still open; the rest is decided.
-    return { ...DECIDED_LOOK, scrollHighlight: choices.value.scrollHighlight }
-  })
+  return computed<Look>(() => DECIDED_LOOK)
 }

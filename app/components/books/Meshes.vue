@@ -721,12 +721,11 @@ onBeforeRender(({ delta }) => {
       tiltQuaternion.setFromAxisAngle(X_AXIS, HOVER_TILT * motion.hover)
       baseQuaternion.premultiply(tiltQuaternion)
     }
-    // Scroll highlight: the same pull-out and tilt; the wave also draws the Book
-    // sideways, the riffle turns it about its left end.
+    // Scroll highlight (riffle): a little pull-out and tilt, turned about its left end.
     const lift = highlight.liftOf(pose, isPicked || motion.pick.value > 0)
     if (lift.out > 0 || lift.yaw > 0) {
       basePosition.z += lift.out + pose.height / 2 * Math.sin(lift.yaw)
-      basePosition.x += lift.slide + pose.height / 2 * (Math.cos(lift.yaw) - 1)
+      basePosition.x += pose.height / 2 * (Math.cos(lift.yaw) - 1)
       baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.yaw))
       baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.tilt))
     }
