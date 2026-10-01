@@ -45,16 +45,18 @@ const summary = computed(() => {
         aria-label="Sort"
       >
         <span class="controls__label">Sort</span>
-        <button
-          v-for="option in STACK_SORTS"
-          :key="option.value"
-          type="button"
-          class="controls__chip"
-          :aria-pressed="view.sort === option.value"
-          @click="set({ sort: option.value })"
-        >
-          {{ option.label }}
-        </button>
+        <div class="controls__options">
+          <button
+            v-for="option in STACK_SORTS"
+            :key="option.value"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.sort === option.value"
+            @click="set({ sort: option.value })"
+          >
+            {{ option.label }}
+          </button>
+        </div>
       </div>
       <div
         v-if="years.length > 1"
@@ -63,24 +65,26 @@ const summary = computed(() => {
         aria-label="Year read"
       >
         <span class="controls__label">Year</span>
-        <button
-          type="button"
-          class="controls__chip"
-          :aria-pressed="view.year === null"
-          @click="set({ year: null })"
-        >
-          All
-        </button>
-        <button
-          v-for="year in years"
-          :key="year"
-          type="button"
-          class="controls__chip"
-          :aria-pressed="view.year === year"
-          @click="set({ year })"
-        >
-          {{ year }}
-        </button>
+        <div class="controls__options">
+          <button
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.year === null"
+            @click="set({ year: null })"
+          >
+            All
+          </button>
+          <button
+            v-for="year in years"
+            :key="year"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.year === year"
+            @click="set({ year })"
+          >
+            {{ year }}
+          </button>
+        </div>
       </div>
       <div
         class="controls__group"
@@ -88,16 +92,18 @@ const summary = computed(() => {
         aria-label="Minimum rating"
       >
         <span class="controls__label">Rating</span>
-        <button
-          v-for="rating in RATINGS"
-          :key="rating"
-          type="button"
-          class="controls__chip"
-          :aria-pressed="view.minRating === rating"
-          @click="set({ minRating: rating })"
-        >
-          {{ rating ? `★ ${rating}+` : 'All' }}
-        </button>
+        <div class="controls__options">
+          <button
+            v-for="rating in RATINGS"
+            :key="rating"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.minRating === rating"
+            @click="set({ minRating: rating })"
+          >
+            {{ rating ? `★ ${rating}+` : 'All' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -136,6 +142,44 @@ const summary = computed(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
+}
+
+.controls__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* Stacked (sidebars): label above, options as one segmented row that never wraps */
+.controls--stacked .controls__group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.controls--stacked .controls__options {
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.controls--stacked .controls__options::-webkit-scrollbar {
+  display: none;
+}
+
+.controls--stacked .controls__chip {
+  flex: 1 0 auto;
+  white-space: nowrap;
+}
+
+.controls--stacked .controls__chip + .controls__chip {
+  margin-left: -1px;
+}
+
+.controls--stacked .controls__chip:hover,
+.controls--stacked .controls__chip[aria-pressed='true'] {
+  position: relative;
 }
 
 .controls__label {
