@@ -7,6 +7,7 @@ import type { StackSort } from '~/utils/stack/view'
 import { SEPARATOR_STYLES } from '~/utils/stack/separators'
 import { ENTRANCE_STYLES } from '~/utils/stack/shuffle'
 import type { Entrance } from '~/composables/useDevChoices'
+import type { PickOutside } from '~/utils/books/pick'
 
 const { choices, saved, set, restore } = useDevChoices()
 const { books } = useLibrary()
@@ -32,6 +33,12 @@ const DECIDED = [
   'Hover label: title + stars',
   'Re-sort: by hand when up to 3 books move, carousel when more move',
   'AI images: Batch API (half price)',
+]
+
+// --- 1. Clicking next to a picked Book --------------------------------------
+const PICK_OUTSIDE: { value: PickOutside, title: string, text: string }[] = [
+  { value: 'put-back', title: 'Puts it back (recommended)', text: 'Any click outside the picked Book puts it back, also on the pile around it. Taking another Book out is a second click.' },
+  { value: 'swap', title: 'Takes the clicked Book out', text: 'A click on another Book swaps straight to it; only empty space puts back. In the Stack the pile fills most of the space next to a picked Book.' },
 ]
 
 // --- 2. Re-sort animation ---------------------------------------------------
@@ -149,6 +156,29 @@ onMounted(async () => {
           <span>
             <strong>Show the portfolio Books page</strong>
             <small>Layout A: 3D Stack in the body, count + filters + list in the 320 px sidebar.</small>
+          </span>
+        </label>
+      </section>
+
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Click next to a picked book
+        </h3>
+        <label
+          v-for="option in PICK_OUTSIDE"
+          :key="option.value"
+          class="choices__option"
+          :data-on="choices.pickOutside === option.value"
+        >
+          <input
+            type="radio"
+            name="pick-outside"
+            :checked="choices.pickOutside === option.value"
+            @change="set('pickOutside', option.value)"
+          >
+          <span>
+            <strong>{{ option.title }}</strong>
+            <small>{{ option.text }}</small>
           </span>
         </label>
       </section>

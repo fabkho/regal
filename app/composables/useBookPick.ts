@@ -1,5 +1,5 @@
-import type { PickState } from '~/utils/books/pick'
-import { clickBook, flip, putAway, SHELVED } from '~/utils/books/pick'
+import type { PickOutside, PickState } from '~/utils/books/pick'
+import { clickAt, flip, putAway, SHELVED } from '~/utils/books/pick'
 
 /**
  * Shared Pick state: which Book is out and which face it shows. Used by the
@@ -12,8 +12,9 @@ export function useBookPick() {
     state: readonly(state),
     pickedId: computed(() => state.value.bookId),
     face: computed(() => state.value.face),
-    click: (bookId: string) => {
-      state.value = clickBook(state.value, bookId)
+    /** A click in the 3D: on a Book, or on empty space (null). */
+    clickAt: (bookId: string | null, outside?: PickOutside) => {
+      state.value = clickAt(state.value, bookId, outside)
     },
     /** Takes a Book out showing its front, whatever was out before. */
     pick: (bookId: string) => {

@@ -6,7 +6,6 @@
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
 import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
 import { layoutLibrary } from '~/utils/bookcase/layout'
-import { justDragged } from '~/utils/books/dragGuard'
 import { layoutStack } from '~/utils/stack/layout'
 import { applyStackView, resolveGrouping, stackGroups } from '~/utils/stack/view'
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '~/utils/stack/separators'
@@ -25,7 +24,10 @@ const props = withDefaults(defineProps<{
 const route = useRoute()
 const router = useRouter()
 /** Dev-only: ?debug=slots draws a box on every measured ShelfSlot. */
-const debugSlots = computed(() => String(route.query.debug ?? '').split(',').includes('slots'))
+const debug = computed(() => String(route.query.debug ?? '').split(','))
+const debugSlots = computed(() => debug.value.includes('slots'))
+/** ?debug=pick exposes the Pick state to browser scripts (BooksPickProbe). */
+const debugPick = computed(() => debug.value.includes('pick'))
 
 const { books } = useLibrary()
 const { pickedId, putAway } = useBookPick()
@@ -67,10 +69,6 @@ function setMode(value: ViewMode) {
   mode.value = value
 }
 
-function onPointerMissed() {
-  if (pickedId.value && !justDragged()) putAway()
-}
-
 // A Book picked from the list might not exist any more after a new import.
 watch(books, (list) => {
   if (pickedId.value && !list.some(book => book.id === pickedId.value)) putAway()
@@ -97,7 +95,6 @@ watch(books, (list) => {
         :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
         :output-color-space="SRGBColorSpace"
         :dpr="[1, 2]"
-        @pointermissed="onPointerMissed"
       >
         <BookcaseScene
           v-if="mode === 'bookcase'"
@@ -131,6 +128,7 @@ watch(books, (list) => {
             :entrance="look.entrance"
           />
         </StackScene>
+        <BooksPickProbe v-if="debugPick" />
       </TresCanvas>
 
       <template #fallback>

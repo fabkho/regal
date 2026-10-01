@@ -8,6 +8,7 @@
 // photos for a few special editions.
 
 import type { SeparatorStyle } from '~/utils/stack/separators'
+import type { PickOutside } from '~/utils/books/pick'
 
 export type PageLayout = 'sidebar-all' | 'sidebar-list' | 'sidebar-filters'
 /** Fancy re-sort for big changes (more variants arrive from utils/stack/shuffle.ts). */
@@ -33,6 +34,8 @@ export interface DevChoices {
   label: 'stars-title' | 'stars'
   /** Date separators in the Stack (open: recommended 'numerals'). */
   separatorStyle: SeparatorStyle
+  /** Clicking another Book while one is out: take that one out, or only put the picked one back. */
+  pickOutside: PickOutside
   ai: 'standard' | 'batch' | null
   /** Optional cover overrides: asset key → chosen cover URL. */
   editionPicks: Record<string, string>
@@ -47,6 +50,7 @@ export interface Look {
   backStyle: 'classic' | 'clean'
   label: 'stars-title' | 'stars'
   separatorStyle: SeparatorStyle
+  pickOutside: PickOutside
 }
 
 /**
@@ -60,6 +64,8 @@ export const DECIDED_LOOK: Readonly<Look> = Object.freeze({
   backStyle: 'classic',
   label: 'stars-title',
   separatorStyle: 'numerals',
+  // Open (dev choices), recommended: a click next to a picked Book puts it back, even on the pile.
+  pickOutside: 'put-back',
 })
 
 export const DEFAULT_CHOICES: DevChoices = {
@@ -134,7 +140,7 @@ export function useLook() {
   const { choices } = useDevChoices()
   return computed<Look>(() => {
     if (!devPanel) return DECIDED_LOOK
-    const { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle } = choices.value
-    return { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle }
+    const { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle, pickOutside } = choices.value
+    return { shuffleFancy, shuffleThreshold, entrance, backStyle, label, separatorStyle, pickOutside }
   })
 }
