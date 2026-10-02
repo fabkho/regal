@@ -11,7 +11,7 @@
 //    fingerprint as the last successful run → exit right away.
 // 2. Builds the asset set without AI (`assets:build --limit all --no-ai --no-model`).
 // 3. Publishes what a visitor gets (library.json without private fields,
-//    manifest.json, each Book's front/spine/back) to the R2 bucket, uploading
+//    manifest.json, each Book's front/spine/back and their small pile copies) to the R2 bucket, uploading
 //    only files whose content changed since the last publish and deleting ones
 //    that are gone. Images first, the JSON last, so the manifest never names an
 //    image that isn't there yet.
@@ -43,7 +43,7 @@ const OVERRIDES = process.env.REGAL_OVERRIDES ?? join(homedir(), '.reading-track
 const VOLATILE_FIELDS = new Set(['updatedAt', 'averageRating', 'notePath'])
 /** Book fields that never leave the owner's machine. */
 const PRIVATE_FIELDS = new Set(['notePath'])
-const BOOK_FILES = ['front.webp', 'spine.webp', 'back.webp']
+const BOOK_FILES = ['front.webp', 'spine.webp', 'back.webp', 'front-pile.webp', 'spine-pile.webp']
 const TYPES: Record<string, { type: string, cache: string }> = {
   // JSON changes with every build; images rarely (same names, so not immutable).
   '.json': { type: 'application/json', cache: 'public, max-age=60' },

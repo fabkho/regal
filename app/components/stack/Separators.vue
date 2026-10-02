@@ -44,7 +44,7 @@ const FADE_RATE = 9
 
 const reducedMotion = usePreferredReducedMotion()
 const { onBeforeRender } = useLoop()
-/** Meshes.vue records each re-sort; `until` is when its Books are back in the pile (performance.now()). */
+/** Meshes.vue records each re-sort and entrance; `until` is when its Books are back in the pile (performance.now()). */
 const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
 
 // --- Building blocks -------------------------------------------------------------

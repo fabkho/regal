@@ -27,6 +27,8 @@ const debug = computed(() => String(route.query.debug ?? '').split(','))
 const debugSlots = computed(() => debug.value.includes('slots'))
 /** ?debug=pick exposes the Pick state to browser scripts (BooksPickProbe). */
 const debugPick = computed(() => debug.value.includes('pick'))
+/** ?debug=loads logs the faces the pile shows as they change (window.__regalLoads, see BooksMeshes). */
+const debugLoads = computed(() => debug.value.includes('loads'))
 
 const { books } = useLibrary()
 const { pickedId, putAway } = useBookPick()
@@ -56,6 +58,21 @@ const stack = computed(() => layoutStack(stackBooks.value, {
 /** Looks with the date beside the pile need a wider view on narrow stages. */
 const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
+
+// A host page (embed) always shows the Stack: fetch the manifest while the page
+// loads, and open the connection to the asset host early. The preload matches
+// the manifest's fetch() exactly (CORS, no credentials), so it is used, not
+// fetched twice.
+const regal = useRegalConfig()
+if (regal.mode === 'embed') {
+  const assetsOrigin = /^https?:\/\//.test(regal.assetsBase) ? new URL(regal.assetsBase).origin : null
+  useHead({
+    link: [
+      { rel: 'preload', as: 'fetch', href: `${regal.assetsBase}manifest.json`, crossorigin: 'anonymous' },
+      ...(assetsOrigin ? [{ rel: 'preconnect' as const, href: assetsOrigin, crossorigin: 'anonymous' as const }] : []),
+    ],
+  })
+}
 
 const isReady = ref(false)
 const showStackControls = computed(() => props.showControls && mode.value === 'stack' && books.value.length > 0)
@@ -122,13 +139,14 @@ watch(books, (list) => {
             :books="books"
             :aside="props.showDetails"
             shuffle="animate"
+            :debug-loads="debugLoads"
           />
         </StackScene>
         <BooksPickProbe v-if="debugPick" />
       </TresCanvas>
 
       <template #fallback>
-        <p class="stage__status">
+        <p class="stage__status stage__status--late">
           Loading the bookcase…
         </p>
       </template>
@@ -195,7 +213,7 @@ watch(books, (list) => {
 
     <p
       v-show="!isReady"
-      class="stage__status stage__status--overlay"
+      class="stage__status stage__status--overlay stage__status--late"
       aria-live="polite"
     >
       Loading the bookcase…
@@ -229,6 +247,17 @@ watch(books, (list) => {
 .stage__status--overlay {
   position: absolute;
   pointer-events: none;
+}
+
+/* Quiet paper while the pile comes in; the words only when it takes a while. */
+.stage__status--late {
+  animation: stage-status-late 0.4s ease-out 1s both;
+}
+
+@keyframes stage-status-late {
+  from {
+    opacity: 0;
+  }
 }
 
 .stage__top {

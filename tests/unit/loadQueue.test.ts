@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mostUrgent, schedule } from '../../app/utils/covers/loadQueue'
+import { mostUrgent, reschedule, schedule, setBands } from '../../app/utils/covers/loadQueue'
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 
@@ -34,16 +34,16 @@ describe('schedule', () => {
     const jobs = Array.from({ length: 10 }, (_, index) => job(`book${index}`, started))
     const all = jobs.map((entry, index) => schedule(entry.run, () => 9 - index))
     await tick()
-    expect(started).toEqual(['book9', 'book8', 'book7', 'book6', 'book5', 'book4'])
+    expect(started).toEqual(['book9', 'book8', 'book7', 'book6', 'book5', 'book4', 'book3', 'book2'])
     for (const entry of jobs) entry.finish()
     await Promise.all(all)
-    expect(started.slice(6)).toEqual(['book3', 'book2', 'book1', 'book0'])
+    expect(started.slice(8)).toEqual(['book1', 'book0'])
   })
 
   it('reads the priority again when a slot frees up (scrolling while loading)', async () => {
     const started: string[] = []
     let focus = 0
-    const blockers = Array.from({ length: 6 }, (_, index) => job(`blocker${index}`, started))
+    const blockers = Array.from({ length: 8 }, (_, index) => job(`blocker${index}`, started))
     const running = blockers.map(entry => schedule(entry.run, () => -1))
     const near = job('near', started)
     const far = job('far', started)
@@ -62,5 +62,60 @@ describe('schedule', () => {
   it('keeps going after a failed job', async () => {
     await expect(schedule(() => Promise.reject(new Error('404')))).rejects.toThrow('404')
     await expect(schedule(() => Promise.resolve('ok'))).resolves.toBe('ok')
+  })
+
+  it('holds a band to its slots until a scroll makes its jobs urgent', async () => {
+    setBands([{ from: 100, max: 1 }])
+    try {
+      const started: string[] = []
+      let focus = 0
+      const jobs = ['a', 'b', 'c'].map(name => job(name, started))
+      const done = jobs.map((entry, index) => schedule(entry.run, () => (index === 2 && focus === 1 ? 0 : 100 + index)))
+      await tick()
+      // Background: one at a time, the others wait though slots are free.
+      expect(started).toEqual(['a'])
+      // The view scrolls to c: it starts right away, without waiting for a to finish.
+      focus = 1
+      reschedule()
+      expect(started).toEqual(['a', 'c'])
+      for (const entry of jobs) entry.finish()
+      await Promise.all(done)
+      expect(started).toEqual(['a', 'c', 'b'])
+    }
+    finally {
+      setBands([])
+    }
+  })
+
+  it('frees the slot of a task that throws before returning a promise', async () => {
+    const failures = Array.from({ length: 10 }, () => schedule((): Promise<never> => {
+      throw new Error('sync')
+    }))
+    for (const failure of failures) await expect(failure).rejects.toThrow('sync')
+    // Ten throws later, all eight slots are free again.
+    const started: string[] = []
+    const jobs = Array.from({ length: 8 }, (_, index) => job(`ok${index}`, started))
+    const done = jobs.map(entry => schedule(entry.run))
+    await tick()
+    expect(started).toHaveLength(8)
+    for (const entry of jobs) entry.finish()
+    await Promise.all(done)
+  })
+
+  it('drops a queued job when its signal aborts, and never starts it', async () => {
+    const started: string[] = []
+    const blockers = Array.from({ length: 8 }, (_, index) => job(`blocker${index}`, started))
+    const running = blockers.map(entry => schedule(entry.run))
+    const controller = new AbortController()
+    const dropped = job('dropped', started)
+    const pending = schedule(dropped.run, undefined, controller.signal)
+    await tick()
+    controller.abort()
+    await expect(pending).rejects.toThrow('dropped')
+    for (const entry of blockers) entry.finish()
+    await Promise.all(running)
+    await tick()
+    expect(started).not.toContain('dropped')
+    await expect(schedule(() => Promise.resolve(1), undefined, controller.signal)).rejects.toThrow()
   })
 })

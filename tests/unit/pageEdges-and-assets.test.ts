@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pageEdgePlan, paperStock, seeded } from '../../app/utils/books/pageEdges'
-import { assetEntryFor, assetUrl } from '../../app/utils/covers/bookAssets'
+import { assetEntryFor, assetFaces, assetUrl } from '../../app/utils/covers/bookAssets'
 
 describe('paperStock', () => {
   it('prints mass-market paperbacks on pulp and hardcovers on white stock', () => {
@@ -67,5 +67,40 @@ describe('assetEntryFor', () => {
     expect(assetUrl('a/front.webp')).toBe('/book-assets/a/front.webp')
     expect(assetUrl('/api/cover?isbn=1')).toBe('/api/cover?isbn=1')
     expect(assetUrl('https://example.com/x.jpg')).toBe('https://example.com/x.jpg')
+  })
+})
+
+describe('assetFaces', () => {
+  it('prefers the small pile copies and takes the colours from the manifest', () => {
+    const faces = assetFaces({
+      front: 'k/front.webp',
+      spine: 'k/spine.webp',
+      back: 'k/back.webp',
+      pile: { front: 'k/front-pile.webp', spine: 'k/spine-pile.webp' },
+      palette: { background: '#48445c', text: '#F5F2EB', accent: '#1c1926' },
+      spineColor: '#151728',
+    })
+    expect(faces.spine).toBe('/book-assets/k/spine-pile.webp')
+    expect(faces.pileFront).toBe('/book-assets/k/front-pile.webp')
+    // Taken out, a Book shows its full front; the back is only ever seen then.
+    expect(faces.front).toBe('/book-assets/k/front.webp')
+    expect(faces.back).toBe('/book-assets/k/back.webp')
+    expect(faces.palette).toEqual({ background: [0x48, 0x44, 0x5C], text: [0xF5, 0xF2, 0xEB], accent: [0x1C, 0x19, 0x26] })
+    expect(faces.spineColor).toEqual([0x15, 0x17, 0x28])
+  })
+
+  it('falls back to the full faces and no colours for an older manifest', () => {
+    const faces = assetFaces({ front: 'k/front.webp', spine: 'k/spine.webp' })
+    expect(faces.spine).toBe('/book-assets/k/spine.webp')
+    expect(faces.pileFront).toBe('/book-assets/k/front.webp')
+    expect(faces.back).toBeUndefined()
+    expect(faces.palette).toBeNull()
+    expect(faces.spineColor).toBeNull()
+  })
+
+  it('ignores malformed colours', () => {
+    const faces = assetFaces({ palette: { background: 'red', text: '#fff', accent: '#000000' }, spineColor: 'nope' })
+    expect(faces.palette).toBeNull()
+    expect(faces.spineColor).toBeNull()
   })
 })
