@@ -21,13 +21,20 @@ const beside = computed(() => room.value >= MIN_ROOM)
 const style = computed(() => (beside.value
   ? { left: `${anchor.value.x + GAP}px`, top: `${anchor.value.y}px`, maxWidth: `${room.value}px` }
   : {}))
+
+// The label the details card grows out of and shrinks back into
+// (composables/useLabelMorph.ts); held back while the box is on its way.
+const morph = useLabelMorph()
+const label = ref<HTMLElement | null>(null)
+useLabelMorphLabel('focus', () => (label.value && book.value ? { bookId: book.value.id, el: label.value } : null))
 </script>
 
 <template>
   <p
     v-if="book && !pickedId"
+    ref="label"
     class="focus-label"
-    :class="{ 'focus-label--caption': !beside }"
+    :class="{ 'focus-label--caption': !beside, 'focus-label--held': morph.labelsHidden }"
     :style="style"
   >
     <BooksTitleStars :book="book" />
@@ -63,6 +70,10 @@ const style = computed(() => (beside.value
 .focus-label :deep(.title-stars__stars),
 .focus-label :deep(.title-stars__unrated) {
   flex-shrink: 0;
+}
+
+.focus-label--held {
+  visibility: hidden;
 }
 
 .focus-label--caption {

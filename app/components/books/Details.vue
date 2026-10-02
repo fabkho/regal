@@ -7,16 +7,44 @@ const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
 
 const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
-const showSpoiler = ref(false)
-const description = ref<string | null>(null)
-watch(book, async (current) => {
-  showSpoiler.value = false
-  description.value = null
-  if (!current) return
+
+// The card grows out of the Book's label and shrinks back into it
+// (composables/useLabelMorph.ts): then it skips its own fade and stays hidden
+// until the travelling box arrives. Swapping Books keeps the card: the old
+// content goes, the height follows, the new content comes
+// (composables/useCardSwap.ts); `shown` is the Book the content shows.
+const morph = useLabelMorph()
+const root = ref<HTMLElement | null>(null)
+const body = ref<HTMLElement | null>(null)
+const content = ref<HTMLElement | null>(null)
+useLabelMorphCard(() => root.value)
+const reducedMotion = usePreferredReducedMotion()
+
+/** Blurbs by Book id: the old content keeps its own while it fades out. */
+const descriptions = ref<Record<string, string | null>>({})
+function loadBlurb(current: NonNullable<typeof book.value>) {
   // The open Book's blurb is wanted now: ahead of every queued load.
-  const text = await loadDescription(current, () => -1)
-  if (book.value?.id === current.id) description.value = text
+  return loadDescription(current, () => -1).then((text) => {
+    descriptions.value = { ...descriptions.value, [current.id]: text }
+  })
+}
+watch(book, (current) => {
+  if (current && !(current.id in descriptions.value)) void loadBlurb(current)
 }, { immediate: true })
+
+const { shown } = useCardSwap({
+  source: book,
+  card: root,
+  body,
+  content,
+  instant: () => reducedMotion.value === 'reduce' || morph.value.active,
+  ready: loadBlurb,
+})
+const description = computed(() => (shown.value ? descriptions.value[shown.value.id] ?? null : null))
+const showSpoiler = ref(false)
+watch(() => shown.value?.id, () => {
+  showSpoiler.value = false
+})
 
 const STATUS_LABELS: Record<string, string> = {
   'read': 'Read',
@@ -25,23 +53,23 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const status = computed(() => {
-  const value = book.value?.status ?? ''
+  const value = shown.value?.status ?? ''
   return STATUS_LABELS[value] ?? value.replace(/-/g, ' ')
 })
 
 const readOn = computed(() => {
-  const date = book.value?.dateRead
+  const date = shown.value?.dateRead
   if (!date) return null
   return new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 })
 
 const meta = computed(() => {
-  if (!book.value) return []
+  if (!shown.value) return []
   return [
     status.value,
     readOn.value && `Finished ${readOn.value}`,
-    book.value.pages && `${book.value.pages} pages`,
-    book.value.binding,
+    shown.value.pages && `${shown.value.pages} pages`,
+    shown.value.binding,
   ].filter(Boolean) as string[]
 })
 
@@ -54,111 +82,138 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 </script>
 
 <template>
-  <Transition name="details">
+  <Transition
+    name="details"
+    :css="morph.cardFade"
+  >
     <article
       v-if="book"
+      ref="root"
       class="details"
+      :class="{ 'details--morphing': morph.cardHidden }"
       aria-live="polite"
       :aria-label="`${book.title} details`"
     >
-      <p
-        v-if="book.seriesTitle"
-        class="details__series"
+      <div
+        ref="body"
+        class="details__body"
       >
-        {{ book.seriesTitle }}
-      </p>
-      <h2 class="details__title">
-        {{ book.title }}
-      </h2>
-      <p
-        v-if="book.author"
-        class="details__author"
-      >
-        {{ book.author }}
-      </p>
-
-      <p
-        v-if="book.rating"
-        class="details__rating"
-        :aria-label="`Rated ${book.rating} out of 5`"
-      >
-        <span
-          class="details__stars"
-          aria-hidden="true"
-        >★★★★★<span
-          class="details__stars-fill"
-          :style="{ width: `${book.rating / 5 * 100}%` }"
-        >★★★★★</span></span>
-        <span class="details__rating-value">{{ book.rating.toFixed(book.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
-      </p>
-
-      <p class="details__meta">
-        {{ meta.join(' · ') }}
-      </p>
-
-      <template v-if="book.review">
-        <button
-          v-if="book.reviewHasSpoiler && !showSpoiler"
-          type="button"
-          class="details__spoiler"
-          @click="showSpoiler = true"
+        <div
+          v-if="shown"
+          ref="content"
+          class="details__content"
         >
-          My review contains spoilers — show
-        </button>
-        <blockquote
-          v-else
-          class="details__review"
-        >
-          {{ book.review }}
-        </blockquote>
-      </template>
+          <p
+            v-if="shown.seriesTitle"
+            class="details__series"
+          >
+            {{ shown.seriesTitle }}
+          </p>
+          <h2 class="details__title">
+            {{ shown.title }}
+          </h2>
+          <p
+            v-if="shown.author"
+            class="details__author"
+          >
+            {{ shown.author }}
+          </p>
 
-      <section
-        v-if="description"
-        class="details__about"
-      >
-        <h3 class="details__label">
-          About
-        </h3>
-        <p class="details__description">
-          {{ description }}
-        </p>
-      </section>
+          <p
+            v-if="shown.rating"
+            class="details__rating"
+            :aria-label="`Rated ${shown.rating} out of 5`"
+          >
+            <span
+              class="details__stars"
+              aria-hidden="true"
+            >★★★★★<span
+              class="details__stars-fill"
+              :style="{ width: `${shown.rating / 5 * 100}%` }"
+            >★★★★★</span></span>
+            <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
+          </p>
 
-      <div class="details__actions">
-        <button
-          type="button"
-          class="btn details__button"
-          @click="flip"
-        >
-          {{ face === 'front' ? 'Show back' : 'Show front' }}
-        </button>
-        <button
-          type="button"
-          class="btn details__button"
-          @click="putAway"
-        >
-          Put back
-        </button>
-        <a
-          class="details__link"
-          :href="goodreadsUrl(book)"
-          target="_blank"
-          rel="noopener"
-        >Goodreads ↗</a>
+          <p class="details__meta">
+            {{ meta.join(' · ') }}
+          </p>
+
+          <template v-if="shown.review">
+            <button
+              v-if="shown.reviewHasSpoiler && !showSpoiler"
+              type="button"
+              class="details__spoiler"
+              @click="showSpoiler = true"
+            >
+              My review contains spoilers — show
+            </button>
+            <blockquote
+              v-else
+              class="details__review"
+            >
+              {{ shown.review }}
+            </blockquote>
+          </template>
+
+          <section
+            v-if="description"
+            class="details__about"
+          >
+            <h3 class="details__label">
+              About
+            </h3>
+            <p class="details__description">
+              {{ description }}
+            </p>
+          </section>
+
+          <div class="details__actions">
+            <button
+              type="button"
+              class="btn details__button"
+              @click="flip"
+            >
+              {{ face === 'front' ? 'Show back' : 'Show front' }}
+            </button>
+            <button
+              type="button"
+              class="btn details__button"
+              @click="putAway"
+            >
+              Put back
+            </button>
+            <a
+              class="details__link"
+              :href="goodreadsUrl(shown)"
+              target="_blank"
+              rel="noopener"
+            >Goodreads ↗</a>
+          </div>
+          <p class="details__hint">
+            Drag to turn · click the book to flip · Esc to put back
+          </p>
+        </div>
       </div>
-      <p class="details__hint">
-        Drag to turn · click the book to flip · Esc to put back
-      </p>
     </article>
   </Transition>
 </template>
 
 <style scoped>
 .details {
+  box-sizing: border-box;
   padding: 1rem 1.1rem;
   border: 1px solid var(--color-ink, #2C2C2A);
   background: var(--color-bg, #F5F2EB);
+}
+
+/* Laid out (so the morph can measure it) but not shown until the box arrives. */
+.details--morphing {
+  visibility: hidden;
+}
+
+/* Swapping Books, the content shrinks out and grows in around its top edge. */
+.details__content {
+  transform-origin: 50% 0;
 }
 
 .details__series,
@@ -224,6 +279,20 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 
 .details__about {
   margin-top: 0.7rem;
+  /* A blurb arriving after the content shows fades in while the card grows for it. */
+  animation: details-about-in 0.25s ease-out;
+}
+
+@keyframes details-about-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .details__about {
+    animation: none;
+  }
 }
 
 .details__label {
