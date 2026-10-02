@@ -1,0 +1,32 @@
+{
+  "fx-001": {
+    "source": "ai",
+    "front": "fx-001/front.webp",
+    "spine": "fx-001/spine.webp",
+    "back": "fx-001/back.webp"
+  },
+  "fx-002": {
+    "source": "ai",
+    "front": "fx-002/front.webp",
+    "spine": "fx-002/spine.webp",
+    "back": "fx-002/back.webp"
+  },
+  "fx-003": {
+    "source": "ai",
+    "front": "fx-003/front.webp",
+    "spine": "fx-003/spine.webp",
+    "back": "fx-003/back.webp"
+  },
+  "fx-004": {
+    "source": "ai",
+    "front": "fx-004/front.webp",
+    "spine": "fx-004/spine.webp",
+    "back": "fx-004/back.webp"
+  },
+  "fx-005": {
+    "source": "ai",
+    "front": "fx-005/front.webp",
+    "spine": "fx-005/spine.webp",
+    "back": "fx-005/back.webp"
+  }
+}

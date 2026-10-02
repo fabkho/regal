@@ -40,10 +40,11 @@ describe('layoutStack', () => {
     for (let i = 1; i < sorted.length; i++) {
       const below = sorted[i - 1]!
       const above = sorted[i]!
-      expect(above.y - above.thickness / 2).toBeGreaterThanOrEqual(below.y + below.thickness / 2)
+      // Flush: no sliver of light between neighbours, and no overlap either.
+      expect(above.y - above.thickness / 2).toBeCloseTo(below.y + below.thickness / 2, 9)
     }
     const top = sorted.at(-1)!
-    expect(height).toBeGreaterThanOrEqual(top.y + top.thickness / 2)
+    expect(height).toBeCloseTo(top.y + top.thickness / 2, 9)
     for (const pose of poses) expect(pose.rotation[2]).toBeCloseTo(Math.PI / 2)
   })
 

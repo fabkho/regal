@@ -12,3 +12,6 @@ dist
 .DS_Store
 # real exports never go in the repo
 goodreads_library_export*.csv
+
+# Book asset sets (#20): derived from publisher covers, not committed yet
+public/book-assets/

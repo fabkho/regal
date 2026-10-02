@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibrarySummary } from '~/composables/useLibrary'
+import type { LibrarySummary } from '#layers/regal/app/composables/useLibrary'
 
 const props = defineProps<{
   summary: LibrarySummary
@@ -48,6 +48,6 @@ const pluralBooks = computed(() => props.summary.total === 1 ? 'book' : 'books')
 <style scoped>
 .summary {
   margin: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-md, 0.9rem);
 }
 </style>

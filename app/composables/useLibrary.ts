@@ -1,8 +1,7 @@
 import { computed } from 'vue'
-import demoLibraryCsv from '~/assets/data/demo-library.csv?raw'
-import sunEaterCsv from '~/assets/data/sun-eater.csv?raw'
-import { importLibrary, NotAGoodreadsExportError } from '#shared/library/importLibrary'
-import type { Book } from '#shared/types/book'
+import type { ImportLibraryResult } from '#layers/regal/shared/library/importLibrary'
+import { NotAReadingTrackerExportError } from '#layers/regal/shared/library/importReadingTracker'
+import type { Book } from '#layers/regal/shared/types/book'
 
 /** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
 export const LIBRARY_STORAGE_KEY = 'regal:library:v1'
@@ -44,6 +43,21 @@ export function useLibraryRestored() {
 }
 
 /**
+ * The CSV importer (Papa Parse) and the demo CSVs load on demand, in the
+ * browser: kept out of server bundles, where some builds (e.g. a Nuxt host on
+ * Cloudflare) rewrite the `typeof window` inside Papa Parse's worker string
+ * into invalid code. JSON exports parse without it.
+ */
+const browserOnly = () => Promise.reject(new Error('CSV libraries load in the browser only.'))
+const csvImporter = () => import.meta.server
+  ? browserOnly()
+  : import('#layers/regal/shared/library/importLibrary')
+
+async function parseLibraryText(text: string): Promise<ImportLibraryResult> {
+  return (await csvImporter()).importLibrary(text)
+}
+
+/**
  * Reactive Library store, shared across every component that calls it.
  * Persisted to `localStorage` under `regal:library:v1` by the
  * `library-persistence.client` plugin, which restores it after hydration
@@ -69,6 +83,7 @@ export function useLibrary() {
   }
 
   async function importFile(file: File) {
+    const { importLibrary, NotAGoodreadsExportError } = await csvImporter()
     try {
       const text = await file.text()
       const result = importLibrary(text)
@@ -79,6 +94,9 @@ export function useLibrary() {
       if (caught instanceof NotAGoodreadsExportError) {
         error.value = 'That doesn\'t look like a Goodreads library export CSV. Export it from Goodreads → My Books → Import and export → Export Library.'
       }
+      else if (caught instanceof NotAReadingTrackerExportError) {
+        error.value = 'That JSON isn\'t a reading-tracker export. Create one with `reading list --json > library.json`.'
+      }
       else {
         error.value = 'Could not read that file. Please try again.'
       }
@@ -86,13 +104,29 @@ export function useLibrary() {
   }
 
   /** 'classics' is the public Demo library; 'sun-eater' is a dev test Library (one series, one design). */
-  function loadDemo(name: 'classics' | 'sun-eater' = 'classics') {
+  async function loadDemo(name: 'classics' | 'sun-eater' = 'classics') {
     try {
-      const result = importLibrary(name === 'sun-eater' ? sunEaterCsv : demoLibraryCsv)
+      if (import.meta.server) await browserOnly()
+      const csv = name === 'sun-eater'
+        ? await import('#layers/regal/app/assets/data/sun-eater.csv?raw')
+        : await import('#layers/regal/app/assets/data/demo-library.csv?raw')
+      const result = await parseLibraryText(csv.default)
       applyResult(result)
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : 'Could not load the demo library.'
+    }
+  }
+
+  /** Loads a Library export from a URL (dev: the asset pipeline's /book-assets/library.json). */
+  async function loadUrl(url: string) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`${url}: ${response.status}`)
+      applyResult(await parseLibraryText(await response.text()))
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : 'Could not load that library.'
     }
   }
 
@@ -109,6 +143,7 @@ export function useLibrary() {
     error,
     importFile,
     loadDemo,
+    loadUrl,
     clear,
   }
 }

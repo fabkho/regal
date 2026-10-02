@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Dev-only overlay: one translucent box per measured ShelfSlot, filling the
 // usable volume Layout may place Books into. Toggle with ?debug=slots.
-import { SHELF_SLOTS } from '~/utils/bookcase/shelves'
-import { DEBUG_SLOT_FILL } from '~/utils/bookcase/scene'
+import { SHELF_SLOTS } from '#layers/regal/app/utils/bookcase/shelves'
+import { DEBUG_SLOT_FILL } from '#layers/regal/app/utils/bookcase/scene'
 
 const boxes = SHELF_SLOTS.map((slot) => {
   const width = slot.xEnd - slot.xStart

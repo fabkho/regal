@@ -1,0 +1,239 @@
+<script setup lang="ts">
+// Sort & filter for the Stack (#27): 'chips' (a row over the 3D), 'stacked'
+// (one group per line, for a sidebar) or 'menu' (one button, popover).
+import { DEFAULT_STACK_VIEW, readYears, STACK_GROUPINGS, STACK_SORTS } from '#layers/regal/app/utils/stack/view'
+
+const props = defineProps<{ variant: 'chips' | 'stacked' | 'menu' }>()
+
+const { books } = useLibrary()
+const { view, set } = useStackView()
+const years = computed(() => readYears(books.value))
+const open = ref(false)
+const RATINGS = [0, 4, 4.5]
+
+const summary = computed(() => {
+  const sort = STACK_SORTS.find(option => option.value === view.value.sort)!.label
+  const parts = [sort]
+  if (view.value.year) parts.push(String(view.value.year))
+  if (view.value.minRating) parts.push(`★ ${view.value.minRating}+`)
+  if (view.value.sort === 'date' && view.value.group !== DEFAULT_STACK_VIEW.group) parts.push(`by ${view.value.group}`)
+  return parts.join(' · ')
+})
+</script>
+
+<template>
+  <div
+    class="controls"
+    :class="`controls--${props.variant}`"
+  >
+    <button
+      v-if="props.variant === 'menu'"
+      type="button"
+      class="controls__toggle"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
+      Sort &amp; filter <span class="controls__summary">{{ summary }}</span>
+    </button>
+
+    <div
+      v-if="props.variant !== 'menu' || open"
+      class="controls__body"
+    >
+      <div
+        class="controls__group"
+        role="group"
+        aria-label="Sort"
+      >
+        <span class="controls__label">Sort</span>
+        <div class="controls__options">
+          <button
+            v-for="option in STACK_SORTS"
+            :key="option.value"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.sort === option.value"
+            @click="set({ sort: option.value })"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+      <div
+        v-if="view.sort === 'date'"
+        class="controls__group"
+        role="group"
+        aria-label="Date separators"
+      >
+        <span class="controls__label">Group</span>
+        <div class="controls__options">
+          <button
+            v-for="option in STACK_GROUPINGS"
+            :key="option.value"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.group === option.value"
+            @click="set({ group: option.value })"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+      <div
+        v-if="years.length > 1"
+        class="controls__group"
+        role="group"
+        aria-label="Year read"
+      >
+        <span class="controls__label">Year</span>
+        <div class="controls__options">
+          <button
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.year === null"
+            @click="set({ year: null })"
+          >
+            All
+          </button>
+          <button
+            v-for="year in years"
+            :key="year"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.year === year"
+            @click="set({ year })"
+          >
+            {{ year }}
+          </button>
+        </div>
+      </div>
+      <div
+        class="controls__group"
+        role="group"
+        aria-label="Minimum rating"
+      >
+        <span class="controls__label">Rating</span>
+        <div class="controls__options">
+          <button
+            v-for="rating in RATINGS"
+            :key="rating"
+            type="button"
+            class="controls__chip"
+            :aria-pressed="view.minRating === rating"
+            @click="set({ minRating: rating })"
+          >
+            {{ rating ? `★ ${rating}+` : 'All' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.controls {
+  font-size: var(--text-xs, 0.7rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.controls__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+}
+
+.controls--stacked .controls__body {
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.controls--menu .controls__body {
+  position: absolute;
+  margin-top: 0.4rem;
+  flex-direction: column;
+  padding: 0.8rem;
+  background: var(--color-bg, #F5F2EB);
+  border: 1px solid var(--color-ink, #2C2C2A);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.08);
+}
+
+.controls__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.controls__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* Stacked (sidebars): label above, options as one segmented row that never wraps */
+.controls--stacked .controls__group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.controls--stacked .controls__options {
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.controls--stacked .controls__options::-webkit-scrollbar {
+  display: none;
+}
+
+.controls--stacked .controls__chip {
+  flex: 1 0 auto;
+  white-space: nowrap;
+}
+
+.controls--stacked .controls__chip + .controls__chip {
+  margin-left: -1px;
+}
+
+.controls--stacked .controls__chip:hover,
+.controls--stacked .controls__chip[aria-pressed='true'] {
+  position: relative;
+}
+
+.controls__label {
+  min-width: 3.6rem;
+  color: var(--color-ink-muted, #6B6B69);
+}
+
+.controls__chip,
+.controls__toggle {
+  padding: 0.25rem 0.55rem;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
+  border: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
+  cursor: pointer;
+}
+
+.controls__chip:hover,
+.controls__toggle:hover,
+.controls__chip[aria-pressed='true'] {
+  color: var(--color-bg, #F5F2EB);
+  background: var(--color-ink, #2C2C2A);
+  border-color: var(--color-ink, #2C2C2A);
+}
+
+.controls__toggle {
+  border-color: var(--color-ink, #2C2C2A);
+}
+
+.controls__summary {
+  margin-left: 0.4rem;
+  color: var(--color-accent, #B93E2E);
+}
+</style>

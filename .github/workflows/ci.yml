@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Before installing anything: real exports and book assets never get in.
+      - name: Privacy check
+        run: node scripts/check-privacy.mjs
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Unit tests only: the e2e suite (WebGL in a browser) stays local.
+      - name: Test
+        run: pnpm run test:unit

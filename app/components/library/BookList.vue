@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Book } from '#shared/types/book'
+import type { Book } from '#layers/regal/shared/types/book'
 
 defineProps<{
   books: Book[]
@@ -52,7 +52,7 @@ function toggle(bookId: string) {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -77,7 +77,7 @@ function toggle(bookId: string) {
   grid-template-columns: 1fr auto;
   gap: 0.05rem 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
 }
 
 li:last-child .book-list__item {
@@ -85,39 +85,39 @@ li:last-child .book-list__item {
 }
 
 .book-list__item:hover {
-  background: var(--color-accent-tint);
+  background: var(--color-accent-tint, rgba(185, 62, 46, 0.12));
   color: inherit;
 }
 
 .book-list__item:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent, #B93E2E);
   outline-offset: -2px;
 }
 
 .book-list__item[aria-pressed="true"] {
-  background: var(--color-accent-tint);
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  background: var(--color-accent-tint, rgba(185, 62, 46, 0.12));
+  box-shadow: inset 2px 0 0 var(--color-accent, #B93E2E);
 }
 
 .book-list__title {
   grid-column: 1;
-  font-size: var(--text-base);
+  font-size: var(--text-base, 0.85rem);
 }
 
 .book-list__author {
   grid-column: 1;
-  font-size: var(--text-xs);
-  color: var(--color-ink-muted);
+  font-size: var(--text-xs, 0.7rem);
+  color: var(--color-ink-muted, #6B6B69);
 }
 
 .book-list__status {
   grid-column: 2;
   grid-row: 1 / span 2;
   align-self: center;
-  font-size: var(--text-2xs);
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--color-ink-faint);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
   white-space: nowrap;
 }
 </style>

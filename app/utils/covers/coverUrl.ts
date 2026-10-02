@@ -1,4 +1,4 @@
-import type { Book } from '#shared/types/book'
+import type { Book } from '#layers/regal/shared/types/book'
 
 export type CoverBook = Pick<Book, 'isbn13' | 'isbn10' | 'title' | 'author'>
 

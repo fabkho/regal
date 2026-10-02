@@ -5,8 +5,11 @@ import { schedule } from './coverTextures'
 
 const cache = new Map<string, Promise<string | null>>()
 
+/** Bump when the resolver changes, so browsers drop blurbs (and misses) they cached. */
+const RESOLVER_VERSION = '3'
+
 export function descriptionUrl(book: CoverBook): string {
-  const params = new URLSearchParams()
+  const params = new URLSearchParams({ v: RESOLVER_VERSION })
   if (book.isbn13) params.set('isbn13', book.isbn13)
   if (book.isbn10) params.set('isbn10', book.isbn10)
   if (book.title) params.set('title', book.title)
@@ -14,7 +17,9 @@ export function descriptionUrl(book: CoverBook): string {
   return `/api/description?${params}`
 }
 
-export function loadDescription(book: CoverBook): Promise<string | null> {
+export function loadDescription(book: CoverBook & { description?: string | null }): Promise<string | null> {
+  // The Library source's own blurb (Fable) wins; it is the edition's text.
+  if (book.description?.trim()) return Promise.resolve(book.description.trim())
   const url = descriptionUrl(book)
   let pending = cache.get(url)
   if (!pending) {

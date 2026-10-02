@@ -3,8 +3,8 @@
 // the furniture, a shadow-catching floor and the group Books live in (#4).
 import type { DirectionalLight } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { BOOKCASE_SIZE } from '~/utils/bookcase/shelves'
-import { BOOKCASE_SPACING } from '~/utils/bookcase/layout'
+import { BOOKCASE_SIZE } from '#layers/regal/app/utils/bookcase/shelves'
+import { BOOKCASE_SPACING } from '#layers/regal/app/utils/bookcase/layout'
 import {
   AMBIENT_LIGHT,
   BOUNCE_LIGHT,
@@ -14,7 +14,7 @@ import {
   FLOOR_SHADOW,
   KEY_LIGHT,
   TARGET_BOUNDS,
-} from '~/utils/bookcase/scene'
+} from '#layers/regal/app/utils/bookcase/scene'
 
 const props = withDefaults(defineProps<{ debugSlots?: boolean, bookcaseCount?: number }>(), {
   debugSlots: false,

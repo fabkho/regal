@@ -3,6 +3,9 @@
 // can evolve them independently:
 // - LibraryStage: 3D Bookcase / Stack views, Pick interaction
 // - LibraryPanel: upload, summary, list view (#3)
+// - DevChoices (dev only): open design decisions, previewed live
+const isDev = import.meta.dev
+const choicesOpen = useState('dev-choices:open', () => false)
 </script>
 
 <template>
@@ -16,10 +19,15 @@
       </p>
     </header>
 
-    <main class="page__main">
+    <main
+      class="page__main"
+      :class="{ 'page__main--choices': isDev && choicesOpen }"
+    >
       <LibraryStage class="page__stage" />
       <LibraryPanel class="page__panel" />
     </main>
+
+    <DevChoices v-if="isDev" />
 
     <AppFooter />
   </div>
@@ -66,6 +74,19 @@
 
 .page__panel {
   border-left: 1px solid var(--color-ink);
+}
+
+/* Dev: leave room for the choices drawer. */
+.page__main--choices {
+  padding-right: min(30rem, 100vw);
+}
+
+.page__main--choices .page__panel {
+  display: none;
+}
+
+.page__main--choices:not(.page__main--sidebar) {
+  grid-template-columns: 1fr;
 }
 
 @media (max-width: 900px) {

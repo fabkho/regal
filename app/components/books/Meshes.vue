@@ -9,6 +9,7 @@
 // - click: it slides out and comes to the camera showing its front Cover;
 //   click again for the back, a third time to put it away (after
 //   mawise/bookshelf); drag to spin it; Escape or empty space puts it away.
+//   Clicks are told from drags and raycast by useBookClicks.
 import {
   BoxGeometry,
   CanvasTexture,
@@ -22,21 +23,38 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three'
-import type { Material, Mesh, PerspectiveCamera, PointLight } from 'three'
+import type { Group, Material, Mesh, PerspectiveCamera, PointLight } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
-import type { Book } from '#shared/types/book'
-import { hashString } from '~/utils/bookcase/layout'
-import type { BookPose } from '~/utils/books/pose'
-import { justDragged, markDragEnd } from '~/utils/books/dragGuard'
-import { drawBack, drawSpine, spineFontsReady } from '~/utils/covers/bookFaces'
-import type { FaceInput } from '~/utils/covers/bookFaces'
-import { loadCover } from '~/utils/covers/coverTextures'
-import { loadDescription } from '~/utils/covers/descriptions'
-import type { LoadedCover } from '~/utils/covers/coverTextures'
-import { fromHex, readableOn } from '~/utils/covers/palette'
+import type { Book } from '#layers/regal/shared/types/book'
+import { hashString } from '#layers/regal/app/utils/bookcase/layout'
+import type { BookPose } from '#layers/regal/app/utils/books/pose'
+import { planShuffle, presenceAt, sampleTrack } from '#layers/regal/app/utils/stack/shuffle'
+import { chooseShuffle, countMoves } from '#layers/regal/app/utils/stack/moves'
+import type { ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shuffle'
+import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
+import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
+import { fullCoverTexture, loadCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
+import { isPhotoFace, loadAssets } from '#layers/regal/app/utils/covers/bookAssets'
+import type { LoadedAssets } from '#layers/regal/app/utils/covers/bookAssets'
+import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
+import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
+import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
+import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
+import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
+import type { RGB } from '#layers/regal/app/utils/covers/palette'
 
-const props = defineProps<{ poses: BookPose[], books: Book[] }>()
+const props = withDefaults(defineProps<{
+  poses: BookPose[]
+  books: Book[]
+  /** Move a picked Book left of centre, clear of a details card on the right. */
+  aside?: boolean
+  /** How a re-sorted Stack moves: 'animate' plays a collision-free plan (by hand or carousel), 'instant' jumps. */
+  shuffle?: 'animate' | 'instant'
+}>(), { aside: true, shuffle: 'instant' })
+
+/** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
+const hoveredBook = useState<string | null>('books:hovered', () => null)
 
 // --- Look ------------------------------------------------------------------
 
@@ -49,6 +67,11 @@ const CLOTH_ALBEDO = 0.3
 const COVER_ALBEDO = 0.55
 /** Generated Spine/back textures carry their colour in the texture. */
 const FACE_ALBEDO = 0.42
+/** Page edges: the paper colour lives in the texture; the head collects a little dust. */
+const PAPER_ALBEDO = 0.78
+const HEAD_DUST = 0.9
+/** How strongly the sheet lines catch the light. */
+const PAGE_BUMP = 0.5
 
 interface Gloss { clearcoat: number, clearcoatRoughness: number, envMapIntensity: number }
 const CLOTH_GLOSS: Gloss = { clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 }
@@ -75,7 +98,6 @@ const FLIP_SECONDS = 0.7
 const SPIN_PER_PX = 0.01
 
 const geometry = new BoxGeometry(1, 1, 1)
-const pages = new MeshStandardMaterial({ color: '#CFC3A8', roughness: 0.92, metalness: 0, envMapIntensity: 0.35 })
 
 interface BookMaterials {
   /** BoxGeometry face order: +x (front cover), -x (back), +y, -y, +z (spine, facing the room), -z (fore-edge). */
@@ -85,11 +107,27 @@ interface BookMaterials {
   spine: MeshPhysicalMaterial
   spineTexture: CanvasTexture
   backTexture: CanvasTexture
+  /** Page edges: one canvas, three views of it (head, tail, fore-edge). */
+  edges: {
+    plan: PageEdgePlan
+    canvas: HTMLCanvasElement
+    textures: CanvasTexture[]
+    /** Head, tail and fore edge. */
+    materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
+  }
+  /** Asset set faces (real or AI), when the Book has any. */
+  assets: LoadedAssets | null
+  /** The blurb once it has arrived, for redraws. */
+  description?: string | null
   /** Last loaded Cover (null until/unless there is one), reused for redraws. */
   loaded: LoadedCover | null
+  /** Below 1 while the Book appears or vanishes. */
+  opacity: number
 }
 
 interface Motion {
+  /** Where the Book is drawn on its way to its pose (eased when the view re-sorts). */
+  shown: { position: Vector3, quaternion: Quaternion, ready: boolean }
   hover: number
   pick: { value: number }
   flip: { value: number }
@@ -100,6 +138,14 @@ interface Motion {
 const materialsByBook = new Map<string, BookMaterials>()
 const motionByBook = new Map<string, Motion>()
 const meshes = new Map<string, Mesh>()
+/** Books still shown though no longer in the view: on their way out of a re-sorted Stack. */
+const extra = shallowRef<BookPose[]>([])
+/** Every Book drawn: the view's own, then those on their way out. */
+const rendered = computed(() => {
+  if (extra.value.length === 0) return props.poses
+  const inView = new Set(props.poses.map(pose => pose.bookId))
+  return [...props.poses, ...extra.value.filter(pose => !inView.has(pose.bookId))]
+})
 
 function setGloss(material: MeshPhysicalMaterial, gloss: Gloss) {
   material.userData.gloss = gloss
@@ -142,7 +188,62 @@ function faceTexture(canvas: HTMLCanvasElement) {
 
 const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
 
-function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null): FaceInput | null {
+/**
+ * The page edges of a Book. The canvas runs across the thickness (u on the
+ * box's top, bottom and fore-edge alike) with the Spine's board along its
+ * bottom rows: the head shows it as is, the tail mirrored, and the fore-edge
+ * samples only the middle so no Spine board shows there.
+ */
+function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
+  const book = booksById.value.get(pose.bookId)
+  const plan = pageEdgePlan(book ?? { id: pose.bookId, pages: null, binding: null }, pose.thickness, pose.depth)
+  const canvas = drawPageEdges(plan, board, pose.bookId)
+  const head = faceTexture(canvas)
+  const tail = head.clone()
+  tail.repeat.set(1, -1)
+  tail.offset.set(0, 1)
+  const fore = head.clone()
+  fore.repeat.set(1, 0.5)
+  fore.offset.set(0, 0.25)
+  const edge = (texture: CanvasTexture, dust = 1) => new MeshStandardMaterial({
+    map: texture,
+    bumpMap: texture,
+    bumpScale: PAGE_BUMP,
+    color: new Color(1, 1, 1).multiplyScalar(PAPER_ALBEDO * dust),
+    roughness: 0.93,
+    metalness: 0,
+    envMapIntensity: 0.3,
+  })
+  return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
+}
+
+/**
+ * Puts a freshly drawn Spine or back canvas on its material. three.js
+ * allocates texture storage once, so a canvas of a new size (artwork is drawn
+ * at twice the resolution) needs a new texture rather than an update.
+ */
+function setFace(entry: BookMaterials, face: 'spine' | 'back', image: HTMLCanvasElement) {
+  const key = face === 'spine' ? 'spineTexture' : 'backTexture'
+  const current = entry[key]
+  const old = current.image as HTMLCanvasElement
+  if (old.width === image.width && old.height === image.height) {
+    current.image = image
+    current.needsUpdate = true
+    return
+  }
+  const texture = faceTexture(image)
+  entry[key] = texture
+  entry[face].map = texture
+  entry[face].needsUpdate = true
+  current.dispose()
+}
+
+function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
+  drawPageEdges(entry.edges.plan, board, bookId, entry.edges.canvas)
+  for (const texture of entry.edges.textures) texture.needsUpdate = true
+}
+
+function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null, assets: LoadedAssets | null = null): FaceInput | null {
   const book = booksById.value.get(pose.bookId)
   if (!book) return null
   const background = fromHex(pose.color)
@@ -156,6 +257,14 @@ function faceInput(pose: BookPose, loaded: LoadedCover | null, description: stri
     cover: loaded?.image,
     seed: hashString(book.id),
     description,
+    spineArt: assets?.spine,
+    backArt: assets?.back,
+    // Asset set extras for a realistic back; photos of a real copy get no typography.
+    quotes: assets?.entry.quotes,
+    genre: assets?.entry.genre,
+    publisher: assets?.entry.publisher,
+    backIsPhoto: isPhotoFace(assets?.entry, 'back'),
+    spineIsPhoto: isPhotoFace(assets?.entry, 'spine'),
   }
 }
 
@@ -168,7 +277,9 @@ function materialsFor(pose: BookPose): Material[] {
     const backTexture = faceTexture(input ? drawBack(input) : document.createElement('canvas'))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    entry = { cover, back, spine, spineTexture, backTexture, loaded: null, faces: [cover, back, pages, pages, spine, pages] }
+    const edges = pageEdgesFor(pose, fromHex(pose.color))
+    const [head, tail, fore] = edges.materials
+    entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -177,7 +288,7 @@ function materialsFor(pose: BookPose): Material[] {
 function motionFor(bookId: string): Motion {
   let motion = motionByBook.get(bookId)
   if (!motion) {
-    motion = { hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
+    motion = { shown: { position: new Vector3(), quaternion: new Quaternion(), ready: false }, hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
     motionByBook.set(bookId, motion)
   }
   return motion
@@ -191,13 +302,17 @@ async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
   const description = loadDescription(book)
-  const [loaded] = await Promise.all([loadCover(book), spineFontsReady()])
+  // Asset set first (its own front, spine and back), then the Cover resolver.
+  const assets = await loadAssets(book)
+  const cover = async () => (assets?.frontUrl ? await loadCover(book, assets.frontUrl) : null) ?? loadCover(book)
+  const [loaded] = await Promise.all([cover(), spineFontsReady()])
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
   entry.loaded = loaded
+  entry.assets = assets
 
   if (loaded) {
-    entry.cover.map = loaded.texture
+    entry.cover.map = pickedId.value === pose.bookId ? fullCoverTexture(loaded) : loaded.texture
     entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
     // Printed covers are smoother and glossier than cloth.
     entry.cover.roughness = 0.5
@@ -205,21 +320,22 @@ async function applyCover(pose: BookPose) {
     entry.cover.needsUpdate = true
   }
 
-  const input = faceInput(pose, loaded)
+  const input = faceInput(pose, loaded, null, assets)
   if (!input) return
-  entry.spineTexture.image = drawSpine(input)
-  entry.spineTexture.needsUpdate = true
-  entry.backTexture.image = drawBack(input)
-  entry.backTexture.needsUpdate = true
+  // The cover boards seen on the page edges take the Spine's colour.
+  const board = assets?.spine ? averageColor(assets.spine) : loaded?.palette.background ?? fromHex(pose.color)
+  redrawPageEdges(entry, board, pose.bookId)
+  setFace(entry, 'spine', drawSpine(input))
+  setFace(entry, 'back', drawBack(input))
 
   // The blurb arrives separately; set it on the back when it does.
   const blurb = await description
   const current = materialsByBook.get(pose.bookId)
   if (!blurb || !current) return
-  const withBlurb = faceInput(pose, current.loaded, blurb)
+  const withBlurb = faceInput(pose, current.loaded, blurb, current.assets)
   if (!withBlurb) return
-  current.backTexture.image = drawBack(withBlurb)
-  current.backTexture.needsUpdate = true
+  current.description = blurb
+  setFace(current, 'back', drawBack(withBlurb))
 }
 
 function disposeEntry(entry: BookMaterials) {
@@ -229,16 +345,11 @@ function disposeEntry(entry: BookMaterials) {
   entry.spine.dispose()
   entry.spineTexture.dispose()
   entry.backTexture.dispose()
+  for (const texture of entry.edges.textures) texture.dispose()
+  for (const material of entry.edges.materials) material.dispose()
 }
 
 watch(() => props.poses, (poses) => {
-  const current = new Set(poses.map(p => p.bookId))
-  for (const [bookId, entry] of materialsByBook) {
-    if (current.has(bookId)) continue
-    disposeEntry(entry)
-    materialsByBook.delete(bookId)
-    motionByBook.delete(bookId)
-  }
   for (const pose of poses) {
     if (!materialsByBook.has(pose.bookId)) {
       materialsFor(pose)
@@ -247,16 +358,56 @@ watch(() => props.poses, (poses) => {
   }
 }, { immediate: true })
 
+/** Frees the materials of Books that are neither in the view nor still on their way out. */
+function sweep() {
+  const keep = new Set(rendered.value.map(pose => pose.bookId))
+  for (const [bookId, entry] of materialsByBook) {
+    if (keep.has(bookId)) continue
+    disposeEntry(entry)
+    materialsByBook.delete(bookId)
+    motionByBook.delete(bookId)
+  }
+}
+
+/** Fades a Book's faces; three.js only blends materials marked transparent. */
+function setOpacity(entry: BookMaterials, opacity: number) {
+  if (entry.opacity === opacity) return
+  const blend = opacity < 1
+  for (const material of entry.faces) {
+    if (material.transparent !== blend) {
+      material.transparent = blend
+      material.needsUpdate = true
+    }
+    material.opacity = opacity
+  }
+  entry.opacity = opacity
+}
+
 // --- Interaction -------------------------------------------------------------
 
 const { camera, controls, renderer } = useTres()
 const { onBeforeRender } = useLoop()
-const { pickedId, face, click, putAway } = useBookPick()
+const { pickedId, face, putAway } = useBookPick()
 const reducedMotion = usePreferredReducedMotion()
 const reduced = computed(() => reducedMotion.value === 'reduce')
 
 const glintLight = shallowRef<PointLight | null>(null)
+const group = shallowRef<Group | null>(null)
+/** Not drawn right now: waiting to appear in a re-sort (the raycaster still finds it). */
+const unseen = (bookId: string) => meshes.get(bookId)?.visible === false
+
+// A Book on its way into or out of the view (not drawn yet, or no longer in
+// the poses) can't be taken out; clicks look through it.
+useBookClicks(group, bookId => !unseen(bookId) && props.poses.some(pose => pose.bookId === bookId))
 let hoveredId: string | null = null
+/** Scroll highlight (Stack only): the Book on the focus line comes out like a hovered one. */
+const highlight = useScrollHighlight()
+const { focusedBook, scrollLed } = highlight
+
+watch(focusedBook, (bookId) => {
+  if (!bookId || reduced.value) return
+  gsap.fromTo(motionFor(bookId).glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
+})
 
 function setMesh(bookId: string, element: unknown) {
   const object = (element as { isObject3D?: boolean } | null)?.isObject3D
@@ -271,23 +422,28 @@ function setCursor(value: string) {
   if (element) element.style.cursor = value
 }
 
-function onEnter(bookId: string) {
+// Hover handlers take the Book from the event's mesh rather than a closure per
+// Book: Tres adds a listener on every patch and never removes the old one, so
+// handlers created per render pile up (one more call per re-sort).
+type BookPointerEvent = { object?: { userData?: { bookId?: string } } }
+
+function onEnter(event: BookPointerEvent) {
+  const bookId = event.object?.userData?.bookId
+  if (!bookId) return
+  if (unseen(bookId)) return
   hoveredId = bookId
+  hoveredBook.value = bookId
   setCursor('pointer')
   if (reduced.value || pickedId.value === bookId) return
   const glint = motionFor(bookId).glint
   gsap.fromTo(glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
 }
 
-function onLeave(bookId: string) {
+function onLeave(event: BookPointerEvent) {
+  const bookId = event.object?.userData?.bookId
   if (hoveredId === bookId) hoveredId = null
+  if (hoveredBook.value === bookId) hoveredBook.value = null
   setCursor(dragging ? 'grabbing' : pickedId.value ? 'grab' : 'default')
-}
-
-function onClick(bookId: string, event: { stopPropagation?: () => void }) {
-  event.stopPropagation?.()
-  if (justDragged()) return
-  click(bookId)
 }
 
 function tween(target: { value: number }, value: number, seconds: number) {
@@ -318,6 +474,25 @@ watch(pickedId, (id, previous) => {
   setCursor(id ? 'grab' : 'default')
 })
 
+// The pile shows small Covers; the picked Book gets its Cover at full size,
+// and gives it back once it is back in place.
+function setFullCover(bookId: string, on: boolean) {
+  const entry = materialsByBook.get(bookId)
+  if (!entry?.loaded) return
+  entry.cover.map = on ? fullCoverTexture(entry.loaded) : entry.loaded.texture
+  entry.cover.needsUpdate = true
+  if (!on) releaseFullCover(entry.loaded)
+}
+
+watch(pickedId, (id, previous) => {
+  if (id) setFullCover(id, true)
+  if (previous && previous !== id) {
+    setTimeout(() => {
+      if (pickedId.value !== previous) setFullCover(previous, false)
+    }, RETURN_SECONDS * 1000 + 100)
+  }
+})
+
 watch(face, (value) => {
   if (!pickedId.value) return
   const motion = motionFor(pickedId.value)
@@ -328,25 +503,24 @@ watch(face, (value) => {
 
 // Drag to spin the picked Book.
 let dragging = false
-let dragMoved = false
 let lastX = 0
 let lastY = 0
 
 function onPointerDown(event: PointerEvent) {
   if (!pickedId.value) return
   dragging = true
-  dragMoved = false
   lastX = event.clientX
   lastY = event.clientY
 }
 
 function onPointerMove(event: PointerEvent) {
+  // A release outside the window never reaches us: no button down, no drag.
+  if (dragging && !(event.buttons & 1)) dragging = false
   if (!dragging || !pickedId.value) return
   const dx = event.clientX - lastX
   const dy = event.clientY - lastY
   lastX = event.clientX
   lastY = event.clientY
-  if (Math.abs(dx) + Math.abs(dy) > 0) dragMoved = true
   const spin = motionFor(pickedId.value).spin
   spin.x += dx * SPIN_PER_PX
   spin.y = MathUtils.clamp(spin.y + dy * SPIN_PER_PX, -1.3, 1.3)
@@ -354,7 +528,6 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onPointerUp() {
-  if (dragging && dragMoved) markDragEnd()
   dragging = false
   if (pickedId.value) setCursor('grab')
 }
@@ -368,12 +541,15 @@ onMounted(() => {
   element.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('keydown', onKey)
 })
 
 // --- Per-frame pose ------------------------------------------------------------
 
 const basePosition = new Vector3()
+const targetPosition = new Vector3()
+const targetQuaternion = new Quaternion()
 const pulledPosition = new Vector3()
 const inspectPosition = new Vector3()
 const forward = new Vector3()
@@ -391,28 +567,167 @@ const Y_AXIS = new Vector3(0, 1, 0)
 
 const smooth = (t: number) => t * t * (3 - 2 * t)
 
+const FULLY_THERE = { opacity: 1, scale: 1 }
+/** Overshoot of a popping Book (easeOutBack); 1 grows it about 4 % past full size. */
+const POP_BACK = 1
+
+/**
+ * How a Book looks while it appears or vanishes, from presence 0 (gone) to 1:
+ * a new Book pops out of nothing, a leaving one shrinks away.
+ */
+function presenceLook(presence: number, leaving: boolean): { opacity: number, scale: number } {
+  if (presence >= 1) return FULLY_THERE
+  if (leaving) return { opacity: 1, scale: smooth(presence) }
+  const u = presence - 1
+  return { opacity: Math.min(1, presence * 4), scale: 1 + (POP_BACK + 1) * u * u * u + POP_BACK * u * u }
+}
+
+// --- Re-sort --------------------------------------------------------------------
+// When the Stack is re-sorted or filtered, Books travel along a plan in which
+// they never pass through each other (see utils/stack/shuffle.ts).
+
+let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = null
+/** The last re-sort: how many Books moved, which style ran (dev choices) and when it ends (Stack separators). */
+const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
+/** A re-sort that arrived while another was running; starts when that one ends. */
+let queued: BookPose[] | null = null
+/** A re-sort waiting for the next frame, so it plans with the camera where it will be. */
+let requested: { from: BookPose[], to: BookPose[] } | null = null
+let shuffleTime = 0
+
+const viewPoint = new Vector3()
+/** Stays this far inside the picture's top and bottom edge. */
+const VIEW_INSET = 0.04
+
+/** Heights the camera shows at the pile's axis (z = 0), for where new Books appear. */
+function viewBand(cam: PerspectiveCamera | undefined): ShuffleView | undefined {
+  if (!cam) return undefined
+  cam.updateMatrixWorld()
+  const [bottom, top] = [-1, 1].map((ndcY) => {
+    viewPoint.set(0, ndcY, 0.5).unproject(cam).sub(cam.position)
+    if (Math.abs(viewPoint.z) < 1e-6) return Number.NaN
+    return cam.position.y + viewPoint.y * (-cam.position.z / viewPoint.z)
+  }) as [number, number]
+  if (!Number.isFinite(bottom) || !Number.isFinite(top) || top - bottom < 3 * VIEW_INSET) return undefined
+  return { bottom: bottom + VIEW_INSET, top: top - VIEW_INSET }
+}
+
+function startShuffle(from: BookPose[], to: BookPose[]) {
+  if (props.shuffle === 'instant') {
+    running = null
+    extra.value = []
+    sweep()
+    return
+  }
+  const moves = countMoves(from, to)
+  const style = chooseShuffle(moves)
+  const view = viewBand(camera.value as PerspectiveCamera | undefined)
+  const plan = planShuffle(from, to, style, { view })
+  lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }
+  running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
+  // Leaving Books stay drawn until they have vanished.
+  extra.value = running ? from.filter(pose => plan.leaving.has(pose.bookId)) : []
+  sweep()
+}
+
+watch(() => props.poses, (next, previous) => {
+  if (!previous?.length || props.shuffle === 'instant' || reduced.value) {
+    running = null
+    queued = null
+    requested = null
+    extra.value = []
+    sweep()
+    return
+  }
+  const staying = new Set(next.map(pose => pose.bookId))
+  if (running) {
+    // Books of the running plan keep moving (and are drawn) until it ends.
+    queued = next
+    const drawn = [...running.to, ...rendered.value.filter(pose => running!.plan.leaving.has(pose.bookId))]
+    extra.value = drawn.filter(pose => !staying.has(pose.bookId))
+    return
+  }
+  requested = { from: requested?.from ?? previous, to: next }
+  extra.value = requested.from.filter(pose => !staying.has(pose.bookId))
+})
+
 onBeforeRender(({ delta }) => {
+  if (requested) {
+    startShuffle(requested.from, requested.to)
+    requested = null
+  }
+  shuffleTime = running ? (performance.now() - running.startedAt) / 1000 : 0
+  if (running && shuffleTime >= running.plan.duration) {
+    const from = running.to
+    running = null
+    if (queued) {
+      startShuffle(from, queued)
+      queued = null
+      shuffleTime = 0
+    }
+    else {
+      extra.value = []
+      sweep()
+    }
+  }
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-(delta ?? 0.016) * 12)
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
+  // No scroll highlight while a Book is out or a re-sort runs; the mouse wins while it rests on a Book.
+  highlight.update(props.poses, delta ?? 0.016, !!pickedId.value || !!running || !!requested, hoveredId)
+  // Once the user scrolls, the Book under a resting mouse gives way to the focus.
+  const pointerId = scrollLed.value ? null : hoveredId
 
-  for (const pose of props.poses) {
+  for (const pose of rendered.value) {
     const mesh = meshes.get(pose.bookId)
     if (!mesh) continue
     const motion = motionFor(pose.bookId)
     const isPicked = pickedId.value === pose.bookId
-    const hoverTarget = hoveredId === pose.bookId && !isPicked && motion.pick.value === 0 ? 1 : 0
+    const hovered = pointerId === pose.bookId || (hoveredBook.value === pose.bookId && hoveredId !== pose.bookId)
+    const hoverTarget = hovered && !isPicked && motion.pick.value === 0 ? 1 : 0
     motion.hover += (hoverTarget - motion.hover) * ease
     if (Math.abs(motion.hover - hoverTarget) < 0.001) motion.hover = hoverTarget
 
-    basePosition.set(pose.x, pose.y, pose.z)
-    baseQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
+    targetPosition.set(pose.x, pose.y, pose.z)
+    targetQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
+    // A running re-sort moves the Book along its collision-free track; Books
+    // entering or leaving the view appear or vanish on the way.
+    const track = running?.plan.tracks.get(pose.bookId) ?? running?.plan.leaving.get(pose.bookId)
+    let presence = 1
+    if (track && running && shuffleTime < running.plan.duration) {
+      const sample = sampleTrack(track, shuffleTime)
+      targetPosition.set(...sample.position)
+      targetQuaternion.setFromEuler(euler.set(...sample.rotation))
+      presence = presenceAt(running.plan, pose.bookId, shuffleTime)
+    }
+    // New to a re-sort that waits for the running one: not there yet.
+    else if (running) presence = 0
+    const appearance = presenceLook(presence, !!running?.plan.vanish.has(pose.bookId))
+    mesh.visible = presence > 0
+    mesh.castShadow = appearance.opacity > 0.5
+    mesh.scale.set(pose.thickness * appearance.scale, pose.height * appearance.scale, pose.depth * appearance.scale)
+    const faces = materialsByBook.get(pose.bookId)
+    if (faces) setOpacity(faces, appearance.opacity)
+    const shown = motion.shown
+    shown.position.copy(targetPosition)
+    shown.quaternion.copy(targetQuaternion)
+    shown.ready = true
+    basePosition.copy(shown.position)
+    baseQuaternion.copy(shown.quaternion)
 
     // Hover: towards the viewer, top tilting out a little.
     if (!reduced.value && motion.hover > 0) {
       basePosition.z += HOVER_OUT * motion.hover
       tiltQuaternion.setFromAxisAngle(X_AXIS, HOVER_TILT * motion.hover)
       baseQuaternion.premultiply(tiltQuaternion)
+    }
+    // Scroll highlight (riffle): a little pull-out and tilt, turned about its left end.
+    const lift = highlight.liftOf(pose, isPicked || motion.pick.value > 0)
+    if (lift.out > 0 || lift.yaw > 0) {
+      basePosition.z += lift.out + pose.height / 2 * Math.sin(lift.yaw)
+      basePosition.x += pose.height / 2 * (Math.cos(lift.yaw) - 1)
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.yaw))
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.tilt))
     }
 
     const pick = motion.pick.value
@@ -436,7 +751,7 @@ onBeforeRender(({ delta }) => {
         // On wide views, sit left of centre so the details card (bottom right) doesn't cover it.
         right.crossVectors(forward, up).normalize()
         const halfWidth = distance * Math.tan(fov / 2) * (cam.aspect ?? 1)
-        const aside = (cam.aspect ?? 1) > 1.1 ? -halfWidth * INSPECT_ASIDE : 0
+        const aside = props.aside && (cam.aspect ?? 1) > 1.1 ? -halfWidth * INSPECT_ASIDE : 0
         inspectPosition.copy(cam.position)
           .addScaledVector(forward, distance)
           .addScaledVector(up, distance * 0.04)
@@ -454,8 +769,8 @@ onBeforeRender(({ delta }) => {
       }
     }
 
-    // Shine: a hovered or picked Book catches the light.
-    const shine = Math.max(motion.hover, pick * 0.6)
+    // Shine: a hovered, focused or picked Book catches the light.
+    const shine = Math.max(motion.hover, lift.shine, pick * 0.6)
     const entry = materialsByBook.get(pose.bookId)
     if (entry) {
       applyShine(entry.spine, shine)
@@ -463,7 +778,8 @@ onBeforeRender(({ delta }) => {
       applyShine(entry.back, shine)
     }
 
-    if (hoveredId === pose.bookId && motion.glint.value < 1 && !isPicked) glintBook = { mesh, pose, motion }
+    const glinting = pointerId === pose.bookId || focusedBook.value === pose.bookId
+    if (glinting && motion.glint.value < 1 && !isPicked) glintBook = { mesh, pose, motion }
   }
 
   // Glint: a small warm light sweeping down the hovered Book once.
@@ -488,20 +804,23 @@ onBeforeUnmount(() => {
   element?.removeEventListener('pointerdown', onPointerDown)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('keydown', onKey)
   if (controls.value) (controls.value as { enabled: boolean }).enabled = true
   for (const motion of motionByBook.values()) gsap.killTweensOf([motion.pick, motion.flip, motion.spin, motion.glint])
   geometry.dispose()
-  pages.dispose()
   for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
 })
 </script>
 
 <template>
-  <TresGroup name="books">
+  <TresGroup
+    ref="group"
+    name="books"
+  >
     <TresMesh
-      v-for="pose in props.poses"
+      v-for="pose in rendered"
       :key="pose.bookId"
       :ref="(element: unknown) => setMesh(pose.bookId, element)"
       :name="`book:${pose.bookId}`"
@@ -511,9 +830,8 @@ onBeforeUnmount(() => {
       :scale="[pose.thickness, pose.height, pose.depth]"
       cast-shadow
       receive-shadow
-      @pointerenter="onEnter(pose.bookId)"
-      @pointerleave="onLeave(pose.bookId)"
-      @click="(event: { stopPropagation?: () => void }) => onClick(pose.bookId, event)"
+      @pointerenter="onEnter"
+      @pointerleave="onLeave"
     />
     <TresPointLight
       ref="glintLight"

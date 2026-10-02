@@ -26,9 +26,9 @@
   justify-content: space-between;
   gap: 0.5rem 2rem;
   padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--color-ink);
-  color: var(--color-ink-muted);
-  font-size: var(--text-2xs);
+  border-top: 1px solid var(--color-ink, #2C2C2A);
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }

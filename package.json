@@ -9,10 +9,13 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
-    "test:e2e": "vitest run --project e2e"
+    "test:e2e": "vitest run --project e2e",
+    "assets:build": "tsx scripts/assets/build.ts",
+    "check:privacy": "node scripts/check-privacy.mjs"
   },
   "dependencies": {
     "@nuxt/fonts": "^0.14.0",
@@ -25,6 +28,7 @@
     "nuxt": "^4.5.2",
     "papaparse": "^5.7.0",
     "three": "^0.186.1",
+    "three-stdlib": "2.36.1",
     "vue": "^3.5.43",
     "vue-router": "^5.3.1"
   },
@@ -37,8 +41,14 @@
     "eslint": "^10.11.0",
     "happy-dom": "^20.14.5",
     "playwright-core": "^1.63.0",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2",
     "vue-tsc": "^3.3.11"
+  },
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.12"
   }
 }

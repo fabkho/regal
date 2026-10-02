@@ -59,7 +59,7 @@ function onDragLeave() {
     <input
       ref="fileInput"
       type="file"
-      accept=".csv,text/csv"
+      accept=".csv,text/csv,.json,application/json"
       class="sr-only"
       @change="onInputChange"
     >
@@ -68,28 +68,28 @@ function onDragLeave() {
 
 <style scoped>
 .dropzone {
-  border: 1px dashed var(--color-line);
+  border: 1px dashed var(--color-line, rgba(44, 44, 42, 0.14));
   padding: 1.25rem 1rem;
   text-align: center;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .dropzone--active {
-  border-color: var(--color-accent);
-  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent, #B93E2E);
+  background-color: var(--color-accent-tint, rgba(185, 62, 46, 0.12));
 }
 
 .dropzone__label {
   margin: 0 0 0.25rem;
-  font-size: var(--text-sm);
+  font-size: var(--text-sm, 0.75rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .dropzone__hint {
   margin: 0 0 0.85rem;
-  color: var(--color-ink-faint);
-  font-size: var(--text-xs);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  font-size: var(--text-xs, 0.7rem);
 }
 
 .dropzone__actions {

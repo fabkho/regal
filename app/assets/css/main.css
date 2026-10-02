@@ -103,3 +103,38 @@ button:hover, .btn:hover {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Scrollbars: thin, square ink thumb on a transparent track (hairline look).
+   Firefox gets the standard properties; Blink/WebKit the pseudo-elements, since
+   setting scrollbar-color there would switch off the ::-webkit-scrollbar styles. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-faint) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-faint);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-ink);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-accent);
+}

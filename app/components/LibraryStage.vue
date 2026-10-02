@@ -4,29 +4,57 @@
 // the Bookcase's Shelves or as one Stack; both share the Book meshes and the
 // Pick interaction.
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
-import { TONE_MAPPING_EXPOSURE } from '~/utils/bookcase/scene'
-import { layoutLibrary } from '~/utils/bookcase/layout'
-import { justDragged } from '~/utils/books/dragGuard'
-import { layoutStack } from '~/utils/stack/layout'
-import type { ViewMode } from '~/composables/useBookPick'
+import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
+import { layoutLibrary } from '#layers/regal/app/utils/bookcase/layout'
+import { layoutStack } from '#layers/regal/app/utils/stack/layout'
+import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
+import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
+import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
+
+const props = withDefaults(defineProps<{
+  /** Sort & filter controls over the 3D (off when a sidebar shows them). */
+  showControls?: boolean
+  /** The picked Book's details card over the 3D (off when a sidebar shows them). */
+  showDetails?: boolean
+  /** Hide the Bookcase/Stack switch (a page that only shows the Stack). */
+  stackOnly?: boolean
+}>(), { showControls: true, showDetails: true, stackOnly: false })
 
 const route = useRoute()
 const router = useRouter()
 /** Dev-only: ?debug=slots draws a box on every measured ShelfSlot. */
-const debugSlots = computed(() => String(route.query.debug ?? '').split(',').includes('slots'))
+const debug = computed(() => String(route.query.debug ?? '').split(','))
+const debugSlots = computed(() => debug.value.includes('slots'))
+/** ?debug=pick exposes the Pick state to browser scripts (BooksPickProbe). */
+const debugPick = computed(() => debug.value.includes('pick'))
 
 const { books } = useLibrary()
 const { pickedId, putAway } = useBookPick()
 const mode = useViewMode()
 
 // ?view=stack deep-links the Stack view; switching views keeps the URL in step.
-if (route.query.view === 'stack' || route.query.view === 'bookcase') mode.value = route.query.view
+// A Stack-only page has no views to link.
+if (props.stackOnly) mode.value = 'stack'
+else if (route.query.view === 'stack' || route.query.view === 'bookcase') mode.value = route.query.view
 watch(mode, (value) => {
+  if (props.stackOnly) return
   router.replace({ query: { ...route.query, view: value === 'bookcase' ? undefined : value } })
 })
 
 const shelves = computed(() => layoutLibrary(books.value))
-const stack = computed(() => layoutStack(books.value))
+const { view: stackView } = useStackView()
+const stackBooks = computed(() => applyStackView(books.value, stackView.value))
+// The decided look; Regal's dev server previews open options (components/dev/Choices.vue).
+const look = useLook()
+/** Date separators (year / month) between the Books when sorted by date read. */
+const stackGrouping = computed(() => resolveGrouping(stackView.value))
+const stack = computed(() => layoutStack(stackBooks.value, {
+  keepOrder: true,
+  groups: stackGroups(stackBooks.value, stackGrouping.value),
+  separatorThickness: SEPARATOR_THICKNESS[look.value.separatorStyle],
+}))
+/** Looks with the date beside the pile need a wider view on narrow stages. */
+const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
@@ -35,10 +63,6 @@ function setMode(value: ViewMode) {
   if (mode.value === value) return
   putAway()
   mode.value = value
-}
-
-function onPointerMissed() {
-  if (pickedId.value && !justDragged()) putAway()
 }
 
 // A Book picked from the list might not exist any more after a new import.
@@ -67,7 +91,6 @@ watch(books, (list) => {
         :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
         :output-color-space="SRGBColorSpace"
         :dpr="[1, 2]"
-        @pointermissed="onPointerMissed"
       >
         <BookcaseScene
           v-if="mode === 'bookcase'"
@@ -78,18 +101,28 @@ watch(books, (list) => {
           <BooksMeshes
             :poses="poses"
             :books="books"
+            :aside="props.showDetails"
           />
         </BookcaseScene>
         <StackScene
           v-else
           :stack-height="stack.height"
+          :fit-width="stackFitWidth"
           @ready="isReady = true"
         >
+          <StackSeparators
+            :separators="stack.separators"
+            :look="look.separatorStyle"
+            :stack-height="stack.height"
+          />
           <BooksMeshes
             :poses="poses"
             :books="books"
+            :aside="props.showDetails"
+            shuffle="animate"
           />
         </StackScene>
+        <BooksPickProbe v-if="debugPick" />
       </TresCanvas>
 
       <template #fallback>
@@ -100,6 +133,7 @@ watch(books, (list) => {
     </ClientOnly>
 
     <div
+      v-if="!props.stackOnly"
       class="stage__views"
       role="group"
       aria-label="View"
@@ -122,6 +156,22 @@ watch(books, (list) => {
       </button>
     </div>
 
+    <StackControls
+      v-if="props.showControls && mode === 'stack' && books.length"
+      variant="chips"
+      class="stage__controls"
+      :class="{ 'stage__controls--top': props.stackOnly }"
+    />
+    <p
+      v-if="mode === 'stack' && books.length && !poses.length"
+      class="stage__status stage__status--overlay"
+    >
+      No books match these filters
+    </p>
+
+    <BooksHoverLabel />
+    <BooksFocusLabel />
+
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"
       class="stage__hint"
@@ -129,7 +179,10 @@ watch(books, (list) => {
       Scroll to browse · click a book to take it out
     </p>
 
-    <BooksDetails class="stage__details" />
+    <BooksDetails
+      v-if="props.showDetails"
+      class="stage__details"
+    />
 
     <p
       v-show="!isReady"
@@ -144,6 +197,7 @@ watch(books, (list) => {
 <style scoped>
 .stage {
   position: relative;
+  container-type: inline-size;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -157,8 +211,8 @@ watch(books, (list) => {
 
 .stage__status {
   margin: 0;
-  color: var(--color-ink-faint);
-  font-size: var(--text-sm);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  font-size: var(--text-sm, 0.75rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -173,33 +227,33 @@ watch(books, (list) => {
   top: 1rem;
   left: 1rem;
   display: flex;
-  border: 1px solid var(--color-ink);
-  background: var(--color-bg);
+  border: 1px solid var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
 }
 
 .stage__view {
   padding: 0.35rem 0.8rem;
   border: 0;
   background: transparent;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-muted, #6B6B69);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-xs, 0.7rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   cursor: pointer;
 }
 
 .stage__view + .stage__view {
-  border-left: 1px solid var(--color-ink);
+  border-left: 1px solid var(--color-ink, #2C2C2A);
 }
 
 .stage__view[aria-pressed="true"] {
-  color: var(--color-bg);
-  background: var(--color-ink);
+  color: var(--color-bg, #F5F2EB);
+  background: var(--color-ink, #2C2C2A);
 }
 
 .stage__view:hover:not([aria-pressed="true"]) {
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
   background: transparent;
 }
 
@@ -208,11 +262,30 @@ watch(books, (list) => {
   top: 1.35rem;
   right: 1rem;
   margin: 0;
-  color: var(--color-ink-faint);
-  font-size: var(--text-2xs);
+  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   pointer-events: none;
+}
+
+.stage__controls {
+  position: absolute;
+  top: 3.4rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 2;
+}
+
+.stage__controls--top {
+  top: 1rem;
+}
+
+/* Narrow stages (portfolio sidebar): no room for the hint next to the view switch. */
+@container (max-width: 560px) {
+  .stage__hint {
+    display: none;
+  }
 }
 
 .stage__details {

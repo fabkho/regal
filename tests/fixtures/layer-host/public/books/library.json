@@ -1,0 +1,124 @@
+{
+  "books": [
+    {
+      "id": "fx-001",
+      "title": "The Paper Lighthouse (Inkwell Tides, #1)",
+      "author": "Ada Quillfeather",
+      "additionalAuthors": null,
+      "shelf": "read",
+      "isbn": null,
+      "isbn13": null,
+      "goodreadsId": null,
+      "description": "A keeper of a lighthouse made of folded paper waits out the longest storm of the century.",
+      "coverUrl": null,
+      "pageCount": 412,
+      "yearPublished": "2023",
+      "originalPublicationYear": "2023",
+      "binding": "Paperback",
+      "format": "physical",
+      "createdAt": "2024-01-01T10:00:00.000Z",
+      "session": {
+        "startedAt": null,
+        "finishedAt": "2024-03-02T20:00:00.000Z",
+        "rating": 4.5,
+        "review": null
+      }
+    },
+    {
+      "id": "fx-002",
+      "title": "Rivers of Graphite (Inkwell Tides, #2)",
+      "author": "Ada Quillfeather",
+      "additionalAuthors": null,
+      "shelf": "read",
+      "isbn": null,
+      "isbn13": null,
+      "goodreadsId": null,
+      "description": "The tide recedes and leaves behind a map drawn in pencil, smudged by every hand that touched it.",
+      "coverUrl": null,
+      "pageCount": 388,
+      "yearPublished": "2023",
+      "originalPublicationYear": "2023",
+      "binding": "Paperback",
+      "format": "physical",
+      "createdAt": "2024-01-01T10:00:00.000Z",
+      "session": {
+        "startedAt": null,
+        "finishedAt": "2024-06-18T20:00:00.000Z",
+        "rating": 4,
+        "review": null
+      }
+    },
+    {
+      "id": "fx-003",
+      "title": "A Grammar of Small Moons",
+      "author": "Tomas Verdello",
+      "additionalAuthors": null,
+      "shelf": "read",
+      "isbn": null,
+      "isbn13": null,
+      "goodreadsId": null,
+      "description": "Seven moons, each with its own language, and one translator who refuses to pick a favourite.",
+      "coverUrl": null,
+      "pageCount": 256,
+      "yearPublished": "2023",
+      "originalPublicationYear": "2023",
+      "binding": "Hardcover",
+      "format": "physical",
+      "createdAt": "2024-01-01T10:00:00.000Z",
+      "session": {
+        "startedAt": null,
+        "finishedAt": "2025-01-09T20:00:00.000Z",
+        "rating": 5,
+        "review": null
+      }
+    },
+    {
+      "id": "fx-004",
+      "title": "Brick Red Afternoon",
+      "author": "Lune Hartwick",
+      "additionalAuthors": null,
+      "shelf": "read",
+      "isbn": null,
+      "isbn13": null,
+      "goodreadsId": null,
+      "description": "An afternoon in a town where every wall is painted the same shade of red, and nobody remembers why.",
+      "coverUrl": null,
+      "pageCount": 198,
+      "yearPublished": "2023",
+      "originalPublicationYear": "2023",
+      "binding": "Paperback",
+      "format": "physical",
+      "createdAt": "2024-01-01T10:00:00.000Z",
+      "session": {
+        "startedAt": null,
+        "finishedAt": "2025-08-21T20:00:00.000Z",
+        "rating": 3.5,
+        "review": null
+      }
+    },
+    {
+      "id": "fx-005",
+      "title": "The Index of Lost Margins",
+      "author": "Ottilie Brandt",
+      "additionalAuthors": null,
+      "shelf": "currently-reading",
+      "isbn": null,
+      "isbn13": null,
+      "goodreadsId": null,
+      "description": "A librarian catalogues the notes readers left in the margins of books that no longer exist.",
+      "coverUrl": null,
+      "pageCount": 530,
+      "yearPublished": "2023",
+      "originalPublicationYear": "2023",
+      "binding": "Hardcover",
+      "format": "physical",
+      "createdAt": "2024-01-01T10:00:00.000Z",
+      "session": {
+        "startedAt": null,
+        "finishedAt": null,
+        "rating": null,
+        "review": null
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
-import { loadDescription } from '~/utils/covers/descriptions'
+import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
@@ -43,6 +43,13 @@ const meta = computed(() => {
     book.value.binding,
   ].filter(Boolean) as string[]
 })
+
+/** Goodreads Book Ids are numeric; other sources (Fable via the reading tracker) get a Goodreads search. */
+function goodreadsUrl(current: { id: string, isbn13: string | null, title: string, author: string | null }) {
+  if (/^\d+$/.test(current.id)) return `https://www.goodreads.com/book/show/${current.id}`
+  const query = current.isbn13 ?? [current.title, current.author].filter(Boolean).join(' ')
+  return `https://www.goodreads.com/search?q=${encodeURIComponent(query)}`
+}
 </script>
 
 <template>
@@ -74,7 +81,14 @@ const meta = computed(() => {
         class="details__rating"
         :aria-label="`Rated ${book.rating} out of 5`"
       >
-        <span aria-hidden="true">{{ '★'.repeat(book.rating) }}<span class="details__rating-rest">{{ '★'.repeat(5 - book.rating) }}</span></span>
+        <span
+          class="details__stars"
+          aria-hidden="true"
+        >★★★★★<span
+          class="details__stars-fill"
+          :style="{ width: `${book.rating / 5 * 100}%` }"
+        >★★★★★</span></span>
+        <span class="details__rating-value">{{ book.rating.toFixed(book.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
       </p>
 
       <p class="details__meta">
@@ -113,21 +127,21 @@ const meta = computed(() => {
       <div class="details__actions">
         <button
           type="button"
-          class="btn"
+          class="btn details__button"
           @click="flip"
         >
           {{ face === 'front' ? 'Show back' : 'Show front' }}
         </button>
         <button
           type="button"
-          class="btn"
+          class="btn details__button"
           @click="putAway"
         >
           Put back
         </button>
         <a
           class="details__link"
-          :href="`https://www.goodreads.com/book/show/${book.id}`"
+          :href="goodreadsUrl(book)"
           target="_blank"
           rel="noopener"
         >Goodreads ↗</a>
@@ -142,49 +156,67 @@ const meta = computed(() => {
 <style scoped>
 .details {
   padding: 1rem 1.1rem;
-  border: 1px solid var(--color-ink);
-  background: var(--color-bg);
+  border: 1px solid var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
 }
 
 .details__series,
 .details__meta,
 .details__hint {
   margin: 0;
-  color: var(--color-ink-muted);
-  font-size: var(--text-2xs);
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .details__title {
   margin: 0.2rem 0 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-serif, 'Times New Roman', Times, serif);
   font-style: italic;
   font-weight: 400;
-  font-size: var(--text-xl);
+  font-size: var(--text-xl, 1.2rem);
   line-height: 1.2;
 }
 
 .details__author {
   margin: 0.15rem 0 0.5rem;
-  font-size: var(--text-sm);
+  font-size: var(--text-sm, 0.75rem);
 }
 
 .details__rating {
   margin: 0 0 0.35rem;
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
   letter-spacing: 0.1em;
 }
 
-.details__rating-rest {
-  color: var(--color-line);
+/* Quarter stars: an accent layer clipped to the rating over a grey row. */
+.details__stars {
+  position: relative;
+  display: inline-block;
+  color: var(--color-line, rgba(44, 44, 42, 0.14));
+  white-space: nowrap;
+}
+
+.details__stars-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  overflow: hidden;
+  color: var(--color-accent, #B93E2E);
+}
+
+.details__rating-value {
+  margin-left: 0.5em;
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-xs, 0.7rem);
+  letter-spacing: 0;
 }
 
 .details__review {
   margin: 0.6rem 0 0;
   padding-left: 0.75rem;
-  border-left: 1px solid var(--color-line);
-  font-size: var(--text-sm);
+  border-left: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
+  font-size: var(--text-sm, 0.75rem);
   max-height: 8rem;
   overflow: auto;
 }
@@ -195,8 +227,8 @@ const meta = computed(() => {
 
 .details__label {
   margin: 0 0 0.25rem;
-  color: var(--color-ink-muted);
-  font-size: var(--text-2xs);
+  color: var(--color-ink-muted, #6B6B69);
+  font-size: var(--text-2xs, 0.65rem);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -206,7 +238,7 @@ const meta = computed(() => {
   margin: 0;
   max-height: 6.5rem;
   overflow: auto;
-  font-size: var(--text-xs);
+  font-size: var(--text-xs, 0.7rem);
   line-height: 1.5;
   white-space: pre-line;
 }
@@ -216,9 +248,9 @@ const meta = computed(() => {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--color-accent);
+  color: var(--color-accent, #B93E2E);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-sm, 0.75rem);
   cursor: pointer;
   text-decoration: underline;
   text-transform: none;
@@ -227,7 +259,7 @@ const meta = computed(() => {
 
 .details__spoiler:hover {
   background: none;
-  color: var(--color-accent-light);
+  color: var(--color-accent-light, #E8665A);
 }
 
 .details__actions {
@@ -239,9 +271,35 @@ const meta = computed(() => {
 }
 
 .details__link {
-  font-size: var(--text-xs);
+  color: var(--color-accent, #B93E2E);
+  text-decoration: none;
+  font-size: var(--text-xs, 0.7rem);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* Self-contained (the same as Regal's global .btn), so a host app needs no Regal CSS. */
+.details__button {
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
+  font-size: var(--text-xs, 0.7rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-subtle, rgba(44, 44, 42, 0.72));
+  background: transparent;
+  border: 1px solid var(--color-ink, #2C2C2A);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.details__button:hover {
+  color: var(--color-bg, #F5F2EB);
+  background: var(--color-ink, #2C2C2A);
+}
+
+.details__link:hover {
+  text-decoration: underline;
 }
 
 .details-enter-active,
