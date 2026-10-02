@@ -341,6 +341,7 @@ async function applyCover(pose: BookPose) {
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
   entry.set = set
+  if (set && !set.entry.pile) fullSizeFaces = true
 
   const fonts = spineFontsReady()
   const frontShows = () => topBookId === pose.bookId || !set?.palette
@@ -819,8 +820,13 @@ const PENDING = Number.POSITIVE_INFINITY
 /**
  * Longest an entrance waits, unseen, for the faces of the Books in view (s),
  * so the pile settles in dressed; past it, it settles in with drawn faces.
+ * An older manifest has no small pile copies: its full-size faces rarely make
+ * it in time, so it waits less.
  */
 const ENTRANCE_WAIT = 0.8
+const ENTRANCE_WAIT_FULL_SIZE = 0.3
+/** The manifest lists no pile copies (published before them). */
+let fullSizeFaces = false
 /** When the waiting entrance was asked for (performance.now()). */
 let entranceAskedAt = 0
 
@@ -833,7 +839,7 @@ function requestEntrance(to: BookPose[]) {
 /** An entrance waits until the Books in view wear their faces, or ENTRANCE_WAIT. */
 function entranceWaits(): boolean {
   if (!requested || requested.from.length > 0 || !stackScroll) return false
-  if (performance.now() - entranceAskedAt >= ENTRANCE_WAIT * 1000) return false
+  if (performance.now() - entranceAskedAt >= (fullSizeFaces ? ENTRANCE_WAIT_FULL_SIZE : ENTRANCE_WAIT) * 1000) return false
   return requested.to.some(pose => inView(pose.y, stackScroll) && !materialsByBook.get(pose.bookId)?.ready)
 }
 
