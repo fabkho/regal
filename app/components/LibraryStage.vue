@@ -58,6 +58,8 @@ const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYL
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
 const isReady = ref(false)
+const showStackControls = computed(() => props.showControls && mode.value === 'stack' && books.value.length > 0)
+const hasTop = computed(() => !props.stackOnly || showStackControls.value)
 
 function setMode(value: ViewMode) {
   if (mode.value === value) return
@@ -132,36 +134,43 @@ watch(books, (list) => {
       </template>
     </ClientOnly>
 
+    <!-- The view switch and the Stack controls share a band at the top; in the
+         Stack it is paper, so the pile scrolls out underneath it. -->
     <div
-      v-if="!props.stackOnly"
-      class="stage__views"
-      role="group"
-      aria-label="View"
+      v-if="hasTop"
+      class="stage__top"
+      :class="{ 'stage__top--band': mode === 'stack' }"
     >
-      <button
-        type="button"
-        class="stage__view"
-        :aria-pressed="mode === 'bookcase'"
-        @click="setMode('bookcase')"
+      <div
+        v-if="!props.stackOnly"
+        class="stage__views"
+        role="group"
+        aria-label="View"
       >
-        Bookcase
-      </button>
-      <button
-        type="button"
-        class="stage__view"
-        :aria-pressed="mode === 'stack'"
-        @click="setMode('stack')"
-      >
-        Stack
-      </button>
+        <button
+          type="button"
+          class="stage__view"
+          :aria-pressed="mode === 'bookcase'"
+          @click="setMode('bookcase')"
+        >
+          Bookcase
+        </button>
+        <button
+          type="button"
+          class="stage__view"
+          :aria-pressed="mode === 'stack'"
+          @click="setMode('stack')"
+        >
+          Stack
+        </button>
+      </div>
+      <StackControls
+        v-if="showStackControls"
+        variant="chips"
+        class="stage__controls"
+      />
     </div>
 
-    <StackControls
-      v-if="props.showControls && mode === 'stack' && books.length"
-      variant="chips"
-      class="stage__controls"
-      :class="{ 'stage__controls--top': props.stackOnly }"
-    />
     <p
       v-if="mode === 'stack' && books.length && !poses.length"
       class="stage__status stage__status--overlay"
@@ -222,10 +231,43 @@ watch(books, (list) => {
   pointer-events: none;
 }
 
-.stage__views {
+.stage__top {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.stage__top > * {
+  pointer-events: auto;
+}
+
+/* In the Stack the pile is taller than the view: the band hides what scrolls
+   up under the controls, fading out at its lower edge. */
+.stage__top--band {
+  background: var(--color-bg, #F5F2EB);
+  pointer-events: auto;
+}
+
+.stage__top--band::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 1.5rem;
+  background: linear-gradient(var(--color-bg, #F5F2EB), transparent);
+  pointer-events: none;
+}
+
+.stage__views {
   display: flex;
   border: 1px solid var(--color-ink, #2C2C2A);
   background: var(--color-bg, #F5F2EB);
@@ -261,6 +303,7 @@ watch(books, (list) => {
   position: absolute;
   top: 1.35rem;
   right: 1rem;
+  z-index: 3;
   margin: 0;
   color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
   font-size: var(--text-2xs, 0.65rem);
@@ -270,15 +313,7 @@ watch(books, (list) => {
 }
 
 .stage__controls {
-  position: absolute;
-  top: 3.4rem;
-  left: 1rem;
-  right: 1rem;
-  z-index: 2;
-}
-
-.stage__controls--top {
-  top: 1rem;
+  align-self: stretch;
 }
 
 /* Narrow stages (portfolio sidebar): no room for the hint next to the view switch. */
