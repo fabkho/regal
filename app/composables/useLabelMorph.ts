@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
 import type { LabelKind, MorphFrame, MorphLeg, Rect, ShownLabel } from '#layers/regal/app/utils/books/labelMorph'
 import {
-  closeTarget, clamp01, followRect, labelFor, MORPH_MS, nearRect, pickChange, planClose, planOpen, sampleLeg, toStage,
+  closeTarget, clamp01, followRect, labelFor, legLanded, MORPH_MS, needsCardCopy, pickChange, planClose, planOpen, sampleLeg, toStage,
 } from '#layers/regal/app/utils/books/labelMorph'
 
 // The label ↔ details card morph (decisions and geometry in
@@ -151,6 +151,8 @@ export function useLabelMorphController(elements: {
   /** Watches the card on the way in: its blurb (or a swapped Book) can arrive while the box travels. */
   let cardObserver: MutationObserver | null = null
   let cardChanged = false
+  /** The card the box holds a copy of (null: none yet, or a copy of a card that is gone). */
+  let copied: HTMLElement | null = null
 
   const stageRect = () => {
     const stage = elements.stage()
@@ -174,16 +176,21 @@ export function useLabelMorphController(elements: {
   }
 
   /** Copies the card into the box, and again whenever its content changes until the box arrives. */
-  function followCard(card: HTMLElement | null) {
-    cardObserver?.disconnect()
-    cardObserver = null
-    cardChanged = false
+  function followCard(card: HTMLElement) {
+    unfollowCard()
+    copied = card
     setCardLayer(card)
-    if (!card) return
     cardObserver = new MutationObserver(() => {
       cardChanged = true
     })
     cardObserver.observe(card, { childList: true, subtree: true, characterData: true })
+  }
+
+  function unfollowCard() {
+    cardObserver?.disconnect()
+    cardObserver = null
+    cardChanged = false
+    copied = null
   }
 
   /** Sizes the label text like `label` (a real one), or to its own width when null. */
@@ -195,8 +202,7 @@ export function useLabelMorphController(elements: {
   }
 
   function hideBox() {
-    cardObserver?.disconnect()
-    cardObserver = null
+    unfollowCard()
     fadeOut?.cancel()
     fadeOut = null
     const box = elements.box.value
@@ -218,6 +224,8 @@ export function useLabelMorphController(elements: {
     leg = null
     hideBox()
     settle()
+    // useState outlives this component (a host's route change): leave the card its own fade.
+    flags.value.cardFade = true
   }
 
   function startLeg(next: MorphLeg) {
@@ -248,17 +256,17 @@ export function useLabelMorphController(elements: {
       stored = toStage(plan.source.rect, stage)
       // labelFor() hands back one of the labels it was given.
       fitLabelLayer((plan.source as SeenLabel).el, plan.source.rect.width)
-      flags.value.labelBookId = bookId
       setCardLayer(null)
     }
+    // A close turned round: this Book now, not the one that was going back.
+    closing = null
+    unfollowCard()
+    flags.value.labelBookId = bookId
     flags.value.cardFade = false
     flags.value.cardHidden = true
     flags.value.labelsHidden = true
+    // The card renders after this change, hidden; the first frame copies it (aim()).
     startLeg({ direction: 'open', from: plan.from })
-    // The card renders on this tick (hidden): copy it for the box to fade in.
-    nextTick(() => {
-      if (leg?.direction === 'open') followCard(cardElement())
-    })
   }
 
   function close(bookId: string) {
@@ -272,8 +280,7 @@ export function useLabelMorphController(elements: {
       return
     }
     // Copy the card while it still shows the Book; it goes at once, the box takes its place.
-    cardObserver?.disconnect()
-    cardObserver = null
+    unfollowCard()
     if (!running) setCardLayer(card)
     closing = bookId
     flags.value.labelBookId = bookId
@@ -283,14 +290,22 @@ export function useLabelMorphController(elements: {
     startLeg({ direction: 'close', from: plan.from })
   }
 
+  /**
+   * Swapping: the card goes back to the label of the Book now out when
+   * putting it away, if that label is known (the hover label at the click),
+   * else to the one it opened from.
+   */
+  function swap(bookId: string) {
+    const stage = stageRect()
+    const label = labelFor(bookId, shownLabels().filter(item => item.kind === 'hover'))
+    if (label && stage) stored = toStage(label.rect, stage)
+  }
+
   /** Where the box heads now; null when that is gone (abort). */
   function aim(): { rect: Rect, landing: 'card' | 'label' | 'fade' } | null {
     if (leg?.direction === 'open') {
       const card = cardElement()
-      if (card && cardChanged) {
-        cardChanged = false
-        setCardLayer(card)
-      }
+      if (card && needsCardCopy(card, copied, cardChanged)) followCard(card)
       return card ? { rect: rectOf(card), landing: 'card' } : null
     }
     const stage = stageRect()
@@ -316,7 +331,7 @@ export function useLabelMorphController(elements: {
       return
     }
     target = target ? followRect(target, heading.rect, ms) : heading.rect
-    if (t >= 1 && nearRect(target, heading.rect)) {
+    if (legLanded(now - legStart, target, heading.rect)) {
       draw(sampleLeg(leg, 1, heading.rect))
       land(heading.landing)
       return
@@ -351,7 +366,8 @@ export function useLabelMorphController(elements: {
       const change = pickChange(previous, next)
       if (change === 'open' && next) open(next)
       else if (change === 'close' && previous) close(previous)
-      // A swap keeps the card (it cross-fades itself); mid-open, followCard() copies the new content.
+      // A swap keeps the card (it swaps its content itself; mid-open the box copies the new one).
+      else if (change === 'swap' && next) swap(next)
     })
   })
   onBeforeUnmount(() => {

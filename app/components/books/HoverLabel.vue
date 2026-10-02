@@ -13,7 +13,8 @@ const position = reactive({ x: 0, y: 0, overCanvas: false })
 
 // Taking the Book out, this label grows into the details card; putting it
 // back, the card shrinks into it again (composables/useLabelMorph.ts). Held
-// back (laid out, not shown) while the box is on its way.
+// back (laid out, not shown) while the box is on its way, and while a Book is
+// out: then it still marks where a click swapping Books happened.
 const morph = useLabelMorph()
 const label = ref<HTMLElement | null>(null)
 useLabelMorphLabel('hover', () => (label.value && book.value ? { bookId: book.value.id, el: label.value } : null))
@@ -31,10 +32,10 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
 <template>
   <Teleport to="body">
     <p
-      v-if="book && position.overCanvas && !pickedId && !scrollLed"
+      v-if="book && position.overCanvas && !scrollLed"
       ref="label"
       class="hover-label"
-      :class="{ 'hover-label--held': morph.labelsHidden }"
+      :class="{ 'hover-label--held': morph.labelsHidden || pickedId }"
       :style="{ left: `${position.x + 14}px`, top: `${position.y + 14}px` }"
     >
       <BooksTitleStars :book="book" />

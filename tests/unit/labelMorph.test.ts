@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  clampInto, closeTarget, easeInOut, followRect, fromStage, labelFor, nearRect, pickChange, planClose, planOpen,
-  sampleLeg, toStage,
+  clampInto, closeTarget, easeInOut, followRect, fromStage, labelFor, LEG_DEADLINE_MS, legLanded, MORPH_MS, nearRect,
+  needsCardCopy, pickChange, planClose, planOpen, sampleLeg, toStage,
 } from '../../app/utils/books/labelMorph'
 import type { MorphFrame, Rect, ShownLabel } from '../../app/utils/books/labelMorph'
 
@@ -160,5 +160,47 @@ describe('sampleLeg', () => {
     const midway = sampleLeg(open, 0.6, card)
     const close = { direction: 'close' as const, from: midway }
     expect(sampleLeg(close, 0, label)).toEqual(midway)
+  })
+})
+
+describe('legLanded', () => {
+  const at = rect(10, 10, 100, 20)
+
+  it('lands once the time is up and the eased target has caught up', () => {
+    expect(legLanded(MORPH_MS - 1, at, at)).toBe(false)
+    expect(legLanded(MORPH_MS, at, at)).toBe(true)
+    expect(legLanded(MORPH_MS, at, rect(14, 10, 100, 20))).toBe(false)
+  })
+
+  it('lands at the deadline even while the target keeps moving (a hover label under a moving pointer)', () => {
+    // Regression: the eased target lags a pointer moving slowly by more than
+    // half a pixel forever, so the close leg (and the hidden labels) never ended.
+    let target = at
+    let pointer = at
+    let elapsed = 0
+    while (!legLanded(elapsed, target, pointer) && elapsed < 10_000) {
+      elapsed += 16
+      pointer = { ...pointer, x: pointer.x + 0.5 }
+      target = followRect(target, pointer, 16)
+    }
+    expect(elapsed).toBeGreaterThanOrEqual(LEG_DEADLINE_MS)
+    expect(elapsed).toBeLessThan(LEG_DEADLINE_MS + 16)
+  })
+})
+
+describe('needsCardCopy', () => {
+  const card = { id: 'card' }
+
+  it('copies a card the box holds no copy of yet (it renders after the pick: copied on the first frame)', () => {
+    // Regression: the copy was taken in a nextTick queued before the render,
+    // found no card and never retried, so the box grew empty.
+    expect(needsCardCopy(null, null, false)).toBe(false)
+    expect(needsCardCopy(card, null, false)).toBe(true)
+  })
+
+  it('copies again only when the content changed, or it is another card', () => {
+    expect(needsCardCopy(card, card, false)).toBe(false)
+    expect(needsCardCopy(card, card, true)).toBe(true)
+    expect(needsCardCopy(card, { id: 'other' }, false)).toBe(true)
   })
 })

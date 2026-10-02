@@ -22,6 +22,8 @@ export interface Size {
 
 /** How long the box travels (ms). About the slide-out phase of the 3D take-out, same ease. */
 export const MORPH_MS = 440
+/** Longest a leg runs: then the box lands on its target even if that keeps moving (a hover label under a moving pointer). */
+export const LEG_DEADLINE_MS = 2 * MORPH_MS
 /** Gap (px) kept between a label the box returns to and the stage's edge. */
 export const STAGE_MARGIN = 8
 
@@ -216,4 +218,23 @@ export function closeTarget(input: {
   const place = fromStage(input.stored, input.stage)
   const sized = input.size?.width ? { ...place, width: input.size.width, height: input.size.height } : place
   return { rect: clampInto(sized, input.stage), landing: 'fade' }
+}
+
+/**
+ * Whether a leg is over `elapsed` ms after its first frame: once its time is
+ * up and the eased target has caught up with the live one, or at the
+ * deadline whatever the target does.
+ */
+export function legLanded(elapsed: number, target: Rect, desired: Rect): boolean {
+  if (elapsed >= LEG_DEADLINE_MS) return true
+  return elapsed >= MORPH_MS && nearRect(target, desired)
+}
+
+/**
+ * Whether the box has to copy the card (again): a card is there and the box
+ * holds no copy of this one yet (it renders after the pick, so the first copy
+ * waits for a frame), or its content changed since.
+ */
+export function needsCardCopy<T>(card: T | null, copied: T | null, changed: boolean): boolean {
+  return !!card && (card !== copied || changed)
 }
