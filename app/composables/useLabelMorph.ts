@@ -96,12 +96,20 @@ function copyText(from: Element, to: HTMLElement) {
 function cloneCard(card: HTMLElement): HTMLElement {
   const clone = card.cloneNode(true) as HTMLElement
   copyText(card, clone)
-  for (const element of [clone, ...clone.querySelectorAll<HTMLElement>('*')]) {
+  const originals = [card, ...card.querySelectorAll<HTMLElement>('*')]
+  const copies = [clone, ...clone.querySelectorAll<HTMLElement>('*')]
+  copies.forEach((element, index) => {
+    // Line height per element: the root's computed one is in px, and a px
+    // line height inherits as is, where the host's unitless one (1.4) scales
+    // with each line's font size; copied once, the smaller lines below the
+    // title sat lower in the box than in the card.
+    const original = originals[index]
+    if (original) element.style.lineHeight = getComputedStyle(original).lineHeight
     element.removeAttribute('id')
     for (const name of [...element.classList]) {
       if (/-(?:enter|leave)-(?:from|active|to)$/.test(name)) element.classList.remove(name)
     }
-  }
+  })
   clone.removeAttribute('aria-live')
   Object.assign(clone.style, {
     position: 'static',
