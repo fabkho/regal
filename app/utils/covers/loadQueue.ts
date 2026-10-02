@@ -5,6 +5,9 @@
 // Stack ranks a Book by its distance from the middle of the view, so the Books
 // on screen load first and scrolling while the pile loads pulls the Books
 // scrolled to up the queue. Lower runs sooner; ties run in the order queued.
+// A job may also belong to a band that only gets a few of the slots (see
+// loadWindow.ts: background fill and faces seen only when a Book is taken
+// out), so the jobs a scroll makes urgent always find a free slot.
 
 /** How urgent a job is right now; lower runs sooner. */
 export type Priority = () => number
@@ -12,7 +15,10 @@ export type Priority = () => number
 /** Runs in queue order (no ranking). */
 export const IN_ORDER: Priority = () => 0
 
-const MAX_IN_FLIGHT = 6
+const MAX_IN_FLIGHT = 8
+
+/** Jobs from priority `from` on may hold at most `max` slots between them. */
+export type Bands = readonly { from: number, max: number }[]
 
 interface Job {
   start: () => void
@@ -20,8 +26,15 @@ interface Job {
 }
 
 const queue: Job[] = []
-let inFlight = 0
+/** Priority of each job in flight, as it was when it started. */
+const running: number[] = []
 let pumpPending = false
+let bands: Bands = []
+
+/** Sets how many slots the less urgent bands of priorities may take (loadWindow.ts' LOAD_BANDS). */
+export function setBands(value: Bands) {
+  bands = value
+}
 
 /** Index of the most urgent job: the lowest priority, the earliest queued on a tie. */
 export function mostUrgent(priorities: readonly number[]): number {
@@ -37,20 +50,44 @@ export function mostUrgent(priorities: readonly number[]): number {
   return best
 }
 
+/**
+ * The job to start next, or -1: the most urgent one whose bands still have a
+ * free slot (`inFlight` are the priorities of the jobs running).
+ */
+export function nextJob(priorities: readonly number[], inFlight: readonly number[], limits: Bands = [], maxInFlight = MAX_IN_FLIGHT): number {
+  if (inFlight.length >= maxInFlight) return -1
+  const free = (value: number) => limits.every(band =>
+    value < band.from || inFlight.filter(running => running >= band.from).length < band.max)
+  let best = -1
+  for (let index = 0; index < priorities.length; index++) {
+    const value = priorities[index]!
+    if (best >= 0 && value >= priorities[best]!) continue
+    if (free(value)) best = index
+  }
+  return best
+}
+
 const scratch: number[] = []
 
 function pump() {
   pumpPending = false
-  while (inFlight < MAX_IN_FLIGHT && queue.length) {
+  while (queue.length) {
     scratch.length = queue.length
     for (let index = 0; index < queue.length; index++) {
       const value = queue[index]!.priority()
       scratch[index] = Number.isNaN(value) ? Infinity : value
     }
-    const [job] = queue.splice(mostUrgent(scratch), 1)
-    inFlight++
+    const index = nextJob(scratch, running, bands)
+    if (index < 0) return
+    const [job] = queue.splice(index, 1)
+    running.push(scratch[index]!)
     job!.start()
   }
+}
+
+/** Reads the priorities again now, e.g. after a scroll made background jobs urgent. */
+export function reschedule() {
+  if (queue.length && running.length < MAX_IN_FLIGHT) pump()
 }
 
 /**
@@ -60,15 +97,17 @@ function pump() {
  */
 export function schedule<T>(task: () => Promise<T>, priority: Priority = IN_ORDER): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    queue.push({
+    const job: Job = {
       priority,
       start: () => {
+        const slot = running[running.length - 1]!
         task().then(resolve, reject).finally(() => {
-          inFlight--
+          running.splice(running.indexOf(slot), 1)
           pump()
         })
       },
-    })
+    }
+    queue.push(job)
     if (!pumpPending) {
       pumpPending = true
       setTimeout(pump, 0)

@@ -11,8 +11,12 @@ import { spinePalette, toHex } from '../../app/utils/covers/palette'
 
 /** Pixel height of the pile front: the top Book's cover, seen at a slant. */
 export const PILE_FRONT_HEIGHT = 512
-/** Pixel height of the pile Spine: about twice what a Spine spans on a 2× screen, even picked. */
-export const PILE_SPINE_HEIGHT = 768
+/**
+ * Pixel height of the pile Spine: more than a Spine spans on a 2× screen
+ * (about 320 px in the portfolio's stage), while ~8 KB each keeps a whole
+ * pile of AI Spines well under a megabyte.
+ */
+export const PILE_SPINE_HEIGHT = 640
 
 export interface PileFields {
   /** Small copies for the pile (URLs relative to the assets base). */
@@ -57,7 +61,7 @@ const newer = (source: string, copy: string) => !existsSync(copy) || statSync(so
 export async function updatePile(out: string, entry: PileFields): Promise<boolean> {
   const before = JSON.stringify([entry.pile, entry.palette, entry.spineColor])
   const pile: NonNullable<PileFields['pile']> = {}
-  for (const [face, height, quality] of [['front', PILE_FRONT_HEIGHT, 80], ['spine', PILE_SPINE_HEIGHT, 82]] as const) {
+  for (const [face, height, quality] of [['front', PILE_FRONT_HEIGHT, 80], ['spine', PILE_SPINE_HEIGHT, 80]] as const) {
     const path = entry[face]
     if (!path || !existsSync(join(out, path))) continue
     const source = join(out, path)

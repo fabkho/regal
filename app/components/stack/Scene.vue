@@ -66,7 +66,7 @@ const bounds = computed<[number, number]>(() => [lowest.value, Math.max(lowest.v
 let placed = false
 
 /** The scroll for the Books' scroll highlight (utils/stack/scrollHighlight.ts), updated every frame. */
-const scroll: StackScroll = { focusY: view.y, speed: 0 }
+const scroll: StackScroll = { focusY: view.y, speed: 0, targetY: view.y, halfView: CAMERA_DISTANCE * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) }
 let previousY = view.y
 provide(STACK_SCROLL, scroll)
 
@@ -79,6 +79,7 @@ watch(() => props.stackHeight, (height) => {
     previousY = top
     // The Books' load order reads the focus before the first frame sets it.
     scroll.focusY = top
+    scroll.targetY = top
     placed = height > 0
   }
 }, { immediate: true })
@@ -204,6 +205,7 @@ onBeforeRender(({ delta }) => {
   previousY = view.y
   const ends: [number, number] = [0.015, Math.max(0.015, props.stackHeight - 0.015)]
   scroll.focusY = focusLine(view.y, bounds.value, ends)
+  scroll.targetY = focusLine(view.target, bounds.value, ends)
   const cam = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (cam) {
     // Narrow views (a portfolio sidebar) step back until the pile fits the width.
@@ -214,7 +216,10 @@ onBeforeRender(({ delta }) => {
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
     // The middle of the view, where the line of sight meets the Spines.
-    scroll.focusY = focusLine(view.y, bounds.value, ends) + CAMERA_RISE * scale * FOCUS_Z / distance
+    const lineOffset = CAMERA_RISE * scale * FOCUS_Z / distance
+    scroll.focusY = focusLine(view.y, bounds.value, ends) + lineOffset
+    scroll.targetY = focusLine(view.target, bounds.value, ends) + lineOffset
+    scroll.halfView = distance * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2)
   }
   // Lights travel with the view so every part of the pile is lit the same.
   if (rig.value) rig.value.position.y = view.y

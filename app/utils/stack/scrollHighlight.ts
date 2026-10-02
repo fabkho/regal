@@ -13,6 +13,10 @@ export interface StackScroll {
   focusY: number
   /** How fast the view moves (m/s, up is positive). */
   speed: number
+  /** Where the focus line is heading: the end of a wheel step or fling (the Books' load window). */
+  targetY: number
+  /** Half the height the view shows at the pile (m). */
+  halfView: number
 }
 
 export const STACK_SCROLL: InjectionKey<StackScroll> = Symbol('regal:stack-scroll')

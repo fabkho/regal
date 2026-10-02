@@ -3,8 +3,12 @@
 // setAssetsBase) and keyed by ISBN-13 (Goodreads Book Id as fallback). A
 // face that's present replaces the generated one; everything else falls back
 // to the Cover resolver and the drawn Spine/back.
-import { schedule } from './loadQueue'
-import type { Priority } from './loadQueue'
+//
+// Newer manifests also list small pile copies of the front and Spine and the
+// Spine colours (scripts/assets/pile.ts); older ones don't, and then the full
+// faces and colours sampled from the front stand in.
+import { fromHex } from './palette'
+import type { RGB, SpinePalette } from './palette'
 
 export type AssetSource = 'photo' | 'ai'
 
@@ -33,6 +37,12 @@ export interface BookAssetEntry {
   publisher?: string
   /** Faces that come from the owner's own photographs: drawn as they are. */
   photoFaces?: PhotoFace[]
+  /** Small copies for the pile: the front and Spine at a few hundred pixels. */
+  pile?: { front?: string, spine?: string }
+  /** Spine colours taken from the front, as hex. */
+  palette?: { background: string, text: string, accent: string }
+  /** Average colour of the Spine art, as hex. */
+  spineColor?: string
   /** Pipeline bookkeeping (prompt version, sources, sizes…). */
   meta?: Record<string, unknown>
 }
@@ -48,11 +58,37 @@ export interface AssetBook {
   isbn13: string | null
 }
 
-export interface LoadedAssets {
+/** Where a Book's faces are and what the manifest already knows about them. */
+export interface AssetFaces {
   entry: BookAssetEntry
-  frontUrl?: string
-  spine?: HTMLImageElement
-  back?: HTMLImageElement
+  /** The Spine art for the pile (its small copy when there is one). */
+  spine?: string
+  /** The front for the pile (its small copy when there is one). */
+  pileFront?: string
+  /** The front at full size, for a Book taken out. */
+  front?: string
+  back?: string
+  /** Spine colours from the manifest; null when they must come from the front. */
+  palette: SpinePalette | null
+  /** Average colour of the Spine art, from the manifest. */
+  spineColor: RGB | null
+}
+
+const hex = (value: unknown): RGB | null => (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value) ? fromHex(value) : null)
+
+/** The faces of a manifest entry, small pile copies preferred (`url` resolves paths). */
+export function assetFaces(entry: BookAssetEntry, url: (path: string) => string = assetUrl): AssetFaces {
+  const at = (path: string | undefined) => (path ? url(path) : undefined)
+  const [background, text, accent] = [entry.palette?.background, entry.palette?.text, entry.palette?.accent].map(hex)
+  return {
+    entry,
+    spine: at(entry.pile?.spine ?? entry.spine),
+    pileFront: at(entry.pile?.front ?? entry.front),
+    front: at(entry.front),
+    back: at(entry.back),
+    palette: background && text && accent ? { background, text, accent } : null,
+    spineColor: hex(entry.spineColor),
+  }
 }
 
 let base = '/book-assets/'
@@ -82,26 +118,8 @@ export function assetEntryFor(book: AssetBook, entries: AssetManifest): BookAsse
 
 export const assetUrl = (path: string) => (/^(https?:)?\//.test(path) ? path : `${base}${path}`)
 
-function loadImage(src: string, priority?: Priority): Promise<HTMLImageElement | undefined> {
-  return schedule(() => new Promise<HTMLImageElement | undefined>((resolve) => {
-    const image = new Image()
-    // Asset sets may live on another origin (e.g. a CDN bucket): without CORS the
-    // image would taint the canvas the Spine/back textures are drawn on.
-    image.crossOrigin = 'anonymous'
-    image.decoding = 'async'
-    image.onload = () => resolve(image)
-    image.onerror = () => resolve(undefined)
-    image.src = src
-  }), priority)
-}
-
-/** A Book's asset faces, loaded; null when the manifest has nothing for it. `priority` ranks them in the load queue. */
-export async function loadAssets(book: AssetBook, priority?: Priority): Promise<LoadedAssets | null> {
+/** A Book's faces from the manifest; null when it has nothing for the Book. */
+export async function assetFacesFor(book: AssetBook): Promise<AssetFaces | null> {
   const entry = assetEntryFor(book, await loadAssetManifest())
-  if (!entry) return null
-  const [spine, back] = await Promise.all([
-    entry.spine ? loadImage(assetUrl(entry.spine), priority) : undefined,
-    entry.back ? loadImage(assetUrl(entry.back), priority) : undefined,
-  ])
-  return { entry, frontUrl: entry.front ? assetUrl(entry.front) : undefined, spine, back }
+  return entry ? assetFaces(entry) : null
 }

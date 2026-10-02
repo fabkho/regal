@@ -23,7 +23,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three'
-import type { Group, Material, Mesh, PerspectiveCamera, PointLight } from 'three'
+import type { Group, Material, Mesh, PerspectiveCamera, PointLight, Texture } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
 import type { Book } from '#layers/regal/shared/types/book'
@@ -34,13 +34,19 @@ import { chooseShuffle, countMoves } from '#layers/regal/app/utils/stack/moves'
 import type { ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shuffle'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
-import { fullCoverTexture, loadCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { isPhotoFace, loadAssets } from '#layers/regal/app/utils/covers/bookAssets'
-import type { LoadedAssets } from '#layers/regal/app/utils/covers/bookAssets'
+import { loadCover, loadFullCover, prefetchFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
+import { assetFacesFor, isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
+import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
+import { loadPicture } from '#layers/regal/app/utils/covers/images'
+import type { Picture } from '#layers/regal/app/utils/covers/images'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
+import { coverUrl } from '#layers/regal/app/utils/covers/coverUrl'
+import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
+import { inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
+import type { Boost, FaceUse } from '#layers/regal/app/utils/covers/loadWindow'
 import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
@@ -53,7 +59,9 @@ const props = withDefaults(defineProps<{
   aside?: boolean
   /** How a re-sorted Stack moves: 'animate' plays a collision-free plan (by hand or carousel), 'instant' jumps. */
   shuffle?: 'animate' | 'instant'
-}>(), { aside: true, shuffle: 'instant' })
+  /** ?debug=loads: logs every change to a face the pile shows, and whether it was on screen (window.__regalLoads). */
+  debugLoads?: boolean
+}>(), { aside: true, shuffle: 'instant', debugLoads: false })
 
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
@@ -117,12 +125,18 @@ interface BookMaterials {
     /** Head, tail and fore edge. */
     materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
   }
-  /** Asset set faces (real or AI), when the Book has any. */
-  assets: LoadedAssets | null
+  /** The Book's asset set (manifest), once the manifest is in; null when it has none. */
+  set: AssetFaces | null
+  /** Asset set artwork (real or AI), as it arrives. */
+  art: { spine?: Picture, back?: Picture }
   /** The blurb once it has arrived, for redraws. */
   description?: string | null
   /** Last loaded Cover (null until/unless there is one), reused for redraws. */
   loaded: LoadedCover | null
+  /** The faces the pile shows are final (the entrance waits for those in view). */
+  ready: boolean
+  /** URL of the full-size Cover on the picked Book. */
+  fullCover: string | null
   /** Below 1 while the Book appears or vanishes. */
   opacity: number
 }
@@ -245,43 +259,56 @@ function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
   for (const texture of entry.edges.textures) texture.needsUpdate = true
 }
 
-function faceInput(pose: BookPose, loaded: LoadedCover | null, description: string | null = null, assets: LoadedAssets | null = null): FaceInput | null {
+function faceInput(pose: BookPose, entry: BookMaterials | null = null): FaceInput | null {
   const book = booksById.value.get(pose.bookId)
   if (!book) return null
   const background = fromHex(pose.color)
   const text = readableOn(background)
+  const set = entry?.set
   return {
     book,
     thickness: pose.thickness,
     height: pose.height,
     depth: pose.depth,
-    palette: loaded?.palette ?? { background, text, accent: text },
-    cover: loaded?.image,
+    // The manifest's colours first: they don't change when the front arrives.
+    palette: set?.palette ?? entry?.loaded?.palette ?? { background, text, accent: text },
+    cover: entry?.loaded?.image,
     seed: hashString(book.id),
-    description,
-    spineArt: assets?.spine,
-    backArt: assets?.back,
+    description: entry?.description ?? null,
+    spineArt: entry?.art.spine,
+    backArt: entry?.art.back,
     // Asset set extras for a realistic back; photos of a real copy get no typography.
-    quotes: assets?.entry.quotes,
-    genre: assets?.entry.genre,
-    publisher: assets?.entry.publisher,
-    backIsPhoto: isPhotoFace(assets?.entry, 'back'),
-    spineIsPhoto: isPhotoFace(assets?.entry, 'spine'),
+    quotes: set?.entry.quotes,
+    genre: set?.entry.genre,
+    publisher: set?.entry.publisher,
+    backIsPhoto: isPhotoFace(set?.entry, 'back'),
+    spineIsPhoto: isPhotoFace(set?.entry, 'spine'),
   }
+}
+
+/** A plain back in the Book's colour: it faces down in the pile, so its real one is drawn later. */
+function plainBack(pose: BookPose): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.width = 2
+  element.height = 2
+  const context = element.getContext('2d')!
+  context.fillStyle = pose.color
+  context.fillRect(0, 0, 2, 2)
+  return element
 }
 
 function materialsFor(pose: BookPose): Material[] {
   let entry = materialsByBook.get(pose.bookId)
   if (!entry) {
-    const input = faceInput(pose, null)
+    const input = faceInput(pose)
     const cover = cloth(pose.color)
     const spineTexture = faceTexture(input ? drawSpine(input) : document.createElement('canvas'))
-    const backTexture = faceTexture(input ? drawBack(input) : document.createElement('canvas'))
+    const backTexture = faceTexture(plainBack(pose))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, assets: null, loaded: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -297,49 +324,114 @@ function motionFor(bookId: string): Motion {
 }
 
 /**
- * Puts the real Cover on a Book once it has loaded, and redraws Spine and back
- * (from the Cover when there is one) once the Spine fonts are available.
+ * Dresses a Book as its faces arrive, most visible first (load ranks in
+ * utils/covers/loadWindow.ts):
+ * 1. once the manifest is in, the Spine colours and boards it lists, so a
+ *    Spine without art is final before any image has loaded;
+ * 2. the Spine art (its small pile copy);
+ * 3. the front: right away for the top Book, or when the Spine colours must
+ *    come from it (no colours in the manifest); else after the pile's faces;
+ * 4. the back and its blurb, seen only once the Book is taken out.
+ * Images decode off the main thread (utils/covers/images.ts).
  */
 async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
-  const priority = loadPriority(pose.bookId)
-  // Blurbs only show on the back: after the images of the Books around.
-  const description = loadDescription(book, () => priority() + BLURB_DELAY)
-  // Asset set first (its own front, spine and back), then the Cover resolver.
-  const assets = await loadAssets(book, priority)
-  const cover = async () => (assets?.frontUrl ? await loadCover(book, assets.frontUrl, priority) : null) ?? loadCover(book, undefined, priority)
-  const [loaded] = await Promise.all([cover(), spineFontsReady()])
+  const set = await assetFacesFor(book)
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
-  entry.loaded = loaded
-  entry.assets = assets
+  entry.set = set
 
-  if (loaded) {
-    entry.cover.map = pickedId.value === pose.bookId ? fullCoverTexture(loaded) : loaded.texture
-    entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
-    // Printed covers are smoother and glossier than cloth.
-    entry.cover.roughness = 0.5
-    setGloss(entry.cover, COVER_GLOSS)
-    entry.cover.needsUpdate = true
+  const fonts = spineFontsReady()
+  const frontShows = () => topBookId === pose.bookId || !set?.palette
+  const shown = loadPriority(pose.bookId, 'shown')
+  const hidden = loadPriority(pose.bookId, 'hidden')
+  // An asset set's front (its pile copy), else the Cover resolver; also when the front is missing.
+  const frontPriority = loadPriority(pose.bookId, () => (frontShows() ? 'shown' : 'hidden'))
+  const front = (set?.pileFront ? loadCover(book, set.pileFront, frontPriority) : Promise.resolve(null))
+    .then(loaded => loaded ?? loadCover(book, undefined, frontPriority))
+  // Full-size Spine art (older manifests) is scaled to what drawSpine uses.
+  const spineArt = set?.spine ? loadPicture(set.spine, shown, set.entry.pile?.spine ? undefined : ART_HEIGHT) : null
+
+  // 1. The manifest's colours: Spine without art and page edges, final at once.
+  if (set?.palette || set?.spineColor) {
+    await fonts
+    await whenDrawn(pose.bookId, (entry) => {
+      redrawPageEdges(entry, set.spineColor ?? set.palette!.background, pose.bookId)
+      noteShown(pose.bookId, 'edges')
+      if (spineArt) return
+      drawFace(pose, entry, 'spine')
+      noteShown(pose.bookId, 'spine')
+      entry.ready = !frontShows()
+    })
   }
 
-  const input = faceInput(pose, loaded, null, assets)
-  if (!input) return
-  // The cover boards seen on the page edges take the Spine's colour.
-  const board = assets?.spine ? averageColor(assets.spine) : loaded?.palette.background ?? fromHex(pose.color)
-  redrawPageEdges(entry, board, pose.bookId)
-  setFace(entry, 'spine', drawSpine(input))
-  setFace(entry, 'back', drawBack(input))
+  // 2. The Spine art, with the colours it needs.
+  if (spineArt) {
+    const [art] = await Promise.all([spineArt, fonts, set?.palette ? null : front])
+    await whenDrawn(pose.bookId, (entry) => {
+      if (art) entry.art.spine = art
+      if (!set?.spineColor && art) redrawPageEdges(entry, averageColor(art), pose.bookId)
+      drawFace(pose, entry, 'spine')
+      noteShown(pose.bookId, 'spine')
+      entry.ready = !frontShows()
+    })
+  }
 
-  // The blurb arrives separately; set it on the back when it does.
-  const blurb = await description
-  const current = materialsByBook.get(pose.bookId)
-  if (!blurb || !current) return
-  const withBlurb = faceInput(pose, current.loaded, blurb, current.assets)
-  if (!withBlurb) return
-  current.description = blurb
-  setFace(current, 'back', drawBack(withBlurb))
+  // 3. The front.
+  const [loaded] = await Promise.all([front, fonts])
+  await whenDrawn(pose.bookId, (entry) => {
+    entry.loaded = loaded
+    if (loaded && !entry.fullCover) printCover(entry, loaded.texture)
+    if (loaded && topBookId === pose.bookId) noteShown(pose.bookId, 'front')
+    if (!set?.palette && !spineArt) {
+      redrawPageEdges(entry, loaded?.palette.background ?? fromHex(pose.color), pose.bookId)
+      drawFace(pose, entry, 'spine')
+      noteShown(pose.bookId, 'spine')
+    }
+    entry.ready = true
+  })
+
+  // 4. The back and its blurb.
+  const [back, blurb] = await Promise.all([
+    set?.back ? loadPicture(set.back, hidden, ART_HEIGHT) : null,
+    loadDescription(book, () => hidden() + BLURB_DELAY),
+  ])
+  await whenDrawn(pose.bookId, (entry) => {
+    if (back) entry.art.back = back
+    entry.description = blurb
+    drawFace(pose, entry, 'back')
+  })
+}
+
+/** ?debug=loads: a face the pile shows changed; on screen, that is a visible pop. */
+function noteShown(bookId: string, face: 'spine' | 'edges' | 'front') {
+  if (!props.debugLoads) return
+  const y = poseHeights.get(bookId)
+  const onScreen = !!stackScroll && y !== undefined && inView(y, stackScroll) && meshes.get(bookId)?.visible === true
+  const log = ((window as { __regalLoads?: unknown[] }).__regalLoads ??= [])
+  log.push({ t: Math.round(performance.now()), bookId, face, onScreen })
+}
+
+/** ?debug=loads: the entrance starts, with the Books in view and whether they all wear their faces. */
+function noteEntrance(to: BookPose[]) {
+  const shown = stackScroll ? to.filter(pose => inView(pose.y, stackScroll)) : []
+  const log = ((window as { __regalLoads?: unknown[] }).__regalLoads ??= [])
+  log.push({
+    t: Math.round(performance.now()),
+    face: 'entrance',
+    waited: Math.round(performance.now() - entranceAskedAt),
+    inView: shown.map(pose => pose.bookId),
+    dressed: shown.every(pose => materialsByBook.get(pose.bookId)?.ready),
+  })
+}
+
+/** Pixel height drawSpine and drawBack draw artwork at. */
+const ART_HEIGHT = 1024
+
+function drawFace(pose: BookPose, entry: BookMaterials, face: 'spine' | 'back') {
+  const input = faceInput(pose, entry)
+  if (input) setFace(entry, face, face === 'spine' ? drawSpine(input) : drawBack(input))
 }
 
 function disposeEntry(entry: BookMaterials) {
@@ -351,34 +443,71 @@ function disposeEntry(entry: BookMaterials) {
   entry.backTexture.dispose()
   for (const texture of entry.edges.textures) texture.dispose()
   for (const material of entry.edges.materials) material.dispose()
+  for (const art of [entry.art.spine, entry.art.back]) {
+    if (art && 'close' in art && typeof art.close === 'function') art.close()
+  }
+  if (entry.fullCover) releaseFullCover(entry.fullCover)
 }
 
-// Load order: the picked Book first, then in the Stack by distance from the
-// middle of the view (read when a slot frees up, so scrolling while the pile
-// loads pulls the Books scrolled to forward); the Bookcase loads in Shelf order.
+// Load order: lazy, by the load window (utils/covers/loadWindow.ts): the
+// picked Book, then the hovered one, then the faces the pile shows in and
+// around the view, then the rest of the pile as a background fill, then the
+// faces only seen once a Book is taken out. Ranks are read when a slot frees
+// up, so the window moves with the scroll; the Bookcase loads in Shelf order.
 const stackScroll = inject(STACK_SCROLL, null)
+setBands(LOAD_BANDS)
 /** Height of each Book in the current poses, for the load order. */
 const poseHeights = new Map<string, number>()
+/** The top Book of the pile: its front shows. */
+let topBookId: string | null = null
 /** Metres of distance a blurb waits behind the images. */
 const BLURB_DELAY = 0.3
 
-function loadPriority(bookId: string): Priority {
-  return () => {
-    if (pickedId.value === bookId) return -1
-    if (!stackScroll) return 0
-    const y = poseHeights.get(bookId)
-    return y === undefined ? Infinity : Math.abs(y - stackScroll.focusY)
-  }
+function boostOf(bookId: string): Boost {
+  if (pickedId.value === bookId) return 'picked'
+  return hoveredBook.value === bookId ? 'hovered' : null
+}
+
+function loadPriority(bookId: string, use: FaceUse | (() => FaceUse)): Priority {
+  return () => loadRank(poseHeights.get(bookId), stackScroll, typeof use === 'function' ? use() : use, boostOf(bookId))
+}
+
+// Drawing a face takes a few milliseconds; many arrive at once (all colours with
+// the manifest), so they wait their turn, nearest first, a few per frame.
+const DRAW_BUDGET_MS = 6
+const drawQueue: { bookId: string, run: () => void }[] = []
+
+/** Draws on a Book once it's its turn (see drawPending); resolves when done. */
+function whenDrawn(bookId: string, draw: (entry: BookMaterials) => void): Promise<void> {
+  return new Promise(resolve => drawQueue.push({
+    bookId,
+    run: () => {
+      const entry = materialsByBook.get(bookId)
+      if (entry) draw(entry)
+      resolve()
+    },
+  }))
+}
+
+function drawPending() {
+  if (!drawQueue.length) return
+  const started = performance.now()
+  const rank = (bookId: string) => loadRank(poseHeights.get(bookId), stackScroll, 'shown', boostOf(bookId))
+  drawQueue.sort((a, b) => rank(a.bookId) - rank(b.bookId))
+  while (drawQueue.length && performance.now() - started < DRAW_BUDGET_MS) drawQueue.shift()!.run()
 }
 
 watch(() => props.poses, (poses) => {
+  let top: BookPose | null = null
   for (const pose of poses) {
     poseHeights.set(pose.bookId, pose.y)
+    if (!top || pose.y > top.y) top = pose
     if (!materialsByBook.has(pose.bookId)) {
       materialsFor(pose)
       applyCover(pose)
     }
   }
+  topBookId = top?.bookId ?? null
 }, { immediate: true })
 
 /** Frees the materials of Books that are neither in the view nor still on their way out. */
@@ -498,13 +627,44 @@ watch(pickedId, (id, previous) => {
 })
 
 // The pile shows small Covers; the picked Book gets its Cover at full size,
-// and gives it back once it is back in place.
+// and gives it back once it is back in place. A Book the pointer rests on
+// fetches it ahead, so taking it out finds it ready.
+const HOVER_PREFETCH_MS = 200
+
+function fullCoverUrl(bookId: string): string | null {
+  const entry = materialsByBook.get(bookId)
+  const book = booksById.value.get(bookId)
+  if (!entry || !book) return null
+  return entry.set ? entry.set.front ?? null : coverUrl(book)
+}
+
+/** Puts a Cover texture on the front board, printed (smoother, glossier than cloth). */
+function printCover(entry: BookMaterials, texture: Texture) {
+  entry.cover.map = texture
+  entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
+  entry.cover.roughness = 0.5
+  setGloss(entry.cover, COVER_GLOSS)
+  entry.cover.needsUpdate = true
+}
+
 function setFullCover(bookId: string, on: boolean) {
   const entry = materialsByBook.get(bookId)
-  if (!entry?.loaded) return
-  entry.cover.map = on ? fullCoverTexture(entry.loaded) : entry.loaded.texture
-  entry.cover.needsUpdate = true
-  if (!on) releaseFullCover(entry.loaded)
+  if (!entry) return
+  if (on) {
+    const url = fullCoverUrl(bookId)
+    if (!url) return
+    entry.fullCover = url
+    void loadFullCover(url, loadPriority(bookId, 'shown')).then((texture) => {
+      const current = materialsByBook.get(bookId)
+      if (texture && current?.fullCover === url) printCover(current, texture)
+    })
+    return
+  }
+  const url = entry.fullCover
+  if (!url) return
+  entry.fullCover = null
+  if (entry.loaded) printCover(entry, entry.loaded.texture)
+  releaseFullCover(url)
 }
 
 watch(pickedId, (id, previous) => {
@@ -514,6 +674,19 @@ watch(pickedId, (id, previous) => {
       if (pickedId.value !== previous) setFullCover(previous, false)
     }, RETURN_SECONDS * 1000 + 100)
   }
+  reschedule()
+})
+
+let hoverTimer: ReturnType<typeof setTimeout> | undefined
+watch(hoveredBook, (id) => {
+  // A hovered Book's faces jump the queue.
+  reschedule()
+  clearTimeout(hoverTimer)
+  if (!id) return
+  hoverTimer = setTimeout(() => {
+    const url = hoveredBook.value === id ? fullCoverUrl(id) : null
+    if (url) prefetchFullCover(url, loadPriority(id, 'shown'))
+  }, HOVER_PREFETCH_MS)
 })
 
 watch(face, (value) => {
@@ -643,9 +816,25 @@ function viewBand(cam: PerspectiveCamera | undefined): ShuffleView | undefined {
  */
 const PENDING = Number.POSITIVE_INFINITY
 
+/**
+ * Longest an entrance waits, unseen, for the faces of the Books in view (s),
+ * so the pile settles in dressed; past it, it settles in with drawn faces.
+ */
+const ENTRANCE_WAIT = 0.8
+/** When the waiting entrance was asked for (performance.now()). */
+let entranceAskedAt = 0
+
 function requestEntrance(to: BookPose[]) {
   requested = { from: [], to }
+  entranceAskedAt = performance.now()
   lastShuffle.value = { moves: to.length, style: 'enter', until: PENDING }
+}
+
+/** An entrance waits until the Books in view wear their faces, or ENTRANCE_WAIT. */
+function entranceWaits(): boolean {
+  if (!requested || requested.from.length > 0 || !stackScroll) return false
+  if (performance.now() - entranceAskedAt >= ENTRANCE_WAIT * 1000) return false
+  return requested.to.some(pose => inView(pose.y, stackScroll) && !materialsByBook.get(pose.bookId)?.ready)
 }
 
 /** No entrance after all: the separators may show. */
@@ -701,8 +890,20 @@ watch(() => props.poses, (next, previous) => {
   extra.value = requested.from.filter(pose => !staying.has(pose.bookId))
 })
 
+/** Where the view was when the load queue last read its ranks. */
+const ranked = { focusY: Number.NaN, targetY: Number.NaN }
+
 onBeforeRender(({ delta }) => {
-  if (requested) {
+  // The load window moves with the scroll: new ranks once the view has moved a little.
+  if (stackScroll && (Math.abs(stackScroll.focusY - ranked.focusY) > 0.03 || Math.abs(stackScroll.targetY - ranked.targetY) > 0.03)) {
+    ranked.focusY = stackScroll.focusY
+    ranked.targetY = stackScroll.targetY
+    reschedule()
+  }
+  drawPending()
+  const waiting = entranceWaits()
+  if (requested && !waiting) {
+    if (props.debugLoads && !requested.from.length) noteEntrance(requested.to)
     startShuffle(requested.from, requested.to)
     requested = null
   }
@@ -750,8 +951,8 @@ onBeforeRender(({ delta }) => {
       targetQuaternion.setFromEuler(euler.set(...sample.rotation))
       presence = presenceAt(running.plan, pose.bookId, shuffleTime)
     }
-    // New to a re-sort that waits for the running one: not there yet.
-    else if (running) presence = 0
+    // New to a re-sort that waits for the running one, or to an entrance that waits: not there yet.
+    else if (running || waiting) presence = 0
     const appearance = presenceLook(presence, !!running?.plan.vanish.has(pose.bookId))
     mesh.visible = presence > 0
     mesh.castShadow = appearance.opacity > 0.5
