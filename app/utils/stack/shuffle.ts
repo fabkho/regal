@@ -28,7 +28,9 @@
 //
 // When no Book stays (a new year, say) the whole pile is swapped instead: the
 // old pile sweeps out to the left at its own heights, and once it is clear the
-// new one settles in place from the bottom up (see planSwap).
+// new one settles in place from the bottom up (see planSwap). A pile that
+// appears from nothing, as the Stack does when it first shows, plays only that
+// settle-in (see planEnter).
 import type { BookPose } from '../books/pose'
 import { hashString } from '../bookcase/layout'
 import { LAYER_GAP } from './layout'
@@ -175,7 +177,8 @@ interface Staged {
  * Plans a collision-free move from the current poses to the target poses.
  * Books missing from `to` slide out and vanish; Books missing from `from`
  * appear around the pile and join it on the way. When no Book stays, the
- * whole pile is swapped (see planSwap).
+ * whole pile is swapped (see planSwap); when there was none, the new pile
+ * settles in (see planEnter).
  */
 export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyle, options: ShuffleOptions = {}): ShufflePlan {
   const speed = options.speed && options.speed > 0 ? options.speed : 1
@@ -190,6 +193,7 @@ export function planShuffle(from: BookPose[], to: BookPose[], style: ShuffleStyl
     oldTop,
   }
 
+  if (from.length === 0 && to.length > 0) return planEnter(to, { speed, view: options.view })
   if (isSwap(from, to)) return planSwap(from, to, speed)
   if (to.length === 0 || to.every(pose => samePose(pose, fromById.get(pose.bookId)))) {
     // Nothing to re-sort: the pile holds still while any leaving Books go.
@@ -243,20 +247,13 @@ function smoothstepAt(share: number): number {
  * The whole pile is swapped. The old Books slide off to the left at their own,
  * disjoint heights, top first. As soon as even the last of them has slid a
  * full Book's length (and a margin) clear, the new pile settles in place from
- * the bottom up, every Book from the same height above its place, so a higher
- * Book always stays above the one below it. The piles never touch.
+ * the bottom up (see settleIn). The piles never touch.
  */
 function planSwap(from: BookPose[], to: BookPose[], speed: number): ShufflePlan {
-  const tracks = new Map<string, ShuffleKeyframe[]>()
   const leaving = new Map<string, ShuffleKeyframe[]>()
-  const appear = new Map<string, Presence>()
   const vanish = new Map<string, Presence>()
-  let duration = 0
   const span = (seconds: number) => seconds / speed
-  const settle = (map: Map<string, ShuffleKeyframe[]>, id: string, track: ShuffleKeyframe[]) => {
-    map.set(id, track)
-    duration = Math.max(duration, track[track.length - 1]!.t)
-  }
+  let duration = 0
 
   const { length } = extents([...from, ...to])
   const reach = Math.max(SWEEP_REACH, length + 0.15)
@@ -265,18 +262,58 @@ function planSwap(from: BookPose[], to: BookPose[], speed: number): ShufflePlan 
   for (const pose of from) {
     const start = span(SWAP_CASCADE) * out.get(pose.bookId)!
     lastOut = Math.max(lastOut, start)
-    settle(leaving, pose.bookId, slide(poseNode(pose), start, start + span(SWAP_SLIDE), shifted(pose, -reach, 0)))
+    leaving.set(pose.bookId, slide(poseNode(pose), start, start + span(SWAP_SLIDE), shifted(pose, -reach, 0)))
     vanish.set(pose.bookId, { start: start + span(SWAP_SLIDE) * 0.35, end: start + span(SWAP_SLIDE) })
+    duration = Math.max(duration, start + span(SWAP_SLIDE))
   }
 
   const begin = lastOut + span(SWAP_SLIDE) * smoothstepAt(Math.min(1, (length + 0.1) / reach))
-  const inRank = heightRank(to, false)
+  const settled = settleIn(to, heightRank(to, false), begin, speed)
+  return { ...settled, duration: Math.max(duration, settled.duration), leaving, vanish }
+}
+
+/**
+ * A pile appearing from nothing (the Stack's first look, or Books again after
+ * a filter matched none): the enter half of a swap, with nothing to sweep out.
+ * With a view, the cascade runs through the Books in it, so the part you see
+ * settles bottom-up at the full pace however tall the pile is; the Books below
+ * it are in place first, those above it last.
+ */
+export function planEnter(to: BookPose[], options: ShuffleOptions = {}): ShufflePlan {
+  const speed = options.speed && options.speed > 0 ? options.speed : 1
+  const settled = settleIn(to, enterRank(to, options.view), 0, speed)
+  return { ...settled, leaving: new Map(), vanish: new Map() }
+}
+
+/**
+ * Cascade order of an entrance: by height through the Books in view; below
+ * the view first (0), above it last (1). Never decreasing with height, which
+ * is all settleIn needs.
+ */
+function enterRank(poses: BookPose[], view: ShuffleView | undefined): Map<string, number> {
+  if (!view) return heightRank(poses, false)
+  const inView = heightRank(poses.filter(pose => pose.y >= view.bottom && pose.y <= view.top), false)
+  return new Map(poses.map(pose => [pose.bookId, inView.get(pose.bookId) ?? (pose.y < view.bottom ? 0 : 1)]))
+}
+
+/**
+ * A pile settles in place from `begin` on, each Book from SETTLE_DROP above
+ * its place, starting SWAP_CASCADE times its rank (0 to 1) later. Every Book
+ * drops the same way, so as long as a higher Book never starts before a lower
+ * one, it always stays above it.
+ */
+function settleIn(to: BookPose[], rank: Map<string, number>, begin: number, speed: number): Pick<ShufflePlan, 'duration' | 'tracks' | 'appear'> {
+  const tracks = new Map<string, ShuffleKeyframe[]>()
+  const appear = new Map<string, Presence>()
+  let duration = 0
   for (const pose of to) {
-    const start = begin + span(SWAP_CASCADE) * inRank.get(pose.bookId)!
-    settle(tracks, pose.bookId, slide(shifted(pose, 0, SETTLE_DROP), start, start + span(SWAP_SETTLE), poseNode(pose)))
-    appear.set(pose.bookId, { start, end: start + span(SWAP_SETTLE) * 0.7 })
+    const start = begin + (SWAP_CASCADE * rank.get(pose.bookId)!) / speed
+    const end = start + SWAP_SETTLE / speed
+    tracks.set(pose.bookId, slide(shifted(pose, 0, SETTLE_DROP), start, end, poseNode(pose)))
+    appear.set(pose.bookId, { start, end: start + (SWAP_SETTLE / speed) * 0.7 })
+    duration = Math.max(duration, end)
   }
-  return { duration, tracks, leaving, appear, vanish }
+  return { duration, tracks, appear }
 }
 
 /**

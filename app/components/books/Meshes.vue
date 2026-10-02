@@ -610,7 +610,7 @@ function presenceLook(presence: number, leaving: boolean): { opacity: number, sc
 // they never pass through each other (see utils/stack/shuffle.ts).
 
 let running: { plan: ShufflePlan, startedAt: number, to: BookPose[] } | null = null
-/** The last re-sort: how many Books moved, which style ran (dev choices) and when it ends (Stack separators). */
+/** The last re-sort or entrance: how many Books moved, which style ran (dev choices) and when it ends (Stack separators). */
 const lastShuffle = useState<{ moves: number, style: string, until?: number } | null>('shuffle:last', () => null)
 /** A re-sort that arrived while another was running; starts when that one ends. */
 let queued: BookPose[] | null = null
@@ -635,10 +635,29 @@ function viewBand(cam: PerspectiveCamera | undefined): ShuffleView | undefined {
   return { bottom: bottom + VIEW_INSET, top: top - VIEW_INSET }
 }
 
+/**
+ * A pile that appears from nothing (the Stack's first look) settles in from
+ * the bottom up, like the second half of a swap (see planEnter). The plan is
+ * made on the first frame, with the camera in place; until then a pending
+ * `until` keeps the Stack's separators hidden.
+ */
+const PENDING = Number.POSITIVE_INFINITY
+
+function requestEntrance(to: BookPose[]) {
+  requested = { from: [], to }
+  lastShuffle.value = { moves: to.length, style: 'enter', until: PENDING }
+}
+
+/** No entrance after all: the separators may show. */
+function dropPending() {
+  if (lastShuffle.value?.until === PENDING) lastShuffle.value = null
+}
+
 function startShuffle(from: BookPose[], to: BookPose[]) {
-  if (props.shuffle === 'instant') {
+  if (props.shuffle === 'instant' || reduced.value) {
     running = null
     extra.value = []
+    dropPending()
     sweep()
     return
   }
@@ -646,19 +665,22 @@ function startShuffle(from: BookPose[], to: BookPose[]) {
   const style = chooseShuffle(moves)
   const view = viewBand(camera.value as PerspectiveCamera | undefined)
   const plan = planShuffle(from, to, style, { view })
-  lastShuffle.value = { moves, style, until: performance.now() + plan.duration * 1000 }
+  lastShuffle.value = { moves, style: from.length ? style : 'enter', until: performance.now() + plan.duration * 1000 }
   running = plan.duration > 0 ? { plan, startedAt: performance.now(), to } : null
   // Leaving Books stay drawn until they have vanished.
   extra.value = running ? from.filter(pose => plan.leaving.has(pose.bookId)) : []
   sweep()
 }
 
+if (props.poses.length > 0 && props.shuffle === 'animate' && !reduced.value) requestEntrance(props.poses)
+
 watch(() => props.poses, (next, previous) => {
-  if (!previous?.length || props.shuffle === 'instant' || reduced.value) {
+  if (props.shuffle === 'instant' || reduced.value) {
     running = null
     queued = null
     requested = null
     extra.value = []
+    dropPending()
     sweep()
     return
   }
@@ -668,6 +690,11 @@ watch(() => props.poses, (next, previous) => {
     queued = next
     const drawn = [...running.to, ...rendered.value.filter(pose => running!.plan.leaving.has(pose.bookId))]
     extra.value = drawn.filter(pose => !staying.has(pose.bookId))
+    return
+  }
+  // Nothing was there (the Library arrived after the Stack): it settles in.
+  if (!requested && !previous?.length) {
+    requestEntrance(next)
     return
   }
   requested = { from: requested?.from ?? previous, to: next }
@@ -834,6 +861,7 @@ onBeforeUnmount(() => {
   geometry.dispose()
   for (const entry of materialsByBook.values()) disposeEntry(entry)
   materialsByBook.clear()
+  dropPending()
 })
 </script>
 
