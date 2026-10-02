@@ -2,3 +2,7 @@ allowBuilds:
   esbuild: true
   unrs-resolver: false
   vue-demi: false
+  workerd: false
+minimumReleaseAgeExclude:
+  - miniflare@5.20261001.0-alpha
+  - wrangler@4.146.0
