@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pageEdgePlan, paperStock, seeded } from '../../app/utils/books/pageEdges'
-import { assetEntryFor, assetFaces, assetUrl } from '../../app/utils/covers/bookAssets'
+import { assetFaces } from '../../app/utils/covers/bookAssets'
 
 describe('paperStock', () => {
   it('prints mass-market paperbacks on pulp and hardcovers on white stock', () => {
@@ -51,27 +51,11 @@ describe('seeded', () => {
   })
 })
 
-describe('assetEntryFor', () => {
-  const manifest = {
-    9780756413026: { spine: '9780756413026/spine.webp', source: 'ai' as const },
-    300009: { back: 'custom/back.webp', source: 'photo' as const },
-  }
-
-  it('finds a Book by ISBN-13 first, then by Goodreads Book Id', () => {
-    expect(assetEntryFor({ id: 'x', isbn13: '978-0756413026' }, manifest)?.source).toBe('ai')
-    expect(assetEntryFor({ id: '300009', isbn13: null }, manifest)?.source).toBe('photo')
-    expect(assetEntryFor({ id: 'nope', isbn13: '9780000000002' }, manifest)).toBeNull()
-  })
-
-  it('resolves relative paths under /book-assets/ and keeps absolute ones', () => {
-    expect(assetUrl('a/front.webp')).toBe('/book-assets/a/front.webp')
-    expect(assetUrl('/api/cover?isbn=1')).toBe('/api/cover?isbn=1')
-    expect(assetUrl('https://example.com/x.jpg')).toBe('https://example.com/x.jpg')
-  })
-})
+/** Resolves like the display: against the library file's URL. */
+const at = (reference: string) => new URL(reference, 'https://books.example.com/v2/library.json').href
 
 describe('assetFaces', () => {
-  it('prefers the small pile copies and takes the colours from the manifest', () => {
+  it('prefers the small pile copies and takes the colours from the file', () => {
     const faces = assetFaces({
       front: 'k/front.webp',
       spine: 'k/spine.webp',
@@ -79,28 +63,34 @@ describe('assetFaces', () => {
       pile: { front: 'k/front-pile.webp', spine: 'k/spine-pile.webp' },
       palette: { background: '#48445c', text: '#F5F2EB', accent: '#1c1926' },
       spineColor: '#151728',
-    })
-    expect(faces.spine).toBe('/book-assets/k/spine-pile.webp')
-    expect(faces.pileFront).toBe('/book-assets/k/front-pile.webp')
+    }, at)
+    expect(faces.spine).toBe('https://books.example.com/v2/k/spine-pile.webp')
+    expect(faces.pileFront).toBe('https://books.example.com/v2/k/front-pile.webp')
     // Taken out, a Book shows its full front; the back is only ever seen then.
-    expect(faces.front).toBe('/book-assets/k/front.webp')
-    expect(faces.back).toBe('/book-assets/k/back.webp')
+    expect(faces.front).toBe('https://books.example.com/v2/k/front.webp')
+    expect(faces.back).toBe('https://books.example.com/v2/k/back.webp')
     expect(faces.palette).toEqual({ background: [0x48, 0x44, 0x5C], text: [0xF5, 0xF2, 0xEB], accent: [0x1C, 0x19, 0x26] })
     expect(faces.spineColor).toEqual([0x15, 0x17, 0x28])
   })
 
-  it('falls back to the full faces and no colours for an older manifest', () => {
-    const faces = assetFaces({ front: 'k/front.webp', spine: 'k/spine.webp' })
-    expect(faces.spine).toBe('/book-assets/k/spine.webp')
-    expect(faces.pileFront).toBe('/book-assets/k/front.webp')
+  it('falls back to the full faces and no colours without pile copies and palette', () => {
+    const faces = assetFaces({ front: 'k/front.webp', spine: 'k/spine.webp' }, at)
+    expect(faces.spine).toBe('https://books.example.com/v2/k/spine.webp')
+    expect(faces.pileFront).toBe('https://books.example.com/v2/k/front.webp')
     expect(faces.back).toBeUndefined()
     expect(faces.palette).toBeNull()
     expect(faces.spineColor).toBeNull()
   })
 
   it('ignores malformed colours', () => {
-    const faces = assetFaces({ palette: { background: 'red', text: '#fff', accent: '#000000' }, spineColor: 'nope' })
+    const faces = assetFaces({ palette: { background: 'red', text: '#fff', accent: '#000000' }, spineColor: 'nope' }, at)
     expect(faces.palette).toBeNull()
     expect(faces.spineColor).toBeNull()
+  })
+
+  it('leaves out an image the resolver refuses', () => {
+    const faces = assetFaces({ front: 'k/front.webp', spine: 'k/spine.webp' }, reference => (reference.includes('spine') ? null : at(reference)))
+    expect(faces.front).toBe('https://books.example.com/v2/k/front.webp')
+    expect(faces.spine).toBeUndefined()
   })
 })

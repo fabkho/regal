@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cleanTitle, coverCacheKey, isEmptyQuery, normalizeIsbn, resolveCover } from '../../server/utils/covers'
 import type { Fetcher } from '../../server/utils/covers'
-import { coverUrl } from '../../app/utils/covers/coverUrl'
 
 type Route = (url: string) => { status?: number, json?: unknown } | undefined
 
@@ -90,12 +89,5 @@ describe('cover query helpers', () => {
     expect(coverCacheKey(hobbit)).toBe(coverCacheKey({ ...hobbit, isbn13: '9780547928227' }))
     expect(isEmptyQuery({ author: 'Someone' })).toBe(true)
     expect(isEmptyQuery({ title: 'Dune' })).toBe(false)
-  })
-
-  it('builds same-origin resolver URLs', () => {
-    const url = new URL(coverUrl({ isbn13: '9780547928227', isbn10: null, title: 'The Hobbit', author: 'J.R.R. Tolkien' }), 'http://x')
-    expect(url.pathname).toBe('/api/cover')
-    expect(url.searchParams.get('isbn13')).toBe('9780547928227')
-    expect(url.searchParams.get('size')).toBe('L')
   })
 })

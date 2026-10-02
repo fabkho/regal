@@ -4,7 +4,7 @@ import { importLibrary } from '../../shared/library/importLibrary'
 import { clickBook, flip, putAway, SHELVED } from '../../app/utils/books/pick'
 import { layoutStack } from '../../app/utils/stack/layout'
 
-const demo = importLibrary(readFileSync(new URL('../../app/assets/data/demo-library.csv', import.meta.url), 'utf8')).books
+const demo = importLibrary(readFileSync(new URL('../fixtures/demo-library.csv', import.meta.url), 'utf8')).books
 
 describe('Pick state machine', () => {
   it('cycles a Book through front, back and put away, like mawise/bookshelf', () => {

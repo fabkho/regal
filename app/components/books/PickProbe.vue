@@ -62,6 +62,8 @@ function clickableBooks() {
     child.getWorldPosition(centre).project(camera.value)
     const x = rect.left + (centre.x + 1) / 2 * rect.width
     const y = rect.top + (1 - centre.y) / 2 * rect.height
+    // Not placed yet (the first frames, before the camera has the pile in view): no point.
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue
     if (centre.z > 1 || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
     if (canvasAt(x, y) && hitAt(x, y) === id) found.push({ id, x, y })
   }

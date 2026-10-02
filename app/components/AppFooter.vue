@@ -15,7 +15,15 @@
       >CC BY 4.0 ↗</a>
       (modified)
     </span>
-    <span>Your library never leaves your browser.</span>
+    <span>
+      Shows a
+      <a
+        href="https://github.com/fabkho/regal/blob/main/docs/library-file.md"
+        target="_blank"
+        rel="noopener"
+      >Regal library file ↗</a>
+      · <code>?src=</code> views yours
+    </span>
   </footer>
 </template>
 
@@ -31,5 +39,10 @@
   font-size: var(--text-2xs, 0.65rem);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.footer code {
+  font: inherit;
+  text-transform: none;
 }
 </style>

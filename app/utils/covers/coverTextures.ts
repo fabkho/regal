@@ -1,5 +1,5 @@
-// Client-side Cover loading: fetches Cover images (an asset set's front, else
-// through the same-origin Cover resolver), turns them into textures and takes
+// Client-side Cover loading: fetches Cover images (a Book's front from the
+// Regal library file), turns them into textures and takes
 // their Spine colours. Loads a few at a time, the most urgent first
 // (loadQueue.ts), decodes off the main thread (images.ts) and caches per URL
 // for the page's lifetime.
@@ -10,8 +10,6 @@
 // close to a gigabyte of GPU memory.
 import { CanvasTexture, SRGBColorSpace } from 'three'
 import type { Texture } from 'three'
-import { coverUrl } from './coverUrl'
-import type { CoverBook } from './coverUrl'
 import { spinePalette } from './palette'
 import type { SpinePalette } from './palette'
 import { decodeImage, fetchImage, toCanvas } from './images'
@@ -61,11 +59,10 @@ function coverTexture(canvas: HTMLCanvasElement, anisotropy: number): Texture {
 }
 
 /**
- * Loads a Book's Cover once per URL; resolves null when there is none. `url`
- * overrides the resolver (an asset set's front, best its small pile copy);
- * `priority` ranks it in the load queue.
+ * Loads a Cover (a Book's front, best its small pile copy) once per URL;
+ * resolves null when it doesn't load. `priority` ranks it in the load queue.
  */
-export function loadCover(book: CoverBook, url = coverUrl(book), priority?: Priority): Promise<LoadedCover | null> {
+export function loadCover(url: string, priority?: Priority): Promise<LoadedCover | null> {
   let pending = cache.get(url)
   if (!pending) {
     pending = fetchImage(url, priority)

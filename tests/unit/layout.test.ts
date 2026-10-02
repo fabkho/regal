@@ -5,7 +5,7 @@ import type { Book } from '../../shared/types/book'
 import { BOOKCASE_SPACING, bookDimensions, HEADROOM, layoutLibrary, MAX_THICKNESS, sortForShelves } from '../../app/utils/bookcase/layout'
 import { SHELF_SLOTS } from '../../app/utils/bookcase/shelves'
 
-const demo = importLibrary(readFileSync(new URL('../../app/assets/data/demo-library.csv', import.meta.url), 'utf8')).books
+const demo = importLibrary(readFileSync(new URL('../fixtures/demo-library.csv', import.meta.url), 'utf8')).books
 
 function makeBook(id: string, overrides: Partial<Book> = {}): Book {
   return {

@@ -1,11 +1,22 @@
 <script setup lang="ts">
-// Page shell. Scene and Library UI live in their own components so tickets
-// can evolve them independently:
+// Regal's own site: a viewer of one Regal library file. Scene and Library UI
+// live in their own components so tickets can evolve them independently:
 // - LibraryStage: 3D Bookcase / Stack views, Pick interaction
-// - LibraryPanel: upload, summary, list view (#3)
-// - DevChoices (dev only): open design decisions, previewed live
+// - LibraryPanel: owner, summary, list view
+// - DevChoices (dev only): links that play the decided transitions
+//
+// Shows `librarySrc` (the demo library unless configured otherwise);
+// `?src=<url>` views any library file. A visitor's URL loads in the browser
+// only, never through the server.
 const isDev = import.meta.dev
 const choicesOpen = useState('dev-choices:open', () => false)
+
+const route = useRoute()
+const visitorSrc = computed(() => {
+  const value = route.query.src
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+})
+useRegalLibrary(visitorSrc, { server: !visitorSrc.value })
 </script>
 
 <template>
@@ -15,7 +26,7 @@ const choicesOpen = useState('dev-choices:open', () => false)
         Regal
       </h1>
       <p class="page__tagline">
-        Your Goodreads library, as a bookcase.
+        Your reading, as a bookcase.
       </p>
     </header>
 

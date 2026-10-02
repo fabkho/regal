@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // Embed (Regal as a Nuxt layer): the 3D Stack for a host page's body, with the
 // picked Book's details card over it. Shares the Library, Stack view, Pick and
-// hover with RegalBooksSidebar. Give it a size (height) from the host.
+// hover with RegalBooksSidebar. Give it a size (height) from the host. A
+// library file that can't be shown gets an error card instead of the 3D.
 const props = withDefaults(defineProps<{
   /** Sort & filter chips over the 3D (off when RegalBooksSidebar shows them). */
   controls?: boolean
 }>(), { controls: false })
 
-const { error } = useRegalLibrary()
+useRegalLibrary()
 </script>
 
 <template>
@@ -18,13 +19,6 @@ const { error } = useRegalLibrary()
       show-details
       :show-controls="props.controls"
     />
-    <p
-      v-if="error"
-      class="regal-books-stage__error"
-      role="alert"
-    >
-      {{ error }}
-    </p>
   </div>
 </template>
 
@@ -47,13 +41,5 @@ const { error } = useRegalLibrary()
 
 .regal-books-stage__stage {
   min-height: 0;
-}
-
-.regal-books-stage__error {
-  position: absolute;
-  inset: auto 1rem 1rem;
-  margin: 0;
-  color: var(--color-accent, #B93E2E);
-  font-size: var(--text-sm, 0.75rem);
 }
 </style>

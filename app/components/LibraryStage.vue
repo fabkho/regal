@@ -10,6 +10,7 @@ import { layoutStack } from '#layers/regal/app/utils/stack/layout'
 import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
 import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
+import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
 
 const props = withDefaults(defineProps<{
   /** Sort & filter controls over the 3D (off when a sidebar shows them). */
@@ -30,7 +31,7 @@ const debugPick = computed(() => debug.value.includes('pick'))
 /** ?debug=loads logs the faces the pile shows as they change (window.__regalLoads, see BooksMeshes). */
 const debugLoads = computed(() => debug.value.includes('loads'))
 
-const { books } = useLibrary()
+const { books, assets, source, error } = useLibrary()
 const { pickedId, putAway } = useBookPick()
 const mode = useViewMode()
 
@@ -59,20 +60,25 @@ const stack = computed(() => layoutStack(stackBooks.value, {
 const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
 
-// A host page (embed) always shows the Stack: fetch the manifest while the page
-// loads, and open the connection to the asset host early. The preload matches
-// the manifest's fetch() exactly (CORS, no credentials), so it is used, not
-// fetched twice.
-const regal = useRegalConfig()
-if (regal.mode === 'embed') {
-  const assetsOrigin = /^https?:\/\//.test(regal.assetsBase) ? new URL(regal.assetsBase).origin : null
-  useHead({
-    link: [
-      { rel: 'preload', as: 'fetch', href: `${regal.assetsBase}manifest.json`, crossorigin: 'anonymous' },
-      ...(assetsOrigin ? [{ rel: 'preconnect' as const, href: assetsOrigin, crossorigin: 'anonymous' as const }] : []),
-    ],
-  })
-}
+// Open the connection to the image host early when the library file's images
+// live on another origin (they load with CORS, no credentials).
+const pageUrl = useRequestURL()
+const imageOrigin = computed(() => {
+  const src = source.value?.src
+  if (!src) return null
+  // The first Book with an image tells where the images live.
+  for (const entry of Object.values(assets.value)) {
+    const reference = entry.pile?.spine ?? entry.spine ?? entry.pile?.front ?? entry.front
+    if (!reference) continue
+    const url = resolveLibraryUrl(reference, src, pageUrl.href)
+    const origin = url ? new URL(url).origin : null
+    return origin && origin !== pageUrl.origin ? origin : null
+  }
+  return null
+})
+useHead({
+  link: computed(() => (imageOrigin.value ? [{ rel: 'preconnect', href: imageOrigin.value, crossorigin: 'anonymous' as const }] : [])),
+})
 
 const isReady = ref(false)
 /** The stage element: a details card put back as a label lands inside it. */
@@ -86,7 +92,7 @@ function setMode(value: ViewMode) {
   mode.value = value
 }
 
-// A Book picked from the list might not exist any more after a new import.
+// A Book picked from the list might not exist in another library file.
 watch(books, (list) => {
   if (pickedId.value && !list.some(book => book.id === pickedId.value)) putAway()
 })
@@ -102,7 +108,15 @@ watch(books, (list) => {
     :data-bookcase-count="shelves.bookcaseCount"
     :data-picked="pickedId ?? ''"
   >
-    <ClientOnly>
+    <!-- A library file that can't be shown: why, instead of an empty shelf. -->
+    <LibraryFileError
+      v-if="error"
+      class="stage__error"
+      :error="error"
+      :src="source?.src"
+    />
+
+    <ClientOnly v-else>
       <TresCanvas
         class="stage__canvas"
         :alpha="true"
@@ -193,6 +207,13 @@ watch(books, (list) => {
     </div>
 
     <p
+      v-if="source && !error && !books.length"
+      class="stage__status stage__status--overlay"
+    >
+      No books in this library
+    </p>
+
+    <p
       v-if="mode === 'stack' && books.length && !poses.length"
       class="stage__status stage__status--overlay"
     >
@@ -216,7 +237,7 @@ watch(books, (list) => {
     />
 
     <p
-      v-show="!isReady"
+      v-show="!isReady && !error"
       class="stage__status stage__status--overlay stage__status--late"
       aria-live="polite"
     >
@@ -343,6 +364,12 @@ watch(books, (list) => {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   pointer-events: none;
+}
+
+.stage__error {
+  position: relative;
+  z-index: 3;
+  margin: 1rem;
 }
 
 .stage__controls {
