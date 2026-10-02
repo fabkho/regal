@@ -28,6 +28,8 @@ pnpm lint
 
 Optional: `NUXT_GOOGLE_BOOKS_API_KEY` enables Google Books as a Cover source.
 
+Daily publishing: `pnpm books:daily` rebuilds the asset set from the reading tracker (no AI) and uploads what changed to an R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, via `wrangler login`). It fingerprints its input (the Read shelf without `updatedAt`/`averageRating`/`notePath`, the overrides, the Goodreads exports, cover picks and the pipeline code) and returns right away when nothing changed; uploads only files whose content changed and leaves private fields out of `library.json`. `--dry-run` reports, `--force` rebuilds anyway. Run it from a scheduler after the tracker sync.
+
 Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (it loads `/?view=stack&debug=pick`; `--view bookcase`, `--data latest` for your own Library on the dev server).
 
 ## Getting your Goodreads export
