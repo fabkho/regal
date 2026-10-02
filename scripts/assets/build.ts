@@ -273,8 +273,14 @@ const writeManifest = (manifest: Record<string, ManifestEntry>) =>
 /** Brings every entry's pile copies and Spine colours up to date (see pile.ts). */
 async function updatePiles(manifest: Record<string, ManifestEntry>) {
   let changed = 0
-  for (const entry of Object.values(manifest)) {
-    if (await updatePile(OUT, entry)) changed++
+  for (const [key, entry] of Object.entries(manifest)) {
+    // A broken face must not stop the daily publish: that Book keeps its full faces.
+    try {
+      if (await updatePile(OUT, entry)) changed++
+    }
+    catch (error) {
+      console.warn(`  ${key}: no pile copies (${error instanceof Error ? error.message : String(error)})`)
+    }
   }
   if (changed) console.log(`Pile copies and Spine colours updated for ${changed} Book(s).`)
   writeManifest(manifest)

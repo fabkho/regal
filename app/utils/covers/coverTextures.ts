@@ -75,12 +75,16 @@ export function loadCover(book: CoverBook, url = coverUrl(book), priority?: Prio
           decodeImage(blob, { height: COVER_PREVIEW_HEIGHT }),
           decodeImage(blob, { width: 48, height: 72 }),
         ])
-        if (!preview) return null
-        const canvas = toCanvas(preview, Math.min(preview.height, COVER_PREVIEW_HEIGHT))
-        const palette = paletteOf(sample ?? canvas)
-        close(preview)
-        close(sample)
-        return { texture: coverTexture(canvas, 4), image: canvas, palette }
+        try {
+          if (!preview) return null
+          const canvas = toCanvas(preview, Math.min(preview.height, COVER_PREVIEW_HEIGHT))
+          return { texture: coverTexture(canvas, 4), image: canvas, palette: paletteOf(sample ?? canvas) }
+        }
+        finally {
+          // Copied (or of no use): the bitmaps go either way.
+          close(preview)
+          close(sample)
+        }
       })
       .catch(() => null)
     cache.set(url, pending)

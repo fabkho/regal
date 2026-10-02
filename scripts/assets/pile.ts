@@ -49,8 +49,8 @@ export async function averageHex(image: Buffer): Promise<string> {
   return toHex(sum.map(channel => channel / pixels) as [number, number, number])
 }
 
-/** File name of a face's pile copy: front.webp → front-pile.webp. */
-export const pileName = (path: string) => path.replace(/\.webp$/, '-pile.webp')
+/** File name of a face's pile copy: front.webp → front-pile.webp (any image becomes a WebP copy, never itself). */
+export const pileName = (path: string) => `${path.replace(/\.[^./]+$/, '')}-pile.webp`
 
 const newer = (source: string, copy: string) => !existsSync(copy) || statSync(source).mtimeMs > statSync(copy).mtimeMs
 

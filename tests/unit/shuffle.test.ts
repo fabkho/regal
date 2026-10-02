@@ -564,8 +564,21 @@ describe('a pile appearing from nothing (the Stack\'s first look)', () => {
   it('is what planShuffle plays when nothing was there, whatever the Style', () => {
     const to = shown(library(20))
     for (const view of [VIEW, undefined]) {
-      expect(planShuffle([], to, 'hand', { view })).toEqual(planEnter(to, { view }))
-      expect(planShuffle([], to, 'carousel', { view })).toEqual(planEnter(to, { view }))
+      const plan = planShuffle([], to, 'hand', { view })
+      // No lanes, no ring: every Book only drops straight down onto its place.
+      for (const pose of to) {
+        const track = plan.tracks.get(pose.bookId)!
+        for (const keyframe of track) {
+          expect(keyframe.position[0]).toBe(pose.x)
+          expect(keyframe.position[2]).toBe(pose.z)
+          expect(keyframe.position[1]).toBeGreaterThanOrEqual(pose.y)
+          expect(keyframe.position[1]).toBeLessThanOrEqual(pose.y + 0.05 + 1e-9)
+        }
+      }
+      expect(plan.leaving.size).toBe(0)
+      expect(plan.duration).toBeLessThan(1)
+      // The Style that a re-sort would pick doesn't matter.
+      expect(planShuffle([], to, 'carousel', { view })).toEqual(plan)
     }
     const empty = planShuffle([], [], 'carousel')
     expect(empty.duration).toBe(0)

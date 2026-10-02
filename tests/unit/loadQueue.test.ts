@@ -86,4 +86,36 @@ describe('schedule', () => {
       setBands([])
     }
   })
+
+  it('frees the slot of a task that throws before returning a promise', async () => {
+    const failures = Array.from({ length: 10 }, () => schedule((): Promise<never> => {
+      throw new Error('sync')
+    }))
+    for (const failure of failures) await expect(failure).rejects.toThrow('sync')
+    // Ten throws later, all eight slots are free again.
+    const started: string[] = []
+    const jobs = Array.from({ length: 8 }, (_, index) => job(`ok${index}`, started))
+    const done = jobs.map(entry => schedule(entry.run))
+    await tick()
+    expect(started).toHaveLength(8)
+    for (const entry of jobs) entry.finish()
+    await Promise.all(done)
+  })
+
+  it('drops a queued job when its signal aborts, and never starts it', async () => {
+    const started: string[] = []
+    const blockers = Array.from({ length: 8 }, (_, index) => job(`blocker${index}`, started))
+    const running = blockers.map(entry => schedule(entry.run))
+    const controller = new AbortController()
+    const dropped = job('dropped', started)
+    const pending = schedule(dropped.run, undefined, controller.signal)
+    await tick()
+    controller.abort()
+    await expect(pending).rejects.toThrow('dropped')
+    for (const entry of blockers) entry.finish()
+    await Promise.all(running)
+    await tick()
+    expect(started).not.toContain('dropped')
+    await expect(schedule(() => Promise.resolve(1), undefined, controller.signal)).rejects.toThrow()
+  })
 })

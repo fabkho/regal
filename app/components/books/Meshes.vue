@@ -137,6 +137,8 @@ interface BookMaterials {
   ready: boolean
   /** URL of the full-size Cover on the picked Book. */
   fullCover: string | null
+  /** Aborted when the Book goes: its Spine and back art are no longer loaded. */
+  aborted: AbortController
   /** Below 1 while the Book appears or vanishes. */
   opacity: number
 }
@@ -159,8 +161,8 @@ const extra = shallowRef<BookPose[]>([])
 /** Every Book drawn: the view's own, then those on their way out. */
 const rendered = computed(() => {
   if (extra.value.length === 0) return props.poses
-  const inView = new Set(props.poses.map(pose => pose.bookId))
-  return [...props.poses, ...extra.value.filter(pose => !inView.has(pose.bookId))]
+  const inPoses = new Set(props.poses.map(pose => pose.bookId))
+  return [...props.poses, ...extra.value.filter(pose => !inPoses.has(pose.bookId))]
 })
 
 function setGloss(material: MeshPhysicalMaterial, gloss: Gloss) {
@@ -179,6 +181,7 @@ function applyShine(material: MeshPhysicalMaterial, amount: number) {
 
 function cloth(color: string): MeshPhysicalMaterial {
   const material = new MeshPhysicalMaterial({ roughness: 0.72, metalness: 0 })
+  material.userData.cloth = color
   material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
   setGloss(material, CLOTH_GLOSS)
   return material
@@ -308,7 +311,7 @@ function materialsFor(pose: BookPose): Material[] {
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, opacity: 1, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -339,7 +342,7 @@ async function applyCover(pose: BookPose) {
   if (!book) return
   const set = await assetFacesFor(book)
   const entry = materialsByBook.get(pose.bookId)
-  if (!entry) return
+  if (!entry || entry.aborted.signal.aborted) return
   entry.set = set
   if (set && !set.entry.pile) fullSizeFaces = true
 
@@ -352,12 +355,14 @@ async function applyCover(pose: BookPose) {
   const front = (set?.pileFront ? loadCover(book, set.pileFront, frontPriority) : Promise.resolve(null))
     .then(loaded => loaded ?? loadCover(book, undefined, frontPriority))
   // Full-size Spine art (older manifests) is scaled to what drawSpine uses.
-  const spineArt = set?.spine ? loadPicture(set.spine, shown, set.entry.pile?.spine ? undefined : ART_HEIGHT) : null
+  const signal = entry.aborted.signal
+  const spineArt = set?.spine ? loadPicture(set.spine, shown, set.entry.pile?.spine ? undefined : ART_HEIGHT, signal) : null
+  const draw = (paint: (entry: BookMaterials) => void) => whenDrawn(entry, pose.bookId, paint)
 
   // 1. The manifest's colours: Spine without art and page edges, final at once.
   if (set?.palette || set?.spineColor) {
     await fonts
-    await whenDrawn(pose.bookId, (entry) => {
+    await draw((entry) => {
       redrawPageEdges(entry, set.spineColor ?? set.palette!.background, pose.bookId)
       noteShown(pose.bookId, 'edges')
       if (spineArt) return
@@ -370,18 +375,20 @@ async function applyCover(pose: BookPose) {
   // 2. The Spine art, with the colours it needs.
   if (spineArt) {
     const [art] = await Promise.all([spineArt, fonts, set?.palette ? null : front])
-    await whenDrawn(pose.bookId, (entry) => {
+    const drawn = await draw((entry) => {
       if (art) entry.art.spine = art
       if (!set?.spineColor && art) redrawPageEdges(entry, averageColor(art), pose.bookId)
       drawFace(pose, entry, 'spine')
       noteShown(pose.bookId, 'spine')
       entry.ready = !frontShows()
     })
+    // The Book went before its turn: nobody holds the bitmap.
+    if (!drawn) return closePicture(art)
   }
 
   // 3. The front.
   const [loaded] = await Promise.all([front, fonts])
-  await whenDrawn(pose.bookId, (entry) => {
+  const fronted = await draw((entry) => {
     entry.loaded = loaded
     if (loaded && !entry.fullCover) printCover(entry, loaded.texture)
     if (loaded && topBookId === pose.bookId) noteShown(pose.bookId, 'front')
@@ -392,17 +399,24 @@ async function applyCover(pose: BookPose) {
     }
     entry.ready = true
   })
+  if (!fronted) return
 
   // 4. The back and its blurb.
   const [back, blurb] = await Promise.all([
-    set?.back ? loadPicture(set.back, hidden, ART_HEIGHT) : null,
+    set?.back ? loadPicture(set.back, hidden, ART_HEIGHT, signal) : null,
     loadDescription(book, () => hidden() + BLURB_DELAY),
   ])
-  await whenDrawn(pose.bookId, (entry) => {
+  const drawn = await draw((entry) => {
     if (back) entry.art.back = back
     entry.description = blurb
     drawFace(pose, entry, 'back')
   })
+  if (!drawn) closePicture(back)
+}
+
+/** Frees a decoded bitmap nobody draws any more. */
+function closePicture(picture: Picture | null | undefined) {
+  if (picture && 'close' in picture && typeof picture.close === 'function') picture.close()
 }
 
 /** ?debug=loads: a face the pile shows changed; on screen, that is a visible pop. */
@@ -444,9 +458,10 @@ function disposeEntry(entry: BookMaterials) {
   entry.backTexture.dispose()
   for (const texture of entry.edges.textures) texture.dispose()
   for (const material of entry.edges.materials) material.dispose()
-  for (const art of [entry.art.spine, entry.art.back]) {
-    if (art && 'close' in art && typeof art.close === 'function') art.close()
-  }
+  // Its Spine and back still queued or on their way are dropped.
+  entry.aborted.abort()
+  closePicture(entry.art.spine)
+  closePicture(entry.art.back)
   if (entry.fullCover) releaseFullCover(entry.fullCover)
 }
 
@@ -478,14 +493,18 @@ function loadPriority(bookId: string, use: FaceUse | (() => FaceUse)): Priority 
 const DRAW_BUDGET_MS = 6
 const drawQueue: { bookId: string, run: () => void }[] = []
 
-/** Draws on a Book once it's its turn (see drawPending); resolves when done. */
-function whenDrawn(bookId: string, draw: (entry: BookMaterials) => void): Promise<void> {
+/**
+ * Draws on a Book once it's its turn (see drawPending). Resolves whether it
+ * drew: not when the Book has gone (filtered out, swapped) in the meantime,
+ * and then whatever was to be drawn is the caller's to free.
+ */
+function whenDrawn(entry: BookMaterials, bookId: string, draw: (entry: BookMaterials) => void): Promise<boolean> {
   return new Promise(resolve => drawQueue.push({
     bookId,
     run: () => {
-      const entry = materialsByBook.get(bookId)
-      if (entry) draw(entry)
-      resolve()
+      const current = materialsByBook.get(bookId) === entry
+      if (current) draw(entry)
+      resolve(current)
     },
   }))
 }
@@ -493,8 +512,12 @@ function whenDrawn(bookId: string, draw: (entry: BookMaterials) => void): Promis
 function drawPending() {
   if (!drawQueue.length) return
   const started = performance.now()
-  const rank = (bookId: string) => loadRank(poseHeights.get(bookId), stackScroll, 'shown', boostOf(bookId))
-  drawQueue.sort((a, b) => rank(a.bookId) - rank(b.bookId))
+  // Nearest first: ranks taken once per frame, not per comparison.
+  const ranks = new Map<string, number>()
+  for (const item of drawQueue) {
+    if (!ranks.has(item.bookId)) ranks.set(item.bookId, loadRank(poseHeights.get(item.bookId), stackScroll, 'shown', boostOf(item.bookId)))
+  }
+  drawQueue.sort((a, b) => ranks.get(a.bookId)! - ranks.get(b.bookId)!)
   while (drawQueue.length && performance.now() - started < DRAW_BUDGET_MS) drawQueue.shift()!.run()
 }
 
@@ -519,6 +542,8 @@ function sweep() {
     disposeEntry(entry)
     materialsByBook.delete(bookId)
     motionByBook.delete(bookId)
+    // Gone from the pile: its remaining loads (shared Covers) rank last.
+    poseHeights.delete(bookId)
   }
 }
 
@@ -664,8 +689,21 @@ function setFullCover(bookId: string, on: boolean) {
   const url = entry.fullCover
   if (!url) return
   entry.fullCover = null
+  // Back to the small Cover, or to cloth when that never came: never a freed texture.
   if (entry.loaded) printCover(entry, entry.loaded.texture)
+  else clothCover(entry)
   releaseFullCover(url)
+}
+
+/** The plain cloth front a Book has until its Cover is in. */
+function clothCover(entry: BookMaterials) {
+  const plain = cloth(entry.cover.userData.cloth as string)
+  entry.cover.map = null
+  entry.cover.color.copy(plain.color)
+  entry.cover.roughness = plain.roughness
+  setGloss(entry.cover, CLOTH_GLOSS)
+  entry.cover.needsUpdate = true
+  plain.dispose()
 }
 
 watch(pickedId, (id, previous) => {

@@ -9,13 +9,13 @@ import type { Priority } from './loadQueue'
 /** A decoded picture, ready to draw on a canvas. */
 export type Picture = CanvasImageSource & { width: number, height: number }
 
-/** Fetches an image's bytes in the load queue; null when it isn't there. */
-export function fetchImage(url: string, priority?: Priority): Promise<Blob | null> {
+/** Fetches an image's bytes in the load queue; null when it isn't there or was dropped (`signal`). */
+export function fetchImage(url: string, priority?: Priority, signal?: AbortSignal): Promise<Blob | null> {
   return schedule(async () => {
     // Same-origin or CORS (a CDN bucket): the canvases it is drawn on must stay untainted.
-    const response = await fetch(url, { mode: 'cors', credentials: 'same-origin' })
+    const response = await fetch(url, { mode: 'cors', credentials: 'same-origin', signal })
     return response.ok ? response.blob() : null
-  }, priority).catch(() => null)
+  }, priority, signal).catch(() => null)
 }
 
 /**
@@ -55,10 +55,10 @@ export async function decodeImage(blob: Blob, size?: { width?: number, height?: 
   }
 }
 
-/** Fetches and decodes an image, scaled to `height` pixels when given. */
-export async function loadPicture(url: string, priority?: Priority, height?: number): Promise<Picture | null> {
-  const blob = await fetchImage(url, priority)
-  return blob ? decodeImage(blob, height ? { height } : undefined) : null
+/** Fetches and decodes an image, scaled to `height` pixels when given; null once `signal` aborts. */
+export async function loadPicture(url: string, priority?: Priority, height?: number, signal?: AbortSignal): Promise<Picture | null> {
+  const blob = await fetchImage(url, priority, signal)
+  return blob && !signal?.aborted ? decodeImage(blob, height ? { height } : undefined) : null
 }
 
 /** Copies a picture onto a canvas (a texture three.js can flip like any other). */

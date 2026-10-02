@@ -24,6 +24,9 @@ async function face(width: number, height: number, ground: string, edge: string)
 describe('pile copies', () => {
   it('names the pile copy next to its face', () => {
     expect(pileName('9780756413026/front.webp')).toBe('9780756413026/front-pile.webp')
+    // Any other image still gets a WebP copy beside it, never its own name.
+    expect(pileName('k/front.jpg')).toBe('k/front-pile.webp')
+    expect(pileName('k.v2/spine')).toBe('k.v2/spine-pile.webp')
   })
 
   it('samples the Spine colours from the front\'s left edge and averages the Spine art', async () => {

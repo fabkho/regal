@@ -71,16 +71,19 @@ const scratch: number[] = []
 
 function pump() {
   pumpPending = false
+  if (!queue.length) return
+  // Priorities are read once per pump: starting a job doesn't change the others'.
+  scratch.length = queue.length
+  for (let index = 0; index < queue.length; index++) {
+    const value = queue[index]!.priority()
+    scratch[index] = Number.isNaN(value) ? Infinity : value
+  }
   while (queue.length) {
-    scratch.length = queue.length
-    for (let index = 0; index < queue.length; index++) {
-      const value = queue[index]!.priority()
-      scratch[index] = Number.isNaN(value) ? Infinity : value
-    }
     const index = nextJob(scratch, running, bands)
     if (index < 0) return
     const [job] = queue.splice(index, 1)
-    running.push(scratch[index]!)
+    const [value] = scratch.splice(index, 1)
+    running.push(value!)
     job!.start()
   }
 }
@@ -90,23 +93,44 @@ export function reschedule() {
   if (queue.length && running.length < MAX_IN_FLIGHT) pump()
 }
 
+const aborted = () => new DOMException('The load was dropped.', 'AbortError')
+
 /**
  * Runs upstream-bound work a few at a time, the most urgent first. Starting
  * waits a tick, so Books queued together (all of them, once the manifest is
- * in) are ranked together instead of the first few taking every slot.
+ * in) are ranked together instead of the first few taking every slot. An
+ * aborted `signal` drops a job that hasn't started (the task itself should
+ * pass the signal on, e.g. to fetch).
  */
-export function schedule<T>(task: () => Promise<T>, priority: Priority = IN_ORDER): Promise<T> {
+export function schedule<T>(task: () => Promise<T>, priority: Priority = IN_ORDER, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) return reject(aborted())
+    const drop = () => {
+      const index = queue.indexOf(job)
+      if (index < 0) return
+      queue.splice(index, 1)
+      reject(aborted())
+    }
     const job: Job = {
       priority,
       start: () => {
+        signal?.removeEventListener('abort', drop)
         const slot = running[running.length - 1]!
-        task().then(resolve, reject).finally(() => {
+        let pending: Promise<T>
+        try {
+          pending = task()
+        }
+        catch (error) {
+          // A task that throws before it returns a promise still frees its slot.
+          pending = Promise.reject(error)
+        }
+        pending.then(resolve, reject).finally(() => {
           running.splice(running.indexOf(slot), 1)
           pump()
         })
       },
     }
+    signal?.addEventListener('abort', drop, { once: true })
     queue.push(job)
     if (!pumpPending) {
       pumpPending = true
