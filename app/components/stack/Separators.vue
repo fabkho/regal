@@ -437,7 +437,16 @@ interface Shown {
   y: number
   opacity: number
   alive: boolean
+  /** A new separator stays hidden until then (performance.now()), see NEW_HOLD_MS. */
+  holdUntil: number
 }
+
+/**
+ * A separator made by a filter or sort change waits this long before fading
+ * in: the re-sort that change starts is recorded (lastShuffle) a frame later,
+ * and without the wait the separator would flash in for that frame.
+ */
+const NEW_HOLD_MS = 150
 
 const shown = shallowRef<Shown[]>([])
 const sizeBucket = (room: number) => Math.round(Math.min(room, 0.05) * 1000)
@@ -460,7 +469,7 @@ function sync() {
       next.push(current)
     }
     else {
-      next.push({ id, separator, built: build(separator, room), y: separator.y, opacity: 0, alive: true })
+      next.push({ id, separator, built: build(separator, room), y: separator.y, opacity: 0, alive: true, holdUntil: performance.now() + NEW_HOLD_MS })
     }
   }
   // Separators that went away (or changed look) fade out first.
@@ -499,7 +508,7 @@ onBeforeRender(({ delta }) => {
   let removed = false
   for (const item of shown.value) {
     const moving = Math.abs(item.y - item.separator.y) > 1e-5
-    const target = item.alive && !travelling && !moving ? 1 : 0
+    const target = item.alive && !travelling && !moving && now >= item.holdUntil ? 1 : 0
     item.opacity += (target - item.opacity) * ease
     if (Math.abs(item.opacity - target) < 0.004) item.opacity = target
     // Hidden: now it can jump to its new height.
