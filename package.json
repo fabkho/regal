@@ -16,6 +16,7 @@
     "test:e2e": "vitest run --project e2e",
     "assets:build": "tsx scripts/assets/build.ts",
     "books:daily": "tsx scripts/books-daily.ts",
+    "library:convert": "tsx scripts/library/convert.ts",
     "check:privacy": "node scripts/check-privacy.mjs"
   },
   "dependencies": {

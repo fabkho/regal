@@ -5,6 +5,8 @@ Use these terms in code, issues and commits.
 | Term | Meaning |
 |---|---|
 | **Library export** | The CSV a user downloads from Goodreads (`goodreads_library_export.csv`). Raw input, never stored server-side. |
+| **Regal library file** | The one input Regal's display reads: a versioned JSON (`version: 2`) with every **Book** of a **Library** and its resolved assets (front/Spine/back/pile images, Spine colours, blurb). Format: `docs/library-file.md`; types and validator in `shared/`. Written by a **Pipeline**. |
+| **Pipeline** | A producer of the **Regal library file**: gathers reading data and Book assets from its sources and writes the file. Today the daily build from the reading tracker (`books:daily`, `scripts/assets`, `pnpm library:convert`), later Libellus. Regal itself doesn't care where the data comes from. |
 | **Library** | The normalized, in-memory list of **Books** produced from a Library export. Persisted only in the user's browser. |
 | **Book** | One normalized entry: identifiers (Goodreads id, ISBN-10, ISBN-13), title, author, page count, binding, rating, dates, review, **Reading status**. |
 | **Reading status** | Goodreads' exclusive shelf: `read`, `currently-reading`, `to-read`, or a custom exclusive shelf (e.g. `wishlist`). Not the same as a 3D **Shelf**. |
