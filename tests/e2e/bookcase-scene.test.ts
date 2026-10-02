@@ -40,13 +40,12 @@ describe('bookcase scene', async () => {
     await page.close()
   })
 
-  it('puts every Book of the demo library on the Shelves', async () => {
+  it('puts every Book of the demo library file on the Shelves', async () => {
     const page = await createPage()
     await page.goto(url('/'), { waitUntil: 'networkidle' })
-    await page.getByRole('button', { name: /demo/i }).click()
 
     const stage = page.locator('section[aria-label="Bookcase"]')
-    await expect.poll(async () => Number(await stage.getAttribute('data-book-count')), { timeout: 20_000 }).toBe(43)
+    await expect.poll(async () => Number(await stage.getAttribute('data-book-count')), { timeout: 20_000 }).toBe(8)
     expect(await stage.getAttribute('data-bookcase-count')).toBe('1')
 
     await page.close()

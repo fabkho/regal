@@ -17,14 +17,15 @@ describe('picking Books and switching views', async () => {
     const page = await createPage()
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(url('/'), { waitUntil: 'networkidle' })
-    await page.getByRole('button', { name: /try demo/i }).click()
 
     const stage = page.locator('section.stage')
-    await page.getByRole('button', { name: /^Dune/ }).click()
-    const details = page.getByRole('article', { name: 'Dune details' })
+    await page.getByRole('button', { name: /^Frankenstein/ }).click()
+    const details = page.getByRole('article', { name: 'Frankenstein details' })
     await details.waitFor({ state: 'visible', timeout: 10_000 })
-    expect(await stage.getAttribute('data-picked')).not.toBe('')
-    expect(await details.textContent()).toContain('Frank Herbert')
+    expect(await stage.getAttribute('data-picked')).toBe('demo-02')
+    expect(await details.textContent()).toContain('Mary Shelley')
+    // The blurb comes from the library file.
+    expect(await details.textContent()).toContain('A young scientist builds a living being')
 
     await details.getByRole('button', { name: /show back/i }).click()
     await details.getByRole('button', { name: /show front/i }).waitFor()
@@ -39,18 +40,17 @@ describe('picking Books and switching views', async () => {
   it('switches to the Stack view and picks there too', async () => {
     const page = await createPage()
     await page.goto(url('/'), { waitUntil: 'networkidle' })
-    await page.getByRole('button', { name: /try demo/i }).click()
 
     await page.getByRole('button', { name: 'Stack', exact: true }).click()
     const stage = page.locator('section[aria-label="Book stack"]')
     await expect.poll(async () => stage.getAttribute('data-view'), { timeout: 10_000 }).toBe('stack')
-    expect(await stage.getAttribute('data-book-count')).toBe('43')
+    expect(await stage.getAttribute('data-book-count')).toBe('8')
     await expect.poll(() => page.url(), { timeout: 5_000 }).toContain('view=stack')
 
-    await page.getByRole('button', { name: /^Dune/ }).click()
-    await page.getByRole('article', { name: 'Dune details' }).waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByRole('button', { name: /^Good Omens/ }).click()
+    await page.getByRole('article', { name: 'Good Omens details' }).waitFor({ state: 'visible', timeout: 10_000 })
     await page.getByRole('button', { name: /put back/i }).click()
-    await page.getByRole('article', { name: 'Dune details' }).waitFor({ state: 'detached', timeout: 10_000 })
+    await page.getByRole('article', { name: 'Good Omens details' }).waitFor({ state: 'detached', timeout: 10_000 })
     await page.close()
   })
 
@@ -68,7 +68,6 @@ describe('picking Books and switching views', async () => {
     const page = await createPage()
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(url('/?view=stack&debug=pick'), { waitUntil: 'networkidle' })
-    await page.getByRole('button', { name: /try demo/i }).click()
     await page.waitForFunction(() => (window as unknown as ProbeWindow).__regalPick?.clickableBooks().length > 0, null, { timeout: 30_000 })
     const settle = () => page.waitForFunction(() => (window as unknown as ProbeWindow).__regalPick.idle(250), null, { timeout: 20_000 })
     const state = () => page.evaluate(() => (window as unknown as ProbeWindow).__regalPick.state())
