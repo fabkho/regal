@@ -19,14 +19,14 @@
 
 ## Page structure
 
-`app/pages/index.vue` is the shell. The 3D scene lives in `BookcaseStage` and its children; upload, summary and list view live in `LibraryPanel` and its children. Keep features inside their own component trees so parallel tickets don't collide.
+`app/pages/index.vue` is the shell. The 3D scene lives in `BookcaseStage` and its children; owner, summary and list view live in `LibraryPanel` and its children. The site is a viewer of one Regal library file (`docs/library-file.md`); the display never reads sources (no importers, resolvers, server routes, upload or localStorage). Keep features inside their own component trees so parallel tickets don't collide.
 
 ## Nuxt layer
 
 Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer"; the portfolio's `/books` extends it). Keep it host-safe:
 
-- Standalone-only setup (global CSS `main.css`, head, `@nuxt/eslint`, test-utils, the dev choices panel and `server/dev/*` API) lives in the `regalApp` module in `nuxt.config.ts` and runs only when Regal is the root app. Don't add globals to the plain config keys.
-- Host API: `RegalBooksStage`, `RegalBooksSidebar` (`app/components/regal/`), config `runtimeConfig.public.regal` (`mode`, `librarySrc`, `assetsBase`). Keep it small; document changes in the README.
+- Standalone-only setup (global CSS `main.css`, head, `@nuxt/eslint`, test-utils, the dev choices panel, the demo library file served from `demo/`) lives in the `regalApp` module in `nuxt.config.ts` and runs only when Regal is the root app. Don't add globals to the plain config keys.
+- Host API: `RegalBooksStage`, `RegalBooksSidebar` (`app/components/regal/`), config `runtimeConfig.public.regal` (`librarySrc`, the library file's URL). The layer registers no server routes. Keep it small; document changes in the README.
 - Component CSS: tokens always with a fallback, `var(--color-ink, #2C2C2A)`; no reliance on global classes (`.btn`) in anything the embed components render.
 - In `app/`, import shared code as `~~/shared/...` (layer-aware), never `#shared/...` (that is the host's).
 - Runtime packages go in `dependencies` (hosts install the layer with `{ install: true }`).
