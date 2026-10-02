@@ -13,6 +13,7 @@
 //   pnpm assets:build --refresh-text      # blurb, quotes, genre, publisher only (text model, free)
 //   pnpm assets:build --photos-only       # (re)process photo drop-ins, nothing else
 //   pnpm assets:build --retry-fronts      # look again for fronts below 800 px (free)
+//   pnpm assets:build --pile-only         # (re)make the pile copies and Spine colours only (free)
 //   pnpm assets:build --overrides <file>  # corrections file (default ~/.reading-tracker/regal-overrides.json)
 //   pnpm assets:build --now               # AI right away at full price instead of the Batch API
 //   pnpm assets:build --wait 0            # submit the batch and exit (collect on a later run)
@@ -36,6 +37,11 @@
 // manifest's `photoFaces` and never overwrites them with AI output. With a
 // photographed back AND spine, no image is generated at all; a photographed
 // front alone is still used as the source for the AI back/spine.
+//
+// Every run that writes faces also brings the pile copies up to date (see
+// pile.ts): <key>/front-pile.webp and spine-pile.webp, small enough for the
+// Stack, plus the Spine colours, listed in the manifest as `pile`, `palette`
+// and `spineColor`.
 //
 // History corrections (tracker JSON only): the private overrides file
 // (--overrides, $REGAL_OVERRIDES, else ~/.reading-tracker/regal-overrides.json)
@@ -73,6 +79,8 @@ import { BATCH_COST_USD, BATCH_INLINE_LIMIT, getImageBatch, IMAGE_COST_USD, IMAG
 import type { ImageRequest } from './gemini'
 import type { PhotoFace } from './photos'
 import { convertPhotos, photoFacesIn, photoFiles } from './photos'
+import type { PileFields } from './pile'
+import { updatePile } from './pile'
 import { cropJacket, generateJacket, jacketRequest, layoutFor, planLayout, PROMPT_VERSION, spineRatio } from './jacket'
 import type { JacketLayout, JacketResult } from './jacket'
 
@@ -90,6 +98,7 @@ const { values: args } = parseArgs({
     'refresh-text': { type: 'boolean', default: false },
     'photos-only': { type: 'boolean', default: false },
     'retry-fronts': { type: 'boolean', default: false },
+    'pile-only': { type: 'boolean', default: false },
     'overrides': { type: 'string' },
     'now': { type: 'boolean', default: false },
     'wait': { type: 'string', default: '30' },
@@ -99,7 +108,7 @@ const { values: args } = parseArgs({
 const OUT = resolve(args.out!)
 const CLI = process.env.READING_TRACKER_CLI ?? join(homedir(), 'code/reading-tracker-cli/dist/index.js')
 
-interface ManifestEntry {
+interface ManifestEntry extends PileFields {
   front?: string
   spine?: string
   back?: string
@@ -260,6 +269,16 @@ function readManifest(): Record<string, ManifestEntry> {
 
 const writeManifest = (manifest: Record<string, ManifestEntry>) =>
   writeFileSync(join(OUT, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`)
+
+/** Brings every entry's pile copies and Spine colours up to date (see pile.ts). */
+async function updatePiles(manifest: Record<string, ManifestEntry>) {
+  let changed = 0
+  for (const entry of Object.values(manifest)) {
+    if (await updatePile(OUT, entry)) changed++
+  }
+  if (changed) console.log(`Pile copies and Spine colours updated for ${changed} Book(s).`)
+  writeManifest(manifest)
+}
 
 /** The selected Books as a Library export for Regal (dev button "My library"), blurbs cleaned. */
 function writeLibrary(raw: ReadingTrackerBook[] | null, selected: Book[], manifest: Record<string, ManifestEntry>) {
@@ -422,6 +441,10 @@ async function submitQueued(queue: { request: ImageRequest, book: PendingBook }[
 }
 
 async function main() {
+  if (args['pile-only']) {
+    await updatePiles(readManifest())
+    return
+  }
   const { raw, books } = loadSource()
   const selected = selectBooks(books, args.shelf!, parseLimit(args.limit))
   if (!selected.length) throw new Error(`No finished Books on shelf "${args.shelf}"`)
@@ -445,7 +468,7 @@ async function main() {
       manifest[key] = entry
       console.log(`📷 ${book.title}: ${faces.join(', ')}`)
     }
-    writeManifest(manifest)
+    await updatePiles(manifest)
     console.log(`Photo drop-ins processed. Manifest: ${join(OUT, 'manifest.json')}`)
     return
   }
@@ -598,7 +621,7 @@ async function main() {
   }
 
   if (args.recrop) {
-    writeManifest(manifest)
+    await updatePiles(manifest)
     return
   }
   if (args['dry-run']) {
@@ -626,6 +649,7 @@ async function main() {
   const low = selected.filter(book => !manifest[keyOf(book)]?.front || lowFront(manifest[keyOf(book)]))
   if (low.length) console.log(`\nFronts below ${MIN_HEIGHT} px (${low.length}):\n${low.map(book => `  ${book.title}: ${manifest[keyOf(book)]?.meta?.frontSource ?? 'no front'} ${manifest[keyOf(book)]?.meta?.frontSize ?? ''}`).join('\n')}`)
 
+  await updatePiles(manifest)
   writeLibrary(raw, selected, manifest)
   console.log(`\n${selected.length} Books, ${images} AI image(s) ≈ $${(images * AI_COST).toFixed(2)}${useBatch ? ' (batch)' : ''}. Manifest: ${join(OUT, 'manifest.json')}`)
   writeFileSync(join(OUT, 'report.json'), `${JSON.stringify(report, null, 1)}\n`)
