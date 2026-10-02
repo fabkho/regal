@@ -40,6 +40,8 @@ import type { LoadedAssets } from '#layers/regal/app/utils/covers/bookAssets'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
+import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
+import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
@@ -301,10 +303,12 @@ function motionFor(bookId: string): Motion {
 async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
-  const description = loadDescription(book)
+  const priority = loadPriority(pose.bookId)
+  // Blurbs only show on the back: after the images of the Books around.
+  const description = loadDescription(book, () => priority() + BLURB_DELAY)
   // Asset set first (its own front, spine and back), then the Cover resolver.
-  const assets = await loadAssets(book)
-  const cover = async () => (assets?.frontUrl ? await loadCover(book, assets.frontUrl) : null) ?? loadCover(book)
+  const assets = await loadAssets(book, priority)
+  const cover = async () => (assets?.frontUrl ? await loadCover(book, assets.frontUrl, priority) : null) ?? loadCover(book, undefined, priority)
   const [loaded] = await Promise.all([cover(), spineFontsReady()])
   const entry = materialsByBook.get(pose.bookId)
   if (!entry) return
@@ -349,8 +353,27 @@ function disposeEntry(entry: BookMaterials) {
   for (const material of entry.edges.materials) material.dispose()
 }
 
+// Load order: the picked Book first, then in the Stack by distance from the
+// middle of the view (read when a slot frees up, so scrolling while the pile
+// loads pulls the Books scrolled to forward); the Bookcase loads in Shelf order.
+const stackScroll = inject(STACK_SCROLL, null)
+/** Height of each Book in the current poses, for the load order. */
+const poseHeights = new Map<string, number>()
+/** Metres of distance a blurb waits behind the images. */
+const BLURB_DELAY = 0.3
+
+function loadPriority(bookId: string): Priority {
+  return () => {
+    if (pickedId.value === bookId) return -1
+    if (!stackScroll) return 0
+    const y = poseHeights.get(bookId)
+    return y === undefined ? Infinity : Math.abs(y - stackScroll.focusY)
+  }
+}
+
 watch(() => props.poses, (poses) => {
   for (const pose of poses) {
+    poseHeights.set(pose.bookId, pose.y)
     if (!materialsByBook.has(pose.bookId)) {
       materialsFor(pose)
       applyCover(pose)

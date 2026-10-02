@@ -1,7 +1,7 @@
 // Client-side Cover loading: fetches Cover images through the same-origin
 // Cover resolver, turns them into textures and measures their average colour
-// (used for the Spine). Loads a few at a time so a big Library doesn't flood
-// the resolver, and caches per URL for the page's lifetime.
+// (used for the Spine). Loads a few at a time, the most urgent first
+// (loadQueue.ts), and caches per URL for the page's lifetime.
 //
 // A Book in the pile or on a Shelf barely shows its Cover, so its texture is
 // a small copy (COVER_PREVIEW_HEIGHT); only the picked Book gets the full
@@ -12,6 +12,10 @@ import { coverUrl } from './coverUrl'
 import type { CoverBook } from './coverUrl'
 import { spinePalette } from './palette'
 import type { SpinePalette } from './palette'
+import { schedule } from './loadQueue'
+import type { Priority } from './loadQueue'
+
+export { schedule } from './loadQueue'
 
 export interface LoadedCover {
   /** Small copy for Books in the pile / on a Shelf. */
@@ -22,31 +26,7 @@ export interface LoadedCover {
   palette: SpinePalette
 }
 
-const MAX_IN_FLIGHT = 6
 const cache = new Map<string, Promise<LoadedCover | null>>()
-const queue: (() => void)[] = []
-let inFlight = 0
-
-function next() {
-  if (inFlight >= MAX_IN_FLIGHT) return
-  const start = queue.shift()
-  if (!start) return
-  inFlight++
-  start()
-}
-
-/** Runs upstream-bound work a few at a time. */
-export function schedule<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    queue.push(() => {
-      task().then(resolve, reject).finally(() => {
-        inFlight--
-        next()
-      })
-    })
-    next()
-  })
-}
 
 /** Spine palette of a Cover image, sampled on a small canvas. */
 function paletteOf(image: CanvasImageSource): SpinePalette {
@@ -107,11 +87,14 @@ export function releaseFullCover(loaded: LoadedCover) {
 
 const imageLoader = new ImageLoader()
 
-/** Loads a Book's Cover once per URL; resolves null when there is none. `url` overrides the resolver (asset set). */
-export function loadCover(book: CoverBook, url = coverUrl(book)): Promise<LoadedCover | null> {
+/**
+ * Loads a Book's Cover once per URL; resolves null when there is none. `url`
+ * overrides the resolver (asset set); `priority` ranks it in the load queue.
+ */
+export function loadCover(book: CoverBook, url = coverUrl(book), priority?: Priority): Promise<LoadedCover | null> {
   let pending = cache.get(url)
   if (!pending) {
-    pending = schedule(() => imageLoader.loadAsync(url))
+    pending = schedule(() => imageLoader.loadAsync(url), priority)
       .then((image) => {
         return { texture: previewTexture(image), image, palette: paletteOf(image) }
       })

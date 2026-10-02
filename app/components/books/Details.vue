@@ -13,7 +13,8 @@ watch(book, async (current) => {
   showSpoiler.value = false
   description.value = null
   if (!current) return
-  const text = await loadDescription(current)
+  // The open Book's blurb is wanted now: ahead of every queued load.
+  const text = await loadDescription(current, () => -1)
   if (book.value?.id === current.id) description.value = text
 }, { immediate: true })
 
