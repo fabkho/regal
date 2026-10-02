@@ -77,6 +77,8 @@ watch(() => props.stackHeight, (height) => {
     view.target = top
     view.y = top
     previousY = top
+    // The Books' load order reads the focus before the first frame sets it.
+    scroll.focusY = top
     placed = height > 0
   }
 }, { immediate: true })

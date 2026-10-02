@@ -3,7 +3,8 @@
 // setAssetsBase) and keyed by ISBN-13 (Goodreads Book Id as fallback). A
 // face that's present replaces the generated one; everything else falls back
 // to the Cover resolver and the drawn Spine/back.
-import { schedule } from './coverTextures'
+import { schedule } from './loadQueue'
+import type { Priority } from './loadQueue'
 
 export type AssetSource = 'photo' | 'ai'
 
@@ -81,7 +82,7 @@ export function assetEntryFor(book: AssetBook, entries: AssetManifest): BookAsse
 
 export const assetUrl = (path: string) => (/^(https?:)?\//.test(path) ? path : `${base}${path}`)
 
-function loadImage(src: string): Promise<HTMLImageElement | undefined> {
+function loadImage(src: string, priority?: Priority): Promise<HTMLImageElement | undefined> {
   return schedule(() => new Promise<HTMLImageElement | undefined>((resolve) => {
     const image = new Image()
     // Asset sets may live on another origin (e.g. a CDN bucket): without CORS the
@@ -91,16 +92,16 @@ function loadImage(src: string): Promise<HTMLImageElement | undefined> {
     image.onload = () => resolve(image)
     image.onerror = () => resolve(undefined)
     image.src = src
-  }))
+  }), priority)
 }
 
-/** A Book's asset faces, loaded; null when the manifest has nothing for it. */
-export async function loadAssets(book: AssetBook): Promise<LoadedAssets | null> {
+/** A Book's asset faces, loaded; null when the manifest has nothing for it. `priority` ranks them in the load queue. */
+export async function loadAssets(book: AssetBook, priority?: Priority): Promise<LoadedAssets | null> {
   const entry = assetEntryFor(book, await loadAssetManifest())
   if (!entry) return null
   const [spine, back] = await Promise.all([
-    entry.spine ? loadImage(assetUrl(entry.spine)) : undefined,
-    entry.back ? loadImage(assetUrl(entry.back)) : undefined,
+    entry.spine ? loadImage(assetUrl(entry.spine), priority) : undefined,
+    entry.back ? loadImage(assetUrl(entry.back), priority) : undefined,
   ])
   return { entry, frontUrl: entry.front ? assetUrl(entry.front) : undefined, spine, back }
 }
