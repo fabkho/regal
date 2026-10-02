@@ -94,6 +94,8 @@ Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfi
 
 ### Static data
 
+**Coming: the Regal library file.** Regal is becoming a display that reads one file, the versioned [Regal library file](docs/library-file.md) (`version: 2`: every Book with its images and colours, one fetch). The format, its validator and `pnpm library:convert` (today's `library.json` + `manifest.json` → that file) are in place; the components still read the two files below until the switch ([#37](https://github.com/fabkho/regal/issues/37)).
+
 Put both under the host's `public/` (any path; point `librarySrc` and `assetsBase` at them):
 
 - `library.json`: the reading-tracker CLI's `reading list --json` output (`{ "books": [...] }`). A Goodreads CSV export works as well.
