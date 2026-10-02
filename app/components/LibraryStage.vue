@@ -75,6 +75,8 @@ if (regal.mode === 'embed') {
 }
 
 const isReady = ref(false)
+/** The stage element: a details card put back as a label lands inside it. */
+const stageElement = ref<HTMLElement | null>(null)
 const showStackControls = computed(() => props.showControls && mode.value === 'stack' && books.value.length > 0)
 const hasTop = computed(() => !props.stackOnly || showStackControls.value)
 
@@ -92,6 +94,7 @@ watch(books, (list) => {
 
 <template>
   <section
+    ref="stageElement"
     class="stage"
     :aria-label="mode === 'stack' ? 'Book stack' : 'Bookcase'"
     :data-view="mode"
@@ -198,6 +201,7 @@ watch(books, (list) => {
 
     <BooksHoverLabel />
     <BooksFocusLabel />
+    <BooksLabelMorph :stage="stageElement" />
 
     <p
       v-if="mode === 'stack' && poses.length && !pickedId"

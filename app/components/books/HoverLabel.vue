@@ -11,6 +11,13 @@ const { scrollLed } = useScrollLead()
 const book = computed(() => (hovered.value ? books.value.find(item => item.id === hovered.value) : null))
 const position = reactive({ x: 0, y: 0, overCanvas: false })
 
+// Taking the Book out, this label grows into the details card; putting it
+// back, the card shrinks into it again (composables/useLabelMorph.ts). Held
+// back (laid out, not shown) while the box is on its way.
+const morph = useLabelMorph()
+const label = ref<HTMLElement | null>(null)
+useLabelMorphLabel('hover', () => (label.value && book.value ? { bookId: book.value.id, el: label.value } : null))
+
 function onMove(event: PointerEvent) {
   position.x = event.clientX
   position.y = event.clientY
@@ -25,7 +32,9 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   <Teleport to="body">
     <p
       v-if="book && position.overCanvas && !pickedId && !scrollLed"
+      ref="label"
       class="hover-label"
+      :class="{ 'hover-label--held': morph.labelsHidden }"
       :style="{ left: `${position.x + 14}px`, top: `${position.y + 14}px` }"
     >
       <BooksTitleStars :book="book" />
@@ -49,5 +58,9 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   border: 1px solid var(--color-ink, #2C2C2A);
   pointer-events: none;
   white-space: nowrap;
+}
+
+.hover-label--held {
+  visibility: hidden;
 }
 </style>

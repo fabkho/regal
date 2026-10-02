@@ -7,6 +7,53 @@ const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
 
 const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
+
+// The card grows out of the Book's label and shrinks back into it
+// (composables/useLabelMorph.ts): then it skips its own fade and stays hidden
+// until the travelling box arrives. Swapping Books keeps the card: the content
+// cross-fades and the height follows (also when the blurb arrives late).
+const morph = useLabelMorph()
+const root = ref<HTMLElement | null>(null)
+const body = ref<HTMLElement | null>(null)
+useLabelMorphCard(() => root.value)
+const reducedMotion = usePreferredReducedMotion()
+const reduced = computed(() => reducedMotion.value === 'reduce')
+/** Not while the box shows the card's way in (it copies the new content at once). */
+const crossFade = computed(() => !reduced.value && !morph.value.active)
+
+const HEIGHT_MS = 280
+let naturalHeight = 0
+let heightAnimation: Animation | null = null
+
+useResizeObserver(body, () => {
+  const element = root.value
+  if (!element) return
+  // Where the card is drawn now (mid-animation too), then where its content puts it.
+  const from = heightAnimation ? element.getBoundingClientRect().height : naturalHeight
+  heightAnimation?.cancel()
+  heightAnimation = null
+  const to = element.getBoundingClientRect().height
+  const first = !naturalHeight
+  naturalHeight = to
+  if (first || reduced.value || Math.abs(from - to) < 1) return
+  element.style.overflow = 'hidden'
+  const animation = element.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+    duration: HEIGHT_MS,
+    easing: 'cubic-bezier(0.45, 0, 0.55, 1)',
+  })
+  heightAnimation = animation
+  animation.onfinish = () => {
+    if (heightAnimation !== animation) return
+    heightAnimation = null
+    element.style.overflow = ''
+  }
+})
+watch(root, (element) => {
+  if (element) return
+  heightAnimation?.cancel()
+  heightAnimation = null
+  naturalHeight = 0
+})
 const showSpoiler = ref(false)
 const description = ref<string | null>(null)
 watch(book, async (current) => {
@@ -54,111 +101,158 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 </script>
 
 <template>
-  <Transition name="details">
+  <Transition
+    name="details"
+    :css="morph.cardFade"
+  >
     <article
       v-if="book"
+      ref="root"
       class="details"
+      :class="{ 'details--morphing': morph.cardHidden }"
       aria-live="polite"
       :aria-label="`${book.title} details`"
     >
-      <p
-        v-if="book.seriesTitle"
-        class="details__series"
+      <div
+        ref="body"
+        class="details__body"
       >
-        {{ book.seriesTitle }}
-      </p>
-      <h2 class="details__title">
-        {{ book.title }}
-      </h2>
-      <p
-        v-if="book.author"
-        class="details__author"
-      >
-        {{ book.author }}
-      </p>
-
-      <p
-        v-if="book.rating"
-        class="details__rating"
-        :aria-label="`Rated ${book.rating} out of 5`"
-      >
-        <span
-          class="details__stars"
-          aria-hidden="true"
-        >★★★★★<span
-          class="details__stars-fill"
-          :style="{ width: `${book.rating / 5 * 100}%` }"
-        >★★★★★</span></span>
-        <span class="details__rating-value">{{ book.rating.toFixed(book.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
-      </p>
-
-      <p class="details__meta">
-        {{ meta.join(' · ') }}
-      </p>
-
-      <template v-if="book.review">
-        <button
-          v-if="book.reviewHasSpoiler && !showSpoiler"
-          type="button"
-          class="details__spoiler"
-          @click="showSpoiler = true"
+        <Transition
+          name="details-swap"
+          :css="crossFade"
         >
-          My review contains spoilers — show
-        </button>
-        <blockquote
-          v-else
-          class="details__review"
-        >
-          {{ book.review }}
-        </blockquote>
-      </template>
+          <div
+            :key="book.id"
+            class="details__content"
+          >
+            <p
+              v-if="book.seriesTitle"
+              class="details__series"
+            >
+              {{ book.seriesTitle }}
+            </p>
+            <h2 class="details__title">
+              {{ book.title }}
+            </h2>
+            <p
+              v-if="book.author"
+              class="details__author"
+            >
+              {{ book.author }}
+            </p>
 
-      <section
-        v-if="description"
-        class="details__about"
-      >
-        <h3 class="details__label">
-          About
-        </h3>
-        <p class="details__description">
-          {{ description }}
-        </p>
-      </section>
+            <p
+              v-if="book.rating"
+              class="details__rating"
+              :aria-label="`Rated ${book.rating} out of 5`"
+            >
+              <span
+                class="details__stars"
+                aria-hidden="true"
+              >★★★★★<span
+                class="details__stars-fill"
+                :style="{ width: `${book.rating / 5 * 100}%` }"
+              >★★★★★</span></span>
+              <span class="details__rating-value">{{ book.rating.toFixed(book.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
+            </p>
 
-      <div class="details__actions">
-        <button
-          type="button"
-          class="btn details__button"
-          @click="flip"
-        >
-          {{ face === 'front' ? 'Show back' : 'Show front' }}
-        </button>
-        <button
-          type="button"
-          class="btn details__button"
-          @click="putAway"
-        >
-          Put back
-        </button>
-        <a
-          class="details__link"
-          :href="goodreadsUrl(book)"
-          target="_blank"
-          rel="noopener"
-        >Goodreads ↗</a>
+            <p class="details__meta">
+              {{ meta.join(' · ') }}
+            </p>
+
+            <template v-if="book.review">
+              <button
+                v-if="book.reviewHasSpoiler && !showSpoiler"
+                type="button"
+                class="details__spoiler"
+                @click="showSpoiler = true"
+              >
+                My review contains spoilers — show
+              </button>
+              <blockquote
+                v-else
+                class="details__review"
+              >
+                {{ book.review }}
+              </blockquote>
+            </template>
+
+            <section
+              v-if="description"
+              class="details__about"
+            >
+              <h3 class="details__label">
+                About
+              </h3>
+              <p class="details__description">
+                {{ description }}
+              </p>
+            </section>
+
+            <div class="details__actions">
+              <button
+                type="button"
+                class="btn details__button"
+                @click="flip"
+              >
+                {{ face === 'front' ? 'Show back' : 'Show front' }}
+              </button>
+              <button
+                type="button"
+                class="btn details__button"
+                @click="putAway"
+              >
+                Put back
+              </button>
+              <a
+                class="details__link"
+                :href="goodreadsUrl(book)"
+                target="_blank"
+                rel="noopener"
+              >Goodreads ↗</a>
+            </div>
+            <p class="details__hint">
+              Drag to turn · click the book to flip · Esc to put back
+            </p>
+          </div>
+        </Transition>
       </div>
-      <p class="details__hint">
-        Drag to turn · click the book to flip · Esc to put back
-      </p>
     </article>
   </Transition>
 </template>
 
 <style scoped>
 .details {
+  box-sizing: border-box;
   padding: 1rem 1.1rem;
   border: 1px solid var(--color-ink, #2C2C2A);
   background: var(--color-bg, #F5F2EB);
+}
+
+/* Laid out (so the morph can measure it) but not shown until the box arrives. */
+.details--morphing {
+  visibility: hidden;
+}
+
+/* Swapping Books: the old content fades out on top of the new one. */
+.details__body {
+  position: relative;
+}
+
+.details-swap-enter-active,
+.details-swap-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.details-swap-leave-active {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+.details-swap-enter-from,
+.details-swap-leave-to {
+  opacity: 0;
 }
 
 .details__series,
