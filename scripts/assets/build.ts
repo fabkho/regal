@@ -81,7 +81,7 @@ import type { PhotoFace } from './photos'
 import { convertPhotos, photoFacesIn, photoFiles } from './photos'
 import type { PileFields } from './pile'
 import { updatePile } from './pile'
-import { cropJacket, generateJacket, jacketRequest, layoutFor, planLayout, PROMPT_VERSION, spineRatio } from './jacket'
+import { cropJacket, generateJacket, jacketPlaceholderShare, jacketRequest, layoutFor, PLACEHOLDER_LIMIT, planLayout, PROMPT_VERSION, spineRatio } from './jacket'
 import type { JacketLayout, JacketResult } from './jacket'
 
 const { values: args } = parseArgs({
@@ -408,6 +408,11 @@ async function collectBatches(manifest: Record<string, ManifestEntry>, waitMinut
         }
         const entry: ManifestEntry = { ...manifest[book.key] }
         const jacket = await cropJacket(result, book.layout)
+        const left = await jacketPlaceholderShare(jacket)
+        if (left > PLACEHOLDER_LIMIT) {
+          console.warn(`  ${book.title}: ${Math.round(left * 100)}% of the spine/back still placeholder colour; rejected, will be queued again`)
+          continue
+        }
         await applyJacket(book.key, entry, jacket, book.photoFaces)
         manifest[book.key] = entry
         console.log(`✓ ${book.title}: AI back + spine from batch, spine fit ${Math.round(jacket.spineFit * 100)}%${jacket.stretched ? ' (detected folds)' : ''}`)
@@ -617,8 +622,12 @@ async function main() {
       const started = Date.now()
       const jacket = await generateJacket(book, front?.image ?? frontWebp)
       images++
-      await applyJacket(key, entry, jacket, faces)
-      console.log(`  AI: done in ${Math.round((Date.now() - started) / 1000)} s, spine fit ${Math.round(jacket.spineFit * 100)}%${jacket.stretched ? ' (stretched)' : ''}`)
+      const left = await jacketPlaceholderShare(jacket)
+      if (left > PLACEHOLDER_LIMIT) console.warn(`  AI: ${Math.round(left * 100)}% of the spine/back still placeholder colour; rejected (run again to retry)`)
+      else {
+        await applyJacket(key, entry, jacket, faces)
+        console.log(`  AI: done in ${Math.round((Date.now() - started) / 1000)} s, spine fit ${Math.round(jacket.spineFit * 100)}%${jacket.stretched ? ' (stretched)' : ''}`)
+      }
     }
 
     manifest[key] = entry
