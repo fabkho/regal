@@ -113,6 +113,7 @@ Every field is optional; a missing face is drawn by Regal (Spine and back typese
 
 - **Libellus.** A Book is an edition with its reading sessions: `id` = the edition id; `authors` from its authors in order; ISBNs, page count as they are. From the latest session: `status` (`read` for finished, `dnf` for abandoned, `currently-reading` while open), `dateStarted`, `dateRead` (finished only), `rating` (quarter stars as stored), `review`; `readCount` = finished sessions. The cover URL goes in `assets.front`, the precomputed cover colours in `assets.palette`.
 - **The pipeline (bridge).** `pnpm library:convert` turns today's published `library.json` (reading-tracker export, `{ books: [...] }`) and `manifest.json` into this file.
+- **Regal assets** (`pipeline/`, `pnpm regal-assets`). A producer may leave `assets` out, or bring only a cover URL, and run the file through Regal assets: it keeps what is good enough, finds or makes the rest (fronts, Spines and backs, pile copies, palette, Spine colour, a blurb where `description` is missing) and writes the enriched file next to its images, relative references. See the README, "Producing the library file".
 - Validate before publishing: `parseLibraryFile(text)` returns the errors as `{ path, reason }`; `formatLibraryFileErrors(errors)` makes lines of them.
 
 ## Converting today's data

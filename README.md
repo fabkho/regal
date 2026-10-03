@@ -30,8 +30,6 @@ pnpm lint
 
 The site is a viewer: it shows `librarySrc` (default: the synthetic demo library, `demo/demo-library.json`, served at `/demo-library.json`; `NUXT_PUBLIC_REGAL_LIBRARY_SRC` points it elsewhere) and `?src=<url>` views any library file. A `?src=` file is loaded by the browser only, never through the server, so it must allow cross-origin requests from the site.
 
-Daily publishing: `pnpm books:daily` rebuilds the asset set from the reading tracker (no AI) and uploads what changed to an R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, via `wrangler login`). It fingerprints its input (the Read shelf without `updatedAt`/`averageRating`/`notePath`, the overrides, the Goodreads exports, cover picks and the pipeline code) and returns right away when nothing changed; uploads only files whose content changed and leaves private fields out of `library.json`. `--dry-run` reports, `--force` rebuilds anyway. Run it from a scheduler after the tracker sync.
-
 Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (it loads `/?view=stack&debug=pick`; `--view bookcase`, `--src <url>` for another library file, e.g. your own converted one).
 
 ## Use Regal as a Nuxt layer
@@ -97,15 +95,54 @@ Regal reads one file: the [Regal library file](docs/library-file.md) (`version: 
 - A file that doesn't load or isn't valid (another `version`, a reading-tracker export, a broken field) shows an error card with the first problems (`books[3].rating: must be …`), never an empty shelf.
 - The Stack loads lazily from the file's `pile` copies: the Spines in and around the view first, then the rest of the pile in the background, and a Book's full front and back only once it is pointed at or taken out. Without `pile` copies the full faces stand in; without `palette` the Spine colours are sampled from the front in the browser.
 
-**Producing the file (Pipeline, until Libellus writes it).** Today's build makes the asset set and `pnpm library:convert` turns it into the library file ([Converting](docs/library-file.md#converting-todays-data)): `pnpm assets:build` writes `public/book-assets/` (`library.json`, `manifest.json` and `<key>/{front,spine,back,front-pile,spine-pile}.webp`); `pnpm assets:build --limit all --no-ai --no-model` covers the whole Read shelf (undated Books last) with free fronts and generated Spines/backs, no Gemini call; `--pile-only` (re)makes just the small copies and colours. Then `pnpm library:convert --library public/book-assets/library.json --manifest public/book-assets/manifest.json --out <host>/public/books/library.json --assets-base <where the images are served>`.
-
-**Correcting the reading history.** The tracker (Fable) keeps one entry per edition, has gaps and wrong dates. A private overrides file, `~/.reading-tracker/regal-overrides.json` (or `--overrides <file>`, `REGAL_OVERRIDES`; never commit it), fixes that before anything is built ([example](docs/overrides.example.json)):
-
-- `goodreads`: Goodreads Library exports, most trusted first. Their read rows are matched to tracker Books (ISBN, title + author, typos, series number, `goodreads` aliases); for a matched Book the most trusted export's read date wins, and its edition in the read language becomes the Book's (ISBN, cover; the title too when the language changes). Goodreads reads the tracker doesn't have are only reported.
-- `books`: per tracker id (or an 8+ character id prefix): `skip`, `mergeInto` (same work, its rating/review fill gaps), `dateRead`, `dateStarted`, `isbn13`, `title`, `author`, `lang` (`en` default, `de`: German store and German National Library covers), `coverUrl` (used as the front), `goodreads` (aliases), `note`.
-
-Same-title-same-author editions are merged automatically (the dated one stays). The build prints what changed (dropped duplicates, date and edition changes, unmatched rows both ways, series read out of order) and keeps it in `corrections.json` next to the manifest. A Book whose key changed keeps its blurb; with `--limit all`, asset sets of keys no longer used move to `.data/book-assets-stale/`. `--retry-fronts` looks again for fronts below 800 px.
-
 `nuxt dev` note: a `public/books/` folder next to a `/books` page makes the dev server redirect `/books` to `/books/` (the page still renders). Production builds don't.
 
 `tests/fixtures/layer-host/` is a minimal host (a synthetic library file) built by `tests/e2e/layer-host.test.ts`; `pnpm nuxi dev tests/fixtures/layer-host` runs it.
+
+## Producing the library file
+
+Three steps, each with one job:
+
+```
+producer (library:convert now, Libellus later) ──► library file ──► regal assets ──► library file + images (R2 v2/) ──► Regal display
+```
+
+1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data: until Libellus does it, `pnpm library:convert` turns today's published `library.json` + `manifest.json` into one ([Converting](docs/library-file.md#converting-todays-data)). Where the data comes from (the reading tracker, Goodreads, overrides) is the producer's business, not Regal's.
+2. **Enrich: Regal assets** ([`pipeline/`](pipeline/README.md)). Takes any library file and returns it with each Book's `assets` (front, Spine, back, pile copies, palette, Spine colour, photo faces, source) and the images, plus a blurb for Books without one.
+3. **Display.** Regal (this layer) renders the enriched file, nothing else.
+
+### Running Regal assets
+
+`pipeline/` is its own package (own `package.json` and lockfile, never installed by a host that extends the layer):
+
+```bash
+pnpm --dir pipeline install
+pnpm regal-assets --in .data/library-v2.json --dry-run --no-ai   # = pnpm --dir pipeline assets …
+```
+
+- `--in <file|url>`: the library file, validated with the shared validator (invalid: the errors, nothing written). `--out <dir>` (default `.data/regal-assets/out`): `library.json` plus `<key>/{front,spine,back,front-pile,spine-pile}.webp`, `<key>` the ISBN-13 or the Book id; image references in the output are relative to it.
+- Per Book: what the file brings and is good enough stays (copied into the output, so the published set doesn't depend on where the input's images live); a front below 800 px or none goes through today's front chain (Apple, the German National Library for German editions, Google, the file's own front, Open Library), the taller one wins; photo drop-ins (`<cache>/photos/<key>/front.jpg` …) beat everything; pile copies, palette and Spine colour are made from the faces; a Book without a blurb gets one (Apple's publisher copy, else Open Library/Google).
+- AI Spines/backs (Gemini, `GEMINI_API_KEY` with billing) for Books with a front and no Spine/back art, through the Batch API (half price; `--now` for direct calls). A paid jacket is kept in the cache and never bought twice. `--no-ai` leaves them to Regal's drawn ones, `--no-model` skips the text model too.
+- Incremental and idempotent: a Book is rebuilt only when what its assets are made of changed (its sizing and text fields, its input images' content, its photos); a run without changes rewrites nothing, not even `generatedAt`. Downloads, jackets, open batch jobs and the state live under `.data/regal-assets/` (`--cache`). `--revalidate` asks the servers whether input images changed behind the same URL; `--force` rebuilds anyway; `--limit <n>` takes only the n most recently read Books this run.
+- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, `wrangler login` once) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (today's files) never, and an empty prefix is refused.
+- `--dry-run`: nothing remote and nothing paid. No upload (the plan is printed), no Gemini call (the AI cost is printed, as today's build did); the free work runs and the local output is written, so the dry run shows the enriched file.
+
+Books without a blurb now get theirs from Regal assets: the display has no description resolver any more, so a file that skips this step shows them without one.
+
+**CORS.** The portfolio loads the images cross-origin as WebGL textures, so the bucket's domain (`books.fabkho.dev`) must answer with CORS headers for the page's origin (`https://fabkho.dev`, and any preview/dev origin that shows `/books`), for `v2/` as for today's files.
+
+### The transition daily command (written down, not applied)
+
+Until Libellus writes the library file, the daily job becomes: the frozen build on `main` keeps publishing today's root files, a second checkout of this branch (`feat/display-layer`, later `main`) converts them and enriches the result into `v2/`:
+
+```bash
+# 1. the frozen build on main (~/code/regal, unchanged): reading tracker → root library.json + manifest.json + images
+pnpm books:daily
+# 2. in the display-layer checkout: today's published data → library file
+pnpm library:convert --library https://books.fabkho.dev/library.json --manifest https://books.fabkho.dev/manifest.json \
+  --assets-base https://books.fabkho.dev/ --out .data/library-v2.json
+# 3. enrich and publish under v2/ (no AI in the daily run, like today)
+pnpm regal-assets --in .data/library-v2.json --no-ai --no-model --revalidate --publish v2
+```
+
+Step 3 is quick when nothing changed (every Book cached, nothing uploaded). Switching the portfolio to `books.fabkho.dev/v2/library.json` and the daily job to this command is the switch ticket ([#41](https://github.com/fabkho/regal/issues/41)). Reading-history corrections (the overrides file, Goodreads merges) stay with the frozen build on `main` and retire with Fable.

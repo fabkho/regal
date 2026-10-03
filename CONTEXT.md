@@ -4,9 +4,9 @@ Use these terms in code, issues and commits.
 
 | Term | Meaning |
 |---|---|
-| **Library export** | The CSV a user downloads from Goodreads (`goodreads_library_export.csv`). Raw input, never stored server-side. |
 | **Regal library file** | The one input Regal's display reads: a versioned JSON (`version: 2`) with every **Book** of a **Library** and its resolved assets (front/Spine/back/pile images, Spine colours, blurb). Format: `docs/library-file.md`; types and validator in `shared/`. Written by a **Pipeline**. |
-| **Pipeline** | A producer of the **Regal library file**: gathers reading data and Book assets from its sources and writes the file. Today the daily build from the reading tracker (`books:daily`, `scripts/assets`, `pnpm library:convert`), later Libellus. Regal itself doesn't care where the data comes from. |
+| **Pipeline** | A producer of the **Regal library file**: gathers reading data and Book assets from its sources and writes the file. Today the frozen daily build on `main` (reading tracker → published data) plus `pnpm library:convert`, later Libellus. Regal itself doesn't care where the data comes from. |
+| **Regal assets** | The step between a **Pipeline** and the display (`pipeline/`, `pnpm regal-assets`): takes any **Regal library file** and returns it with each Book's assets (fronts, Spines, backs, pile copies, colours, missing blurbs) and the images, published to R2 under `v2/`. |
 | **Library** | The normalized, in-memory list of **Books** Regal shows, read from a **Regal library file**. Nothing is kept in the browser. |
 | **Book** | One normalized entry: identifiers (Goodreads id, ISBN-10, ISBN-13), title, author, page count, binding, rating, dates, review, **Reading status**. |
 | **Reading status** | Goodreads' exclusive shelf: `read`, `currently-reading`, `to-read`, or a custom exclusive shelf (e.g. `wishlist`). Not the same as a 3D **Shelf**. |
@@ -19,8 +19,8 @@ Use these terms in code, issues and commits.
 | **Book dimensions** | Height, width (cover), thickness (spine). Thickness derived from page count; height from binding plus deterministic jitter. |
 | **Spine** | The visible side of a shelved Book: colour + title/author text rendered to a texture. |
 | **Cover** | The front image of a Book, listed in the **Regal library file** (found by a **Pipeline**). |
-| **Cover resolver** | Pipeline code (`server/utils/covers.ts`) that finds a Cover for a Book by walking **Cover sources** in order. Not part of the display any more. |
-| **Cover source** | One upstream lookup strategy (Open Library by ISBN, Open Library search, Google Books, Goodreads page). |
+| **Cover resolver** | **Regal assets** code (`pipeline/src/assets/front.ts`, `pipeline/src/resolvers/`) that finds a Cover for a Book by walking **Cover sources** in order. Not part of the display. |
+| **Cover source** | One upstream lookup strategy (Apple Books, the German National Library, Google Books, Open Library by ISBN or title). |
 | **Placeholder cover** | Procedurally drawn front used when the library file has no front image for a Book (or it doesn't load). |
 | **View** | How the Library is shown: the **Bookcase** (Books standing on Shelves) or the **Stack**. |
 | **Stack** | View without furniture: every Book lying flat in one scrollable pile, Spines towards the viewer, what you're reading now on top. |
