@@ -1,6 +1,6 @@
 /**
- * Normalized Book, produced by Library import from a Goodreads Library export
- * or the reading-tracker CLI (Fable).
+ * Normalized Book: a Regal library file's Book with defaults filled in
+ * (libraryBookToBook); the bridge converter also reads reading-tracker exports into it.
  * See CONTEXT.md for the domain glossary.
  */
 export interface Book {
@@ -33,6 +33,6 @@ export interface Book {
   readCount: number
   /** The source's own blurb (Fable), used before the description resolver */
   description?: string | null
-  /** The source's own Cover URL (Fable), a fallback for the Cover resolver */
+  /** The source's own Cover URL (the converter's tracker Cover; the front chain's own-cover candidate) */
   coverUrl?: string | null
 }

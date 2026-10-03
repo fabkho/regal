@@ -18,7 +18,7 @@ const files = execFileSync('git', staged
 const FORBIDDEN = [
   [/(^|\/)goodreads_library_export[^/]*$/i, 'a real Goodreads export'],
   [/^public\/book-assets\//, 'a built Book asset set (publisher covers, personal data)'],
-  [/^\.data\//, 'local dev data'],
+  [/(^|\/)\.data\//, 'local data (downloads, enriched output, state)'],
   [/\.(db|sqlite3?)$/i, 'a database (e.g. the reading tracker\'s library.db)'],
   [/(^|\/)\.env(\.|$)(?!example$)/, 'an env file'],
 ]
