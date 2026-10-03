@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { importLibrary } from '../../shared/library/importLibrary'
-import { importReadingTracker, NotAReadingTrackerExportError, quarterRating, splitIsbn } from '../../shared/library/importReadingTracker'
+import { importReadingTracker, NotAReadingTrackerExportError, quarterRating, splitIsbn } from '../../scripts/library/importReadingTracker'
 
 // Synthetic `reading list --json` output (never a real export).
 const entry = (overrides: Record<string, unknown> = {}) => ({
@@ -55,10 +54,6 @@ describe('importReadingTracker', () => {
     ))
     expect(books.map(book => book.status)).toEqual(['to-read', 'currently-reading', 'dnf'])
     expect(books[0]!.rating).toBe(0)
-  })
-
-  it('is picked by importLibrary for JSON input', () => {
-    expect(importLibrary(exportOf(entry())).books[0]!.id).toBe('b1')
   })
 
   it('skips entries without id or title and rejects other JSON', () => {

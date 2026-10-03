@@ -1,11 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { importLibrary } from '../../shared/library/importLibrary'
+import { libraryFileBooks, parseLibraryFile } from '../../shared/library/libraryFile'
 import type { Book } from '../../shared/types/book'
 import { BOOKCASE_SPACING, bookDimensions, HEADROOM, layoutLibrary, MAX_THICKNESS, sortForShelves } from '../../app/utils/bookcase/layout'
 import { SHELF_SLOTS } from '../../app/utils/bookcase/shelves'
 
-const demo = importLibrary(readFileSync(new URL('../fixtures/demo-library.csv', import.meta.url), 'utf8')).books
+/** The synthetic Library these tests were written against (43 Books, Goodreads-style ids). */
+function loadDemo() {
+  const result = parseLibraryFile(readFileSync(new URL('../fixtures/library-file/bookcase.json', import.meta.url), 'utf8'))
+  if (!result.ok) throw new Error('tests/fixtures/library-file/bookcase.json is not a valid library file')
+  return libraryFileBooks(result.library)
+}
+
+const demo = loadDemo()
 
 function makeBook(id: string, overrides: Partial<Book> = {}): Book {
   return {

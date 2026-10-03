@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { importReadingTracker } from '../../shared/library/importReadingTracker'
+import { importReadingTracker } from '../../scripts/library/importReadingTracker'
 import { libraryFileBooks, validateLibraryFile } from '../../shared/library/libraryFile'
 import { assetReference, convertPublished, manifestKeyFor } from '../../scripts/library/fromPublished'
 import type { Manifest } from '../../scripts/library/fromPublished'

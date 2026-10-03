@@ -6,13 +6,13 @@
 // the same Library: Books through importReadingTracker, the manifest entry by
 // ISBN-13 first and the Book id second, colours only when they are #rrggbb,
 // the manifest's cleaned blurb before the tracker's.
-import { importReadingTracker } from '../../shared/library/importReadingTracker'
-import type { ReadingTrackerBook } from '../../shared/library/importReadingTracker'
+import { importReadingTracker } from './importReadingTracker'
+import type { ReadingTrackerBook } from './importReadingTracker'
 import type { Book } from '../../shared/types/book'
 import { LIBRARY_FILE_VERSION } from '../../shared/types/libraryFile'
 import type { LibraryBook, LibraryBookAssets, LibraryBookFace, LibraryQuote, RegalLibraryFile } from '../../shared/types/libraryFile'
 
-/** A manifest.json entry, as `pnpm assets:build` writes it (paths relative to the assets base). */
+/** A manifest.json entry, as the asset build (frozen on `main`) writes it (paths relative to the assets base). */
 export interface ManifestEntry {
   front?: string
   spine?: string

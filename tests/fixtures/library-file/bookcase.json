@@ -1,0 +1,775 @@
+{
+  "version": 2,
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "generator": "synthetic: the bookcase layout and Pick tests' Library",
+  "books": [
+    {
+      "id": "100001",
+      "title": "The Hobbit",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "isbn13": "9780547928227",
+      "isbn10": "0547928227",
+      "pages": 310,
+      "binding": "Paperback",
+      "yearPublished": 2012,
+      "originalYear": 1937,
+      "status": "read",
+      "dateRead": "2019-03-02",
+      "dateAdded": "2019-02-20",
+      "rating": 5,
+      "review": "A cozy start to something huge.",
+      "readCount": 1
+    },
+    {
+      "id": "100002",
+      "title": "The Fellowship of the Ring",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "isbn13": "9780547928210",
+      "isbn10": "0547928211",
+      "pages": 423,
+      "binding": "Paperback",
+      "yearPublished": 2012,
+      "originalYear": 1954,
+      "status": "read",
+      "dateRead": "2019-04-10",
+      "dateAdded": "2019-03-05",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100003",
+      "title": "Fahrenheit 451",
+      "authors": [
+        "Ray Bradbury"
+      ],
+      "isbn13": "9781451673319",
+      "isbn10": "1451673310",
+      "pages": 194,
+      "binding": "Paperback",
+      "yearPublished": 2013,
+      "originalYear": 1953,
+      "status": "read",
+      "dateRead": "2018-07-14",
+      "dateAdded": "2018-06-30",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100004",
+      "title": "Nineteen Eighty-Four",
+      "authors": [
+        "George Orwell"
+      ],
+      "isbn13": "9780451524935",
+      "isbn10": "0451524934",
+      "pages": 328,
+      "binding": "Paperback",
+      "yearPublished": 1961,
+      "originalYear": 1949,
+      "status": "read",
+      "dateRead": "2018-09-01",
+      "dateAdded": "2018-08-15",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100005",
+      "title": "Brave New World",
+      "authors": [
+        "Aldous Huxley"
+      ],
+      "isbn13": "9780060850524",
+      "isbn10": "0060850523",
+      "pages": 288,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1932,
+      "status": "read",
+      "dateRead": "2018-10-20",
+      "dateAdded": "2018-10-01",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100006",
+      "title": "Dune",
+      "authors": [
+        "Frank Herbert"
+      ],
+      "isbn13": "9780441172719",
+      "isbn10": "0441172717",
+      "pages": 688,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 1990,
+      "originalYear": 1965,
+      "status": "read",
+      "dateRead": "2020-01-18",
+      "dateAdded": "2019-12-20",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100007",
+      "title": "The Left Hand of Darkness",
+      "authors": [
+        "Ursula K. Le Guin"
+      ],
+      "isbn13": "9780441478125",
+      "isbn10": "0441478123",
+      "pages": 304,
+      "binding": "Paperback",
+      "yearPublished": 2010,
+      "originalYear": 1969,
+      "status": "to-read",
+      "dateAdded": "2024-09-10",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100008",
+      "title": "Neuromancer",
+      "authors": [
+        "William Gibson"
+      ],
+      "isbn13": "9780441569595",
+      "isbn10": "0441569595",
+      "pages": 271,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 2000,
+      "originalYear": 1984,
+      "status": "to-read",
+      "dateAdded": "2024-08-22",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100009",
+      "title": "Snow Crash",
+      "authors": [
+        "Neal Stephenson"
+      ],
+      "isbn13": "9780553380958",
+      "isbn10": "0553380958",
+      "pages": 480,
+      "binding": "Paperback",
+      "yearPublished": 2000,
+      "originalYear": 1992,
+      "status": "currently-reading",
+      "dateAdded": "2024-11-01",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100010",
+      "title": "The Great Gatsby",
+      "authors": [
+        "F. Scott Fitzgerald"
+      ],
+      "isbn13": "9780743273565",
+      "isbn10": "0743273567",
+      "pages": 180,
+      "binding": "Paperback",
+      "yearPublished": 2004,
+      "originalYear": 1925,
+      "status": "read",
+      "dateRead": "2018-05-11",
+      "dateAdded": "2018-04-30",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100011",
+      "title": "Moby-Dick",
+      "authors": [
+        "Herman Melville"
+      ],
+      "isbn13": "9781503280786",
+      "isbn10": "1503280780",
+      "pages": 720,
+      "binding": "Hardcover",
+      "yearPublished": 2001,
+      "originalYear": 1851,
+      "status": "to-read",
+      "dateAdded": "2023-02-12",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100012",
+      "title": "War and Peace",
+      "authors": [
+        "Leo Tolstoy"
+      ],
+      "isbn13": "9781400079988",
+      "isbn10": "1400079985",
+      "pages": 1100,
+      "binding": "Paperback",
+      "yearPublished": 2008,
+      "originalYear": 1869,
+      "status": "to-read",
+      "dateAdded": "2023-03-01",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100013",
+      "title": "Anna Karenina",
+      "authors": [
+        "Leo Tolstoy",
+        "Louise Maude",
+        "Aylmer Maude"
+      ],
+      "isbn13": "9780143035008",
+      "isbn10": "0143035002",
+      "pages": 964,
+      "binding": "Paperback",
+      "yearPublished": 2004,
+      "originalYear": 1878,
+      "status": "read",
+      "dateRead": "2021-02-14",
+      "dateAdded": "2021-01-02",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100014",
+      "title": "Crime and Punishment",
+      "authors": [
+        "Fyodor Dostoevsky"
+      ],
+      "isbn13": "9780679734505",
+      "isbn10": "0679734505",
+      "pages": 671,
+      "binding": "Paperback",
+      "yearPublished": 1993,
+      "originalYear": 1866,
+      "status": "read",
+      "dateRead": "2020-11-09",
+      "dateAdded": "2020-10-01",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100015",
+      "title": "The Brothers Karamazov",
+      "authors": [
+        "Fyodor Dostoevsky"
+      ],
+      "isbn13": "9780374528379",
+      "isbn10": "0374528373",
+      "pages": 796,
+      "binding": "Paperback",
+      "yearPublished": 2002,
+      "originalYear": 1880,
+      "status": "to-read",
+      "dateAdded": "2023-06-18",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100016",
+      "title": "Pride and Prejudice",
+      "authors": [
+        "Jane Austen"
+      ],
+      "isbn13": "9780141439518",
+      "isbn10": "0141439513",
+      "pages": 279,
+      "binding": "Paperback",
+      "yearPublished": 2002,
+      "originalYear": 1813,
+      "status": "read",
+      "dateRead": "2019-08-19",
+      "dateAdded": "2019-07-30",
+      "rating": 5,
+      "readCount": 2
+    },
+    {
+      "id": "100017",
+      "title": "Jane Eyre",
+      "authors": [
+        "Charlotte Bronte"
+      ],
+      "isbn13": "9780141441146",
+      "isbn10": "0141441143",
+      "pages": 507,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1847,
+      "status": "read",
+      "dateRead": "2019-09-25",
+      "dateAdded": "2019-09-01",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100018",
+      "title": "Wuthering Heights",
+      "authors": [
+        "Emily Bronte"
+      ],
+      "isbn13": "9780141439556",
+      "isbn10": "0141439556",
+      "pages": 416,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1847,
+      "status": "to-read",
+      "dateAdded": "2024-01-05",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100019",
+      "title": "Frankenstein",
+      "authors": [
+        "Mary Shelley"
+      ],
+      "isbn13": "9780141439471",
+      "isbn10": "0141439475",
+      "pages": 280,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1818,
+      "status": "read",
+      "dateRead": "2020-10-28",
+      "dateAdded": "2020-10-10",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100020",
+      "title": "Dracula",
+      "authors": [
+        "Bram Stoker"
+      ],
+      "isbn13": "9780141439846",
+      "isbn10": "0141439848",
+      "pages": 488,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1897,
+      "status": "read",
+      "dateRead": "2020-10-30",
+      "dateAdded": "2020-10-12",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100021",
+      "title": "The Picture of Dorian Gray",
+      "authors": [
+        "Oscar Wilde"
+      ],
+      "isbn13": "9780141439570",
+      "isbn10": "0141439572",
+      "pages": 254,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1890,
+      "status": "read",
+      "dateRead": "2019-06-03",
+      "dateAdded": "2019-05-20",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100022",
+      "title": "Slaughterhouse-Five",
+      "authors": [
+        "Kurt Vonnegut"
+      ],
+      "isbn13": "9780440180296",
+      "isbn10": "0440180295",
+      "pages": 215,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 1991,
+      "originalYear": 1969,
+      "status": "read",
+      "dateRead": "2021-07-07",
+      "dateAdded": "2021-06-28",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100023",
+      "title": "Catch-22",
+      "authors": [
+        "Joseph Heller"
+      ],
+      "isbn13": "9781451626650",
+      "isbn10": "1451626657",
+      "pages": 453,
+      "binding": "Paperback",
+      "yearPublished": 1999,
+      "originalYear": 1961,
+      "status": "to-read",
+      "dateAdded": "2024-02-02",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100024",
+      "title": "The Catcher in the Rye",
+      "authors": [
+        "J.D. Salinger"
+      ],
+      "isbn13": "9780316769488",
+      "isbn10": "0316769487",
+      "pages": 234,
+      "binding": "Paperback",
+      "yearPublished": 2001,
+      "originalYear": 1951,
+      "status": "read",
+      "dateRead": "2018-03-15",
+      "dateAdded": "2018-03-01",
+      "rating": 3,
+      "readCount": 1
+    },
+    {
+      "id": "100025",
+      "title": "To Kill a Mockingbird",
+      "authors": [
+        "Harper Lee"
+      ],
+      "isbn13": "9780061120084",
+      "isbn10": "0061120081",
+      "pages": 336,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1960,
+      "status": "read",
+      "dateRead": "2018-02-01",
+      "dateAdded": "2018-01-15",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100026",
+      "title": "Beloved",
+      "authors": [
+        "Toni Morrison"
+      ],
+      "isbn13": "9781400033416",
+      "isbn10": "1400033411",
+      "pages": 324,
+      "binding": "Paperback",
+      "yearPublished": 2004,
+      "originalYear": 1987,
+      "status": "to-read",
+      "dateAdded": "2023-09-09",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100027",
+      "title": "One Hundred Years of Solitude",
+      "authors": [
+        "Gabriel Garcia Marquez"
+      ],
+      "isbn13": "9780060883287",
+      "isbn10": "0060883286",
+      "pages": 417,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1967,
+      "status": "read",
+      "dateRead": "2021-12-20",
+      "dateAdded": "2021-12-01",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100028",
+      "title": "The Alchemist",
+      "authors": [
+        "Paulo Coelho"
+      ],
+      "isbn13": "9780061122415",
+      "isbn10": "0061122416",
+      "pages": 208,
+      "binding": "Paperback",
+      "yearPublished": 2014,
+      "originalYear": 1988,
+      "status": "read",
+      "dateRead": "2020-04-04",
+      "dateAdded": "2020-03-20",
+      "rating": 3,
+      "readCount": 1
+    },
+    {
+      "id": "100029",
+      "title": "Norwegian Wood",
+      "authors": [
+        "Haruki Murakami"
+      ],
+      "isbn13": "9780375704024",
+      "isbn10": "0375704027",
+      "pages": 296,
+      "binding": "Paperback",
+      "yearPublished": 2000,
+      "originalYear": 1987,
+      "status": "read",
+      "dateRead": "2022-01-11",
+      "dateAdded": "2021-12-28",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100030",
+      "title": "Kafka on the Shore",
+      "authors": [
+        "Haruki Murakami"
+      ],
+      "isbn13": "9781400079278",
+      "isbn10": "1400079276",
+      "pages": 505,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 2002,
+      "status": "currently-reading",
+      "dateAdded": "2024-11-15",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100031",
+      "title": "The Name of the Wind",
+      "authors": [
+        "Patrick Rothfuss"
+      ],
+      "isbn13": "9780756404079",
+      "isbn10": "0756404746",
+      "pages": 662,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 2008,
+      "originalYear": 2007,
+      "status": "read",
+      "dateRead": "2022-05-30",
+      "dateAdded": "2022-05-01",
+      "rating": 5,
+      "review": "Could not put it down.",
+      "readCount": 1
+    },
+    {
+      "id": "100032",
+      "title": "Mistborn: The Final Empire",
+      "authors": [
+        "Brandon Sanderson"
+      ],
+      "isbn13": "9780765350381",
+      "isbn10": "0765350386",
+      "pages": 541,
+      "binding": "Paperback",
+      "yearPublished": 2007,
+      "originalYear": 2006,
+      "status": "read",
+      "dateRead": "2022-08-12",
+      "dateAdded": "2022-07-20",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100033",
+      "title": "The Way of Kings",
+      "seriesTitle": "Stormlight Archive, #1",
+      "authors": [
+        "Brandon Sanderson"
+      ],
+      "isbn13": "9780765326355",
+      "isbn10": "0765326353",
+      "pages": 1007,
+      "binding": "Hardcover",
+      "yearPublished": 2010,
+      "originalYear": 2010,
+      "status": "currently-reading",
+      "dateAdded": "2024-12-01",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100034",
+      "title": "Red Rising",
+      "authors": [
+        "Pierce Brown"
+      ],
+      "isbn13": "9780345539786",
+      "isbn10": "0345539781",
+      "pages": 382,
+      "binding": "Paperback",
+      "yearPublished": 2014,
+      "originalYear": 2014,
+      "status": "read",
+      "dateRead": "2023-01-09",
+      "dateAdded": "2022-12-20",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100035",
+      "title": "Golden Son",
+      "seriesTitle": "Red Rising, #2",
+      "authors": [
+        "Pierce Brown"
+      ],
+      "isbn13": "9780345539817",
+      "isbn10": "0345539811",
+      "pages": 443,
+      "binding": "Hardcover",
+      "yearPublished": 2015,
+      "originalYear": 2015,
+      "status": "read",
+      "dateRead": "2023-01-25",
+      "dateAdded": "2023-01-10",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100036",
+      "title": "Harry Potter and the Sorcerer's Stone",
+      "authors": [
+        "J.K. Rowling"
+      ],
+      "isbn13": "9780590353427",
+      "isbn10": "0590353403",
+      "pages": 309,
+      "binding": "Hardcover",
+      "yearPublished": 1998,
+      "originalYear": 1997,
+      "status": "read",
+      "dateRead": "2017-12-24",
+      "dateAdded": "2017-12-01",
+      "rating": 5,
+      "review": "Ending twist was wild - Quirrell was Voldemort all along!",
+      "reviewHasSpoiler": true,
+      "readCount": 3
+    },
+    {
+      "id": "100037",
+      "title": "The Hunger Games",
+      "authors": [
+        "Suzanne Collins"
+      ],
+      "isbn13": "9780439023528",
+      "isbn10": "0439023521",
+      "pages": 374,
+      "binding": "Paperback",
+      "yearPublished": 2010,
+      "originalYear": 2008,
+      "status": "read",
+      "dateRead": "2019-11-03",
+      "dateAdded": "2019-10-20",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100038",
+      "title": "Gone Girl",
+      "authors": [
+        "Gillian Flynn"
+      ],
+      "isbn13": "9780307588371",
+      "isbn10": "0307588378",
+      "pages": 419,
+      "binding": "Kindle Edition",
+      "yearPublished": 2014,
+      "originalYear": 2012,
+      "status": "read",
+      "dateRead": "2022-03-15",
+      "dateAdded": "2022-03-01",
+      "rating": 4,
+      "readCount": 1
+    },
+    {
+      "id": "100039",
+      "title": "Circe",
+      "authors": [
+        "Madeline Miller"
+      ],
+      "isbn13": "9780316556347",
+      "isbn10": "0316556327",
+      "pages": 393,
+      "binding": "Hardcover",
+      "yearPublished": 2018,
+      "originalYear": 2018,
+      "status": "to-read",
+      "dateAdded": "2024-06-01",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100040",
+      "title": "Educated",
+      "authors": [
+        "Tara Westover"
+      ],
+      "isbn13": "9780399590504",
+      "isbn10": "0399590501",
+      "pages": 334,
+      "binding": "Hardcover",
+      "yearPublished": 2018,
+      "originalYear": 2018,
+      "status": "read",
+      "dateRead": "2021-05-17",
+      "dateAdded": "2021-05-01",
+      "rating": 5,
+      "readCount": 1
+    },
+    {
+      "id": "100041",
+      "title": "Sapiens: A Brief History of Humankind",
+      "authors": [
+        "Yuval Noah Harari"
+      ],
+      "isbn13": "9780062316097",
+      "isbn10": "0062316095",
+      "pages": 443,
+      "binding": "Paperback",
+      "yearPublished": 2015,
+      "originalYear": 2011,
+      "status": "to-read",
+      "dateAdded": "2024-10-05",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100042",
+      "title": "The Song of Achilles",
+      "authors": [
+        "Madeline Miller"
+      ],
+      "isbn13": "9780062060624",
+      "isbn10": "0062060627",
+      "pages": 416,
+      "binding": "Paperback",
+      "yearPublished": 2012,
+      "originalYear": 2011,
+      "status": "wishlist",
+      "dateAdded": "2024-07-22",
+      "rating": 0,
+      "readCount": 0
+    },
+    {
+      "id": "100043",
+      "title": "Of Mice and Men",
+      "authors": [
+        "John Steinbeck"
+      ],
+      "isbn13": "9780140177398",
+      "isbn10": "0140177396",
+      "pages": 121,
+      "binding": "Paperback",
+      "yearPublished": 1993,
+      "originalYear": 1937,
+      "status": "read",
+      "dateRead": "2018-01-05",
+      "dateAdded": "2017-12-28",
+      "rating": 4,
+      "readCount": 1
+    }
+  ]
+}

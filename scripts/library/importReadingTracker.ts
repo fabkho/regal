@@ -1,7 +1,7 @@
 // Library import from the reading-tracker CLI (github.com/fabkho/reading-tracker-cli):
-// the output of `reading list --json`, whose books come from Fable. Pure, like
-// the Goodreads importer.
-import type { Book } from '../types/book'
+// the output of `reading list --json`, whose books come from Fable. Pure. Only
+// the bridge converter (library:convert) uses it; the display reads no exports.
+import type { Book } from '../../shared/types/book'
 
 /** The parts of `reading list --json` Regal reads (LibraryBookJson in the CLI). */
 export interface ReadingTrackerBook {
