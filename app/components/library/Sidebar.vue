@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   details?: boolean
 }>(), { heading: 'Bookshelf', countLabel: 'Books read', filters: true, list: true, details: false })
 
-const { books } = useLibrary()
+const { books, error } = useLibrary()
 const { pickedId } = useBookPick()
 
 const readCount = computed(() => books.value.filter(book => book.status === 'read').length)
@@ -47,7 +47,17 @@ const showDetails = computed(() => props.details && pickedId.value)
     </div>
 
     <div
-      v-if="showDetails"
+      v-if="error"
+      class="sidebar__section"
+    >
+      <LibraryFileError
+        :error="error"
+        compact
+      />
+    </div>
+
+    <div
+      v-else-if="showDetails"
       class="sidebar__section sidebar__section--grow"
     >
       <BooksDetails class="sidebar__details" />

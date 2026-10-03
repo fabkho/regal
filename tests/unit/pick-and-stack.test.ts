@@ -1,10 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { importLibrary } from '../../shared/library/importLibrary'
+import { libraryFileBooks, parseLibraryFile } from '../../shared/library/libraryFile'
 import { clickBook, flip, putAway, SHELVED } from '../../app/utils/books/pick'
 import { layoutStack } from '../../app/utils/stack/layout'
 
-const demo = importLibrary(readFileSync(new URL('../../app/assets/data/demo-library.csv', import.meta.url), 'utf8')).books
+/** The synthetic Library these tests were written against (43 Books, Goodreads-style ids). */
+function loadDemo() {
+  const result = parseLibraryFile(readFileSync(new URL('../fixtures/library-file/bookcase.json', import.meta.url), 'utf8'))
+  if (!result.ok) throw new Error('tests/fixtures/library-file/bookcase.json is not a valid library file')
+  return libraryFileBooks(result.library)
+}
+
+const demo = loadDemo()
 
 describe('Pick state machine', () => {
   it('cycles a Book through front, back and put away, like mawise/bookshelf', () => {

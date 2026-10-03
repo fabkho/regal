@@ -1,0 +1,29 @@
+{
+  "9780000000101": {
+    "front": "9780000000101/front.webp",
+    "spine": "9780000000101/spine.webp",
+    "back": "9780000000101/back.webp",
+    "source": "ai",
+    "description": "The cleaned blurb for this edition.",
+    "quotes": [
+      { "text": "A synthetic line of praise.", "source": "The Example Review" },
+      { "text": "  ", "source": "Dropped, no text" }
+    ],
+    "genre": "SCIENCE FICTION",
+    "publisher": "Example House",
+    "palette": { "background": "#48445C", "text": "#f5f2eb", "accent": "#1c1926" },
+    "spineColor": "#151728",
+    "pile": { "front": "9780000000101/front-pile.webp", "spine": "9780000000101/spine-pile.webp" },
+    "meta": { "blurbSource": "fixture", "frontSize": "800x1200" }
+  },
+  "rt-0002": {
+    "front": "https://images.example.com/rt-0002/front.webp",
+    "photoFaces": ["front", "edge"],
+    "palette": { "background": "#fff", "text": "#000000", "accent": "#123456" },
+    "spineColor": "grey",
+    "pile": {}
+  },
+  "9780000000999": {
+    "front": "9780000000999/front.webp"
+  }
+}

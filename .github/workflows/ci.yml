@@ -43,3 +43,11 @@ jobs:
       # Unit tests only: the e2e suite (WebGL in a browser) stays local.
       - name: Test
         run: pnpm run test:unit
+
+      # Regal assets (pipeline/): its own package and lockfile. Tests only, offline;
+      # never a real run (no network, no Gemini, no upload).
+      - name: Install the pipeline
+        run: pnpm --dir pipeline install --frozen-lockfile
+
+      - name: Pipeline typecheck and tests
+        run: pnpm --dir pipeline typecheck && pnpm --dir pipeline test

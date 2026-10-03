@@ -10,7 +10,9 @@
 // (components/books/PickProbe.vue):
 //
 //   node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200
-//   options: --view stack|bookcase  --data demo|latest  --headed  --stop-on-fail
+//   options: --view stack|bookcase  --src <library file URL>  --headed  --stop-on-fail
+//   (--src: any Regal library file through the viewer's ?src=; default: the
+//   site's own librarySrc, the demo library)
 import { chromium } from 'playwright-core'
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, arg, index, all) => {
@@ -23,7 +25,7 @@ const BASE = String(args.url ?? 'http://localhost:3000').replace(/\/$/, '')
 const SEEDS = String(args.seeds ?? '1').split(',').map(Number)
 const STEPS = Number(args.steps ?? 100)
 const VIEW = args.view ?? 'stack'
-const DATA = args.data ?? 'demo'
+const SRC = typeof args.src === 'string' ? args.src : null
 
 /** Deterministic PRNG so a failing seed replays. */
 function mulberry32(seed) {
@@ -66,16 +68,8 @@ async function run(seed) {
     page.on('crash', () => console.log(`seed ${seed} step ${currentStep}: page crashed`))
     page.on('console', message => ['error', 'warning'].includes(message.type()) && console.log(`seed ${seed}: console ${message.type()}: ${message.text().slice(0, 300)}`))
   }
-  await page.goto(`${BASE}/?view=${VIEW}&debug=pick`, { waitUntil: 'networkidle' })
-  if (DATA === 'latest') {
-    const clear = page.getByRole('button', { name: 'Clear', exact: true })
-    if (await clear.isVisible().catch(() => false)) await clear.click()
-    await page.getByRole('button', { name: 'My library (dev)' }).click()
-  }
-  else {
-    const demo = page.getByRole('button', { name: /try demo/i })
-    if (await demo.isVisible().catch(() => false)) await demo.click()
-  }
+  const src = SRC ? `&src=${encodeURIComponent(SRC)}` : ''
+  await page.goto(`${BASE}/?view=${VIEW}&debug=pick${src}`, { waitUntil: 'networkidle' })
   await page.waitForFunction(() => window.__regalPick?.clickableBooks().length > 0, null, { timeout: 30_000 })
 
   const probe = (name, ...rest) => page.evaluate(([fn, params]) => window.__regalPick[fn](...params), [name, rest])

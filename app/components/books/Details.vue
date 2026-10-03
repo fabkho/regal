@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
-import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
@@ -20,27 +19,15 @@ const content = ref<HTMLElement | null>(null)
 useLabelMorphCard(() => root.value)
 const reducedMotion = usePreferredReducedMotion()
 
-/** Blurbs by Book id: the old content keeps its own while it fades out. */
-const descriptions = ref<Record<string, string | null>>({})
-function loadBlurb(current: NonNullable<typeof book.value>) {
-  // The open Book's blurb is wanted now: ahead of every queued load.
-  return loadDescription(current, () => -1).then((text) => {
-    descriptions.value = { ...descriptions.value, [current.id]: text }
-  })
-}
-watch(book, (current) => {
-  if (current && !(current.id in descriptions.value)) void loadBlurb(current)
-}, { immediate: true })
-
 const { shown } = useCardSwap({
   source: book,
   card: root,
   body,
   content,
   instant: () => reducedMotion.value === 'reduce' || morph.value.active,
-  ready: loadBlurb,
 })
-const description = computed(() => (shown.value ? descriptions.value[shown.value.id] ?? null : null))
+/** The blurb, from the library file. */
+const description = computed(() => shown.value?.description?.trim() || null)
 const showSpoiler = ref(false)
 watch(() => shown.value?.id, () => {
   showSpoiler.value = false

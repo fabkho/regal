@@ -35,14 +35,12 @@ import type { ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shu
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
 import { loadCover, loadFullCover, prefetchFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { assetFacesFor, isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
+import { isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { loadPicture } from '#layers/regal/app/utils/covers/images'
 import type { Picture } from '#layers/regal/app/utils/covers/images'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
-import { loadDescription } from '#layers/regal/app/utils/covers/descriptions'
-import { coverUrl } from '#layers/regal/app/utils/covers/coverUrl'
 import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
 import { inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
@@ -65,6 +63,8 @@ const props = withDefaults(defineProps<{
 
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
+/** Each Book's faces from the library file, URLs resolved. */
+const { facesOf } = useLibrary()
 
 // --- Look ------------------------------------------------------------------
 
@@ -125,7 +125,7 @@ interface BookMaterials {
     /** Head, tail and fore edge. */
     materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
   }
-  /** The Book's asset set (manifest), once the manifest is in; null when it has none. */
+  /** The Book's faces from the library file; null when it has none. */
   set: AssetFaces | null
   /** Asset set artwork (real or AI), as it arrives. */
   art: { spine?: Picture, back?: Picture }
@@ -273,7 +273,7 @@ function faceInput(pose: BookPose, entry: BookMaterials | null = null): FaceInpu
     thickness: pose.thickness,
     height: pose.height,
     depth: pose.depth,
-    // The manifest's colours first: they don't change when the front arrives.
+    // The file's colours first: they don't change when the front arrives.
     palette: set?.palette ?? entry?.loaded?.palette ?? { background, text, accent: text },
     cover: entry?.loaded?.image,
     seed: hashString(book.id),
@@ -329,37 +329,40 @@ function motionFor(bookId: string): Motion {
 /**
  * Dresses a Book as its faces arrive, most visible first (load ranks in
  * utils/covers/loadWindow.ts):
- * 1. once the manifest is in, the Spine colours and boards it lists, so a
- *    Spine without art is final before any image has loaded;
+ * 1. the Spine colours and boards the library file lists, so a Spine without
+ *    art is final before any image has loaded;
  * 2. the Spine art (its small pile copy);
  * 3. the front: right away for the top Book, or when the Spine colours must
- *    come from it (no colours in the manifest); else after the pile's faces;
+ *    come from it (no colours in the file); else after the pile's faces;
  * 4. the back and its blurb, seen only once the Book is taken out.
- * Images decode off the main thread (utils/covers/images.ts).
+ * Images decode off the main thread (utils/covers/images.ts). A face the file
+ * has no image for (or whose image doesn't load) stays drawn.
  */
 async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
   if (!book) return
-  const set = await assetFacesFor(book)
+  const set = facesOf(book.id)
+  // Once the whole pile has its materials (as when faces waited for a manifest).
+  await Promise.resolve()
   const entry = materialsByBook.get(pose.bookId)
   if (!entry || entry.aborted.signal.aborted) return
   entry.set = set
-  if (set && !set.entry.pile) fullSizeFaces = true
+  if (set && !set.entry.pile && (set.front || set.spine)) fullSizeFaces = true
 
   const fonts = spineFontsReady()
   const frontShows = () => topBookId === pose.bookId || !set?.palette
   const shown = loadPriority(pose.bookId, 'shown')
   const hidden = loadPriority(pose.bookId, 'hidden')
-  // An asset set's front (its pile copy), else the Cover resolver; also when the front is missing.
+  // The front's pile copy, the full front when that one fails; none: the drawn placeholder.
   const frontPriority = loadPriority(pose.bookId, () => (frontShows() ? 'shown' : 'hidden'))
-  const front = (set?.pileFront ? loadCover(book, set.pileFront, frontPriority) : Promise.resolve(null))
-    .then(loaded => loaded ?? loadCover(book, undefined, frontPriority))
-  // Full-size Spine art (older manifests) is scaled to what drawSpine uses.
+  const front = (set?.pileFront ? loadCover(set.pileFront, frontPriority) : Promise.resolve(null))
+    .then(loaded => loaded ?? (set?.front && set.front !== set.pileFront ? loadCover(set.front, frontPriority) : null))
+  // Full-size Spine art (no pile copy) is scaled to what drawSpine uses.
   const signal = entry.aborted.signal
   const spineArt = set?.spine ? loadPicture(set.spine, shown, set.entry.pile?.spine ? undefined : ART_HEIGHT, signal) : null
   const draw = (paint: (entry: BookMaterials) => void) => whenDrawn(entry, pose.bookId, paint)
 
-  // 1. The manifest's colours: Spine without art and page edges, final at once.
+  // 1. The file's colours: Spine without art and page edges, final at once.
   if (set?.palette || set?.spineColor) {
     await fonts
     await draw((entry) => {
@@ -401,14 +404,11 @@ async function applyCover(pose: BookPose) {
   })
   if (!fronted) return
 
-  // 4. The back and its blurb.
-  const [back, blurb] = await Promise.all([
-    set?.back ? loadPicture(set.back, hidden, ART_HEIGHT, signal) : null,
-    loadDescription(book, () => hidden() + BLURB_DELAY),
-  ])
+  // 4. The back and its blurb (from the file).
+  const back = set?.back ? await loadPicture(set.back, hidden, ART_HEIGHT, signal) : null
   const drawn = await draw((entry) => {
     if (back) entry.art.back = back
-    entry.description = blurb
+    entry.description = book.description?.trim() || null
     drawFace(pose, entry, 'back')
   })
   if (!drawn) closePicture(back)
@@ -476,8 +476,6 @@ setBands(LOAD_BANDS)
 const poseHeights = new Map<string, number>()
 /** The top Book of the pile: its front shows. */
 let topBookId: string | null = null
-/** Metres of distance a blurb waits behind the images. */
-const BLURB_DELAY = 0.3
 
 function boostOf(bookId: string): Boost {
   if (pickedId.value === bookId) return 'picked'
@@ -489,7 +487,7 @@ function loadPriority(bookId: string, use: FaceUse | (() => FaceUse)): Priority 
 }
 
 // Drawing a face takes a few milliseconds; many arrive at once (all colours with
-// the manifest), so they wait their turn, nearest first, a few per frame.
+// the library file), so they wait their turn, nearest first, a few per frame.
 const DRAW_BUDGET_MS = 6
 const drawQueue: { bookId: string, run: () => void }[] = []
 
@@ -657,11 +655,9 @@ watch(pickedId, (id, previous) => {
 // fetches it ahead, so taking it out finds it ready.
 const HOVER_PREFETCH_MS = 200
 
+/** The picked Book's full-size front from the library file; none: it keeps what it shows. */
 function fullCoverUrl(bookId: string): string | null {
-  const entry = materialsByBook.get(bookId)
-  const book = booksById.value.get(bookId)
-  if (!entry || !book) return null
-  return entry.set ? entry.set.front ?? null : coverUrl(book)
+  return materialsByBook.get(bookId)?.set?.front ?? null
 }
 
 /** Puts a Cover texture on the front board, printed (smoother, glossier than cloth). */
@@ -858,12 +854,12 @@ const PENDING = Number.POSITIVE_INFINITY
 /**
  * Longest an entrance waits, unseen, for the faces of the Books in view (s),
  * so the pile settles in dressed; past it, it settles in with drawn faces.
- * An older manifest has no small pile copies: its full-size faces rarely make
+ * A library file without small pile copies: its full-size faces rarely make
  * it in time, so it waits less.
  */
 const ENTRANCE_WAIT = 0.8
 const ENTRANCE_WAIT_FULL_SIZE = 0.3
-/** The manifest lists no pile copies (published before them). */
+/** The library file lists images but no pile copies of them. */
 let fullSizeFaces = false
 /** When the waiting entrance was asked for (performance.now()). */
 let entranceAskedAt = 0

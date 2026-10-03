@@ -1,24 +1,16 @@
 /** Regal's settings, from `runtimeConfig.public.regal` (see nuxt.config.ts and the README). */
 export interface RegalConfig {
-  /** 'app': the standalone site (upload, demo, localStorage). 'embed': a host page shows `librarySrc`. */
-  mode: 'app' | 'embed'
-  /** 'embed': URL of a reading-tracker export (`reading list --json`). */
+  /** URL of the Regal library file to show (docs/library-file.md); absolute or relative to the page. */
   librarySrc: string
-  /** Where the Book asset set lives (manifest.json and the images it lists), with a trailing slash. */
-  assetsBase: string
-  /** The dev choices panel is on: Regal's own dev server only. */
-  devPanel: boolean
 }
 
-export const DEFAULT_ASSETS_BASE = '/book-assets/'
-
+/**
+ * `mode` and `assetsBase` (before the Regal library file) are no longer read:
+ * a host that still sets them gets no error, they have no effect.
+ */
 export function useRegalConfig(): RegalConfig {
   const config = (useRuntimeConfig().public.regal ?? {}) as Partial<RegalConfig>
-  const base = config.assetsBase || DEFAULT_ASSETS_BASE
   return {
-    mode: config.mode === 'embed' ? 'embed' : 'app',
-    librarySrc: config.librarySrc ?? '',
-    assetsBase: base.endsWith('/') ? base : `${base}/`,
-    devPanel: Boolean(import.meta.dev && config.devPanel),
+    librarySrc: typeof config.librarySrc === 'string' ? config.librarySrc.trim() : '',
   }
 }
