@@ -64,7 +64,7 @@ export default defineNuxtConfig({
 
 Env override as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`.
 
-**Changed with the library file** ([#39](https://github.com/fabkho/regal/issues/39)): `mode` and `assetsBase` are gone. There is one way to get a Library (the file at `librarySrc`, its images listed in it), so a host that still sets them gets no error, they are ignored; drop them when you switch. `librarySrc` now names a library file, not a reading-tracker export (convert one with `pnpm library:convert`, below); such an export shows the error card. The Cover and description resolvers (`/api/cover`, `/api/description`, `NUXT_GOOGLE_BOOKS_API_KEY`) are no longer part of the layer.
+**Changed with the library file** ([#39](https://github.com/fabkho/regal/issues/39)): `mode` and `assetsBase` are gone. There is one way to get a Library (the file at `librarySrc`, its images listed in it), so a host that still sets them gets no error, they are ignored; drop them when you switch. `librarySrc` now names a library file, not a reading-tracker export (Libellus writes one; `pnpm library:convert` converts old published data, see below); such an export shows the error card. The Cover and description resolvers (`/api/cover`, `/api/description`, `NUXT_GOOGLE_BOOKS_API_KEY`) are no longer part of the layer.
 
 ### Components
 
@@ -104,10 +104,10 @@ Regal reads one file: the [Regal library file](docs/library-file.md) (`version: 
 Three steps, each with one job:
 
 ```
-producer (library:convert now, Libellus later) ──► library file ──► regal assets ──► library file + images (R2 v2/) ──► Regal display
+Libellus (library:convert: bridge for old data) ──► library file ──► regal assets ──► library file + images (R2 v2/) ──► Regal display
 ```
 
-1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data: until Libellus does it, `pnpm library:convert` turns today's published `library.json` + `manifest.json` into one ([Converting](docs/library-file.md#converting-todays-data)). Where the data comes from (the reading tracker, Goodreads, overrides) is the producer's business, not Regal's.
+1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data. Today that is [Libellus](https://github.com/fabkho/libellus) (`pnpm export:regal`, see [The daily chain](#the-daily-chain)). `pnpm library:convert` stays as a bridge for old published data: it turns a v1 `library.json` + `manifest.json` into a library file ([Converting](docs/library-file.md#converting-old-published-data)). Where the data comes from is the producer's business, not Regal's.
 2. **Enrich: Regal assets** ([`pipeline/`](pipeline/README.md)). Takes any library file and returns it with each Book's `assets` (front, Spine, back, pile copies, palette, Spine colour, photo faces, source) and the images, plus a blurb for Books without one.
 3. **Display.** Regal (this layer) renders the enriched file, nothing else.
 
@@ -124,25 +124,22 @@ pnpm regal-assets --in .data/library-v2.json --dry-run --no-ai   # = pnpm --dir 
 - Per Book: what the file brings and is good enough stays (copied into the output, so the published set doesn't depend on where the input's images live); a front below 800 px or none goes through today's front chain (Apple, the German National Library for German editions, Google, the file's own front, Open Library), the taller one wins; photo drop-ins (`<cache>/photos/<key>/front.jpg` …) beat everything; pile copies, palette and Spine colour are made from the faces; a Book without a blurb gets one (Apple's publisher copy, else Open Library/Google).
 - AI Spines/backs (Gemini, `GEMINI_API_KEY` with billing) for Books with a front and no Spine/back art, through the Batch API (half price; `--now` for direct calls). A paid jacket is kept in the cache and never bought twice. `--no-ai` leaves them to Regal's drawn ones, `--no-model` skips the text model too.
 - Incremental and idempotent: a Book is rebuilt only when what its assets are made of changed (its sizing and text fields, its input images' content, its photos); a run without changes rewrites nothing, not even `generatedAt`. Downloads, jackets, open batch jobs and the state live under `.data/regal-assets/` (`--cache`). `--revalidate` asks the servers whether input images changed behind the same URL; `--force` rebuilds anyway; `--limit <n>` takes only the n most recently read Books this run.
-- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, `wrangler login` once) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (today's files) never, and an empty prefix is refused.
+- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, `wrangler login` once) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (the old v1 files) never, and an empty prefix is refused.
 - `--dry-run`: nothing remote and nothing paid. No upload (the plan is printed), no Gemini call (the AI cost is printed, as today's build did); the free work runs and the local output is written, so the dry run shows the enriched file.
 
 Books without a blurb now get theirs from Regal assets: the display has no description resolver any more, so a file that skips this step shows them without one.
 
-**CORS.** The portfolio loads the images cross-origin as WebGL textures, so the bucket's domain (`books.fabkho.dev`) must answer with CORS headers for the page's origin (`https://fabkho.dev`, and any preview/dev origin that shows `/books`), for `v2/` as for today's files.
+**CORS.** The portfolio loads the images cross-origin as WebGL textures, so the bucket's domain (`books.fabkho.dev`) must answer with CORS headers for the page's origin (`https://fabkho.dev`, and any preview/dev origin that shows `/books`), for `v2/` as for the old v1 files.
 
-### The transition daily command (written down, not applied)
+### The daily chain
 
-Until Libellus writes the library file, the daily job becomes: the frozen build on `main` keeps publishing today's root files, a second checkout of this branch (`feat/display-layer`, later `main`) converts them and enriches the result into `v2/`:
+The owner's daily job (09:00, outside this repo) runs two commands: [Libellus](https://github.com/fabkho/libellus) (hosted Supabase) writes the library file, and a Regal checkout enriches and publishes it under `v2/`:
 
 ```bash
-# 1. the frozen build on main (~/code/regal, unchanged): reading tracker → root library.json + manifest.json + images
-pnpm books:daily
-# 2. in the display-layer checkout: today's published data → library file
-pnpm library:convert --library https://books.fabkho.dev/library.json --manifest https://books.fabkho.dev/manifest.json \
-  --assets-base https://books.fabkho.dev/ --out .data/library-v2.json
-# 3. enrich and publish under v2/ (no AI in the daily run, like today)
-pnpm regal-assets --in .data/library-v2.json --no-ai --no-model --revalidate --publish v2
+# 1. in Libellus: reading data → library file, keeping the art already published
+pnpm export:regal --carry-art https://books.fabkho.dev/v2/library.json
+# 2. in a Regal checkout: enrich and publish under v2/ (no AI in the daily run)
+pnpm regal-assets --in <the file from step 1> --no-ai --no-model --revalidate --publish v2
 ```
 
-Step 3 is quick when nothing changed (every Book cached, nothing uploaded). Switching the portfolio to `books.fabkho.dev/v2/library.json` and the daily job to this command is the switch ticket ([#41](https://github.com/fabkho/regal/issues/41)). Reading-history corrections (the overrides file, Goodreads merges) stay with the frozen build on `main` and retire with Fable.
+`--carry-art` keeps each Book's published front, Spine and back, matched by ISBN-13, else by title plus the first author's surname, so the export doesn't have to make them again. Step 2 is quick when nothing changed (every Book cached): a quiet day uploads nothing. The portfolio reads `books.fabkho.dev/v2/library.json` ([#41](https://github.com/fabkho/regal/issues/41)). The old reading-tracker build (`books:daily`) and the `library:convert` step are retired from the job; retiring the v1 R2 data is [#48](https://github.com/fabkho/regal/issues/48).

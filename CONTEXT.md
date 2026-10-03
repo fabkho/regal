@@ -5,7 +5,7 @@ Use these terms in code, issues and commits.
 | Term | Meaning |
 |---|---|
 | **Regal library file** | The one input Regal's display reads: a versioned JSON (`version: 2`) with every **Book** of a **Library** and its resolved assets (front/Spine/back/pile images, Spine colours, blurb). Format: `docs/library-file.md`; types and validator in `shared/`. Written by a **Pipeline**. |
-| **Pipeline** | A producer of the **Regal library file**: gathers reading data and Book assets from its sources and writes the file. Today the frozen daily build on `main` (reading tracker → published data) plus `pnpm library:convert`, later Libellus. Regal itself doesn't care where the data comes from. |
+| **Pipeline** | A producer of the **Regal library file**: gathers reading data and Book assets from its sources and writes the file. Today Libellus (`pnpm export:regal`); `pnpm library:convert` remains as a bridge for old published data. Regal itself doesn't care where the data comes from. |
 | **Regal assets** | The step between a **Pipeline** and the display (`pipeline/`, `pnpm regal-assets`): takes any **Regal library file** and returns it with each Book's assets (fronts, Spines, backs, pile copies, colours, missing blurbs) and the images, published to R2 under `v2/`. |
 | **Library** | The normalized, in-memory list of **Books** Regal shows, read from a **Regal library file**. Nothing is kept in the browser. |
 | **Book** | One normalized entry: identifiers (Goodreads id, ISBN-10, ISBN-13), title, author, page count, binding, rating, dates, review, **Reading status**. |

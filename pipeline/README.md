@@ -1,6 +1,6 @@
 # Regal assets
 
-A Regal library file in, the same file with its Books' images and colours out, plus the images, optionally published to R2. The long-lived half of the old asset build: whatever writes the library file (`pnpm library:convert` during the transition, Libellus later), the portfolio keeps its high-resolution fronts, photographed or generated Spines and backs, Stack copies and colours.
+A Regal library file in, the same file with its Books' images and colours out, plus the images, optionally published to R2. The long-lived half of the old asset build: whatever writes the library file (Libellus today), the portfolio keeps its high-resolution fronts, photographed or generated Spines and backs, Stack copies and colours.
 
 Its own package: own `package.json` and lockfile, installed with `pnpm --dir pipeline install`, never by a host that extends the Regal layer. It imports the layer's library-file types and validator and two pure display helpers (Spine colours, Book sizes) by relative path (`src/layer.ts`).
 
@@ -10,7 +10,7 @@ pnpm --dir pipeline test        # offline: lookups, Gemini and the uploader stub
 pnpm --dir pipeline typecheck
 ```
 
-Options, steps and the transition daily command: the root [README](../README.md#producing-the-library-file); the flags are also listed at the top of [`src/cli.ts`](src/cli.ts).
+Options, steps and the daily chain: the root [README](../README.md#producing-the-library-file); the flags are also listed at the top of [`src/cli.ts`](src/cli.ts).
 
 | File | |
 |---|---|

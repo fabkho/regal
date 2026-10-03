@@ -1,10 +1,10 @@
 # The Regal library file (version 2)
 
-The one input Regal's display reads: a JSON file with everything it shows of a Library, the resolved images and colours included, so a page needs one fetch. A **Pipeline** produces it (today the daily build from the reading tracker, later [Libellus](https://github.com/fabkho/libellus)); Regal only renders it. Spec: [#37](https://github.com/fabkho/regal/issues/37).
+The one input Regal's display reads: a JSON file with everything it shows of a Library, the resolved images and colours included, so a page needs one fetch. A **Pipeline** produces it (today [Libellus](https://github.com/fabkho/libellus)); Regal only renders it. Spec: [#37](https://github.com/fabkho/regal/issues/37).
 
 - Types: [`shared/types/libraryFile.ts`](../shared/types/libraryFile.ts). Validator: `validateLibraryFile(data)` / `parseLibraryFile(text)` in [`shared/library/libraryFile.ts`](../shared/library/libraryFile.ts), returning `{ ok: true, library }` or `{ ok: false, errors: [{ path, reason }] }` (`path` like `books[3].assets.palette.text`, `''` for the file itself).
 - Examples (synthetic): [`tests/fixtures/library-file/demo.json`](../tests/fixtures/library-file/demo.json) (the demo Library), [`all-fields.json`](../tests/fixtures/library-file/all-fields.json) (every field, set and null), [`minimal.json`](../tests/fixtures/library-file/minimal.json); invalid ones in `invalid/`.
-- From today's published data: `pnpm library:convert` (see [Converting](#converting-todays-data)).
+- From old published data (the v1 `library.json` + `manifest.json`): `pnpm library:convert`, a bridge (see [Converting](#converting-old-published-data)).
 
 ## Rules
 
@@ -111,12 +111,14 @@ Every field is optional; a missing face is drawn by Regal (Spine and back typese
 
 ## For producers
 
-- **Libellus.** A Book is an edition with its reading sessions: `id` = the edition id; `authors` from its authors in order; ISBNs, page count as they are. From the latest session: `status` (`read` for finished, `dnf` for abandoned, `currently-reading` while open), `dateStarted`, `dateRead` (finished only), `rating` (quarter stars as stored), `review`; `readCount` = finished sessions. The cover URL goes in `assets.front`, the precomputed cover colours in `assets.palette`.
-- **The pipeline (bridge).** `pnpm library:convert` turns today's published `library.json` (reading-tracker export, `{ books: [...] }`) and `manifest.json` into this file.
+- **Libellus** (the producer today: `pnpm export:regal`, with `--carry-art` to keep the art already published). A Book is an edition with its reading sessions: `id` = the edition id; `authors` from its authors in order; ISBNs, page count as they are. From the latest session: `status` (`read` for finished, `dnf` for abandoned, `currently-reading` while open), `dateStarted`, `dateRead` (finished only), `rating` (quarter stars as stored), `review`; `readCount` = finished sessions. The cover URL goes in `assets.front`, the precomputed cover colours in `assets.palette`.
+- **The pipeline (bridge).** `pnpm library:convert` turns old published data, the v1 `library.json` (reading-tracker export, `{ books: [...] }`) and `manifest.json`, into this file. Not part of the daily job any more.
 - **Regal assets** (`pipeline/`, `pnpm regal-assets`). A producer may leave `assets` out, or bring only a cover URL, and run the file through Regal assets: it keeps what is good enough, finds or makes the rest (fronts, Spines and backs, pile copies, palette, Spine colour, a blurb where `description` is missing) and writes the enriched file next to its images, relative references. See the README, "Producing the library file".
 - Validate before publishing: `parseLibraryFile(text)` returns the errors as `{ path, reason }`; `formatLibraryFileErrors(errors)` makes lines of them.
 
-## Converting today's data
+## Converting old published data
+
+A bridge for data published before Libellus (the v1 files at the bucket root). The daily job doesn't use it.
 
 ```bash
 pnpm library:convert \
