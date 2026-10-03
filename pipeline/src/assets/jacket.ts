@@ -135,6 +135,31 @@ export async function layoutFor(book: Book, front: Buffer): Promise<JacketLayout
   return planLayout(meta.width! / meta.height!, spineRatio(book))
 }
 
+/** Above this share of placeholder pixels in the spine or back, a jacket is rejected (and queued again). */
+export const PLACEHOLDER_LIMIT = 0.01
+
+/**
+ * Share of pixels in an image that are still the request's flat placeholder
+ * colours (magenta back, cyan spine): the model sometimes leaves a band
+ * unpainted. Sampled at a small size, so it's cheap.
+ */
+export async function placeholderShare(image: Buffer): Promise<number> {
+  const { data, info } = await sharp(image).resize(64, 96, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+  let hits = 0
+  for (let i = 0; i < data.length; i += info.channels) {
+    const [r, g, b] = [data[i]!, data[i + 1]!, data[i + 2]!]
+    const cyan = r < 70 && g > 200 && b > 200
+    const magenta = r > 200 && g < 70 && b > 200
+    if (cyan || magenta) hits++
+  }
+  return hits / (info.width * info.height)
+}
+
+/** The worse placeholder share of a jacket's spine and back. */
+export async function jacketPlaceholderShare(jacket: Pick<JacketResult, 'spine' | 'back'>): Promise<number> {
+  return Math.max(await placeholderShare(jacket.spine), await placeholderShare(jacket.back))
+}
+
 /** How far the painted spine may differ from the asked one before we use the detected folds instead. */
 const FIT_TOLERANCE = 0.12
 

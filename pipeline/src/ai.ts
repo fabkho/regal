@@ -14,7 +14,7 @@ import { FACE_HEIGHT } from './enrich'
 import type { BatchStatus, ImageRequest } from './assets/gemini'
 import { BATCH_COST_USD, BATCH_INLINE_LIMIT, IMAGE_COST_USD, IMAGE_MODEL } from './assets/gemini'
 import type { JacketLayout, JacketResult } from './assets/jacket'
-import { cropJacket, PROMPT_VERSION } from './assets/jacket'
+import { cropJacket, jacketPlaceholderShare, PLACEHOLDER_LIMIT, PROMPT_VERSION } from './assets/jacket'
 import type { PileFields } from './assets/pile'
 import { updatePile } from './assets/pile'
 import type { Book } from './layer'
@@ -87,7 +87,9 @@ export async function reuseJacket(context: AiContext, key: string, record: BookR
   if (!existsSync(file) || !existsSync(metaFile)) return false
   const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as JacketMeta
   if (meta.promptVersion !== PROMPT_VERSION || meta.frontSha !== sha256(front)) return false
-  await applyJacket(context, key, record, await cropJacket(readFileSync(file), meta.layout), meta.frontSha)
+  const jacket = await cropJacket(readFileSync(file), meta.layout)
+  if (await jacketPlaceholderShare(jacket) > PLACEHOLDER_LIMIT) return false
+  await applyJacket(context, key, record, jacket, meta.frontSha)
   return true
 }
 
@@ -126,6 +128,11 @@ export async function collectBatches(context: AiContext, records: Map<string, Bo
         }
         // Kept whatever happens next: a Book outside this run (or one whose front is back) reuses it for free.
         const jacket = await cropJacket(result, book.layout)
+        const left = await jacketPlaceholderShare(jacket)
+        if (left > PLACEHOLDER_LIMIT) {
+          context.log(`  ${book.title}: ${Math.round(left * 100)}% of the Spine/back still placeholder colour; rejected, will be queued again`)
+          continue
+        }
         storeJacket(context, book.key, jacket, book.frontSha)
         const front = record ? frontOf(context.out, record) : null
         if (!record || !front) continue
@@ -208,6 +215,11 @@ export async function runAi(context: AiContext, wanting: { key: string, book: Bo
       const started = Date.now()
       const jacket = await context.tools.generateJacket(book, front)
       images++
+      const left = await jacketPlaceholderShare(jacket)
+      if (left > PLACEHOLDER_LIMIT) {
+        context.log(`  AI ${book.title}: ${Math.round(left * 100)}% of the Spine/back still placeholder colour; rejected (run again to retry)`)
+        continue
+      }
       await applyJacket(context, key, record, jacket, frontSha)
       context.log(`  AI ${book.title}: done in ${Math.round((Date.now() - started) / 1000)} s, Spine fit ${Math.round(jacket.spineFit * 100)}%`)
     }
