@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Book } from '../../shared/types/book'
-import { parseLimit, selectBooks } from '../../scripts/assets/select'
+import type { Book } from '../src/layer'
+import { parseLimit, selectBooks } from '../src/assets/select'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,

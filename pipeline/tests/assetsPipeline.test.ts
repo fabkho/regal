@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cleanPublisher, mapGenre, parseQuotes, plainText, resolveQuotes, tidyQuote, verifiedQuotes } from '../../scripts/assets/backText'
-import { photoFacesIn, photoFileFor } from '../../scripts/assets/photos'
+import { cleanPublisher, mapGenre, parseQuotes, plainText, resolveQuotes, tidyQuote, verifiedQuotes } from '../src/assets/backText'
+import { photoFacesIn, photoFileFor } from '../src/assets/photos'
 
 const DESCRIPTION = `<p>"A brilliant, moving novel about memory." <em>—The New York Times</em></p>
 <p>"Nobody writes a sentence like Fairweather." —Ursula Vance, author of <i>Low Tide</i></p>

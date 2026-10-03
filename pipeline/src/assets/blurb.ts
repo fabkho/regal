@@ -2,7 +2,7 @@
 // marketing (bestseller/award lines, review quotes, film tie-ins, edition
 // notes). A small text model does the cutting; a check makes sure it only
 // deleted: every sentence it returns must appear verbatim in the source.
-import { cleanDescription } from '../../server/utils/descriptions'
+import { cleanDescription } from '../resolvers/descriptions'
 import { generateText } from './gemini'
 
 export interface BlurbResult {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cleanTitle, coverCacheKey, isEmptyQuery, normalizeIsbn, resolveCover } from '../../server/utils/covers'
-import type { Fetcher } from '../../server/utils/covers'
+import { cleanTitle, coverCacheKey, isEmptyQuery, normalizeIsbn, resolveCover } from '../src/resolvers/covers'
+import type { Fetcher } from '../src/resolvers/covers'
 
 type Route = (url: string) => { status?: number, json?: unknown } | undefined
 

@@ -1,19 +1,19 @@
 // High-res front Cover + publisher blurb for a Book (#19 in script form).
 // Apple Books first (2000–3000 px, publisher copy), then Google's cover
-// endpoint by ISBN (up to 2000 px, no key), then the source's own cover
-// (Fable), then Open Library. Books without an ISBN (Fable sometimes has
-// none) get candidate ISBNs from an Open Library title search, filtered to
-// the edition's language. Rejects placeholders and small images.
+// endpoint by ISBN (up to 2000 px, no key), then the Book's own cover (the
+// library file's front, `coverUrl` here), then Open Library. Books without an
+// ISBN get candidate ISBNs from an Open Library title search, filtered to the
+// edition's language. Rejects placeholders and small images.
 //
 // Language-aware: a Book read in German is looked up in Apple's German
 // storefront, and the German National Library's cover service (the exact
 // edition by ISBN, ~600 px) comes before any title search, so a German read
 // never gets the English cover.
 import sharp from 'sharp'
-import type { Book } from '../../shared/types/book'
-import { cleanTitle, USER_AGENT } from '../../server/utils/covers'
-import { isbnLanguage } from '../../server/utils/descriptions'
-import { toIsbn13 } from './goodreads'
+import type { Book } from '../layer'
+import { cleanTitle, USER_AGENT } from '../resolvers/covers'
+import { isbnLanguage } from '../resolvers/descriptions'
+import { toIsbn13 } from '../isbn'
 
 export interface FrontResult {
   image: Buffer
@@ -35,7 +35,7 @@ export type AppleHit = AppleBook & { via: 'isbn' | 'search' }
 export interface FrontOptions {
   /** Language the Book was read in (default: its ISBN's, else English). */
   language?: string
-  /** A cover the owner chose (overrides): tried first. */
+  /** A cover the owner chose: tried first, whatever its size. */
   pinnedUrl?: string | null
 }
 
@@ -181,7 +181,7 @@ export async function resolveFront(book: Book, options: FrontOptions = {}): Prom
   if (!known.length) {
     for (const isbn of await discoverIsbns(book, 4, language)) candidates.push({ source: `google (ISBN ${isbn} via Open Library)`, url: googleCover(isbn) })
   }
-  if (book.coverUrl && book.coverUrl !== options.pinnedUrl) candidates.push({ source: 'fable', url: book.coverUrl })
+  if (book.coverUrl && book.coverUrl !== options.pinnedUrl) candidates.push({ source: 'input', url: book.coverUrl })
   for (const isbn of known) candidates.push({ source: 'openlibrary', url: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false` })
 
   let best: FrontResult | null = null

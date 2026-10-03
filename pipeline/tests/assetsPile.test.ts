@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, describe, expect, it } from 'vitest'
-import { averageHex, frontPalette, PILE_FRONT_HEIGHT, PILE_SPINE_HEIGHT, pileName, updatePile } from '../../scripts/assets/pile'
-import type { PileFields } from '../../scripts/assets/pile'
+import { averageHex, frontPalette, PILE_FRONT_HEIGHT, PILE_SPINE_HEIGHT, pileName, updatePile } from '../src/assets/pile'
+import type { PileFields } from '../src/assets/pile'
 
 /** Largest channel difference between two hex colours (WebP shifts colours a little). */
 const off = (a: string | undefined, b: string) => Math.max(...[1, 3, 5].map(i => Math.abs(Number.parseInt(a?.slice(i, i + 2) ?? '0', 16) - Number.parseInt(b.slice(i, i + 2), 16))))

@@ -1,7 +1,8 @@
 // Photo drop-ins (#27): faces the owner photographed for a special edition.
-// Put them in public/book-assets/<key>/photo/ as front/spine/back.(jpg|jpeg|
-// png|webp); the build converts them to <key>/<face>.webp and records them in
-// the manifest's `photoFaces`. A photographed face is never overwritten by AI.
+// Put them in <photos>/<key>/ as front/spine/back.(jpg|jpeg|png|webp) (key:
+// the ISBN-13, else the Book id); Regal assets converts them to
+// <key>/<face>.webp and lists them in the Book's `assets.photoFaces`. A
+// photographed face is never replaced, by AI or anything else.
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -29,12 +30,8 @@ export function photoFacesIn(files: string[]): PhotoFace[] {
   return PHOTO_FACES.filter(face => photoFileFor(files, face) !== null)
 }
 
-/** The drop-in folder of a Book's asset set. */
-export const photoDir = (dir: string) => join(dir, 'photo')
-
-/** The drop-in files in `<dir>/photo`, or an empty list when there are none. */
-export function photoFiles(dir: string): string[] {
-  const folder = photoDir(dir)
+/** The drop-in files in a Book's photo folder, or an empty list when there is none. */
+export function photoFiles(folder: string): string[] {
   if (!existsSync(folder)) return []
   try {
     return readdirSync(folder, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => entry.name)
@@ -44,22 +41,11 @@ export function photoFiles(dir: string): string[] {
   }
 }
 
-/**
- * Converts the drop-in faces of one Book to `<face>.webp` beside them and
- * returns the faces it wrote, in face order.
- */
-export async function convertPhotos(dir: string, faces: PhotoFace[] = photoFacesIn(photoFiles(dir))): Promise<PhotoFace[]> {
-  const files = photoFiles(dir)
-  const written: PhotoFace[] = []
-  for (const face of faces) {
-    const file = photoFileFor(files, face)
-    if (!file) continue
-    const image = sharp(join(photoDir(dir), file))
-      .rotate() // honour the camera's EXIF orientation
-      .resize({ height: PHOTO_MAX_HEIGHT, withoutEnlargement: true })
-      .webp({ quality: 90 })
-    await image.toFile(join(dir, `${face}.webp`))
-    written.push(face)
-  }
-  return written
+/** One drop-in face as the WebP the Book gets (camera orientation honoured, ≤ PHOTO_MAX_HEIGHT tall). */
+export async function convertPhoto(folder: string, file: string): Promise<Buffer> {
+  return sharp(join(folder, file))
+    .rotate() // honour the camera's EXIF orientation
+    .resize({ height: PHOTO_MAX_HEIGHT, withoutEnlargement: true })
+    .webp({ quality: 90 })
+    .toBuffer()
 }

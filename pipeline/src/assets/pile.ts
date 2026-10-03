@@ -1,13 +1,13 @@
 // Pile variants of an asset set. The Stack only ever shows a Book's Spine and,
 // for the top Book, its front, each a few hundred pixels tall on screen, so
 // the client loads these small copies first and the full faces only when a
-// Book is taken out. The manifest also carries the Spine colours (taken from
-// the front, as the client would) and the Spine art's average colour, so a
-// Spine without art is final before any image has loaded.
+// Book is taken out. The library file also carries the Spine colours (taken
+// from the front, as the client would) and the Spine art's average colour, so
+// a Spine without art is final before any image has loaded.
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { spinePalette, toHex } from '../../app/utils/covers/palette'
+import { spinePalette, toHex } from '../layer'
 
 /** Pixel height of the pile front: the top Book's cover, seen at a slant. */
 export const PILE_FRONT_HEIGHT = 512

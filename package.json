@@ -14,10 +14,9 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
-    "assets:build": "tsx scripts/assets/build.ts",
-    "books:daily": "tsx scripts/books-daily.ts",
     "library:convert": "tsx scripts/library/convert.ts",
-    "check:privacy": "node scripts/check-privacy.mjs"
+    "check:privacy": "node scripts/check-privacy.mjs",
+    "regal-assets": "pnpm --dir pipeline assets"
   },
   "dependencies": {
     "@nuxt/fonts": "^0.14.0",
@@ -43,12 +42,10 @@
     "eslint": "^10.11.0",
     "happy-dom": "^20.14.5",
     "playwright-core": "^1.63.0",
-    "sharp": "0.35.5",
     "tsx": "4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2",
-    "vue-tsc": "^3.3.11",
-    "wrangler": "4.146.0"
+    "vue-tsc": "^3.3.11"
   },
   "packageManager": "pnpm@12.6.0",
   "engines": {

@@ -1,0 +1,25 @@
+{
+  "name": "regal-assets",
+  "private": true,
+  "type": "module",
+  "description": "Regal assets: a Regal library file in, the same file with its Books' images and colours out (plus the images), published to R2.",
+  "scripts": {
+    "assets": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3",
+    "wrangler": "4.147.0"
+  }
+}

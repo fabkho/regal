@@ -4,8 +4,8 @@
 // into the rest of the band, so the real fold is detected and, if needed,
 // that band is stretched to the Spine's width.
 import sharp from 'sharp'
-import type { Book } from '../../shared/types/book'
-import { bookDimensions } from '../../app/utils/bookcase/layout'
+import type { Book } from '../layer'
+import { bookDimensions } from '../layer'
 import { generateImage } from './gemini'
 import type { ImageRequest } from './gemini'
 

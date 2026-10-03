@@ -5,7 +5,7 @@
 // Quotes are extracted the way blurb.ts cuts the blurb: the model may only
 // copy, never write. Every quote has to appear verbatim in the publisher
 // description (normalized) or it is dropped.
-import { USER_AGENT } from '../../server/utils/covers'
+import { USER_AGENT } from '../resolvers/covers'
 import { generateText } from './gemini'
 
 export interface Quote {

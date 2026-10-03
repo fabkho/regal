@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Fetcher } from '../../server/utils/covers'
-import { cleanDescription, guessLanguage, isbnLanguage, MAX_DESCRIPTION, resolveDescription } from '../../server/utils/descriptions'
+import type { Fetcher } from '../src/resolvers/covers'
+import { cleanDescription, guessLanguage, isbnLanguage, MAX_DESCRIPTION, resolveDescription } from '../src/resolvers/descriptions'
 
 function stubFetch(routes: Record<string, unknown>) {
   const calls: string[] = []
