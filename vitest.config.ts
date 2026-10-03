@@ -1,5 +1,9 @@
+import { fileURLToPath } from 'node:url'
 import { defineVitestProject } from '@nuxt/test-utils/config'
 import { defineConfig } from 'vitest/config'
+
+/** The named layer alias Regal's own imports use (nuxt.config.ts `$meta.name`). */
+const regalLayer = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
   test: {
@@ -10,6 +14,7 @@ export default defineConfig({
           include: ['tests/unit/**/*.test.ts'],
           environment: 'node',
         },
+        resolve: { alias: { '#layers/regal/': regalLayer } },
       },
       await defineVitestProject({
         test: {

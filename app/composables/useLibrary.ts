@@ -1,16 +1,9 @@
 import { computed } from 'vue'
-import type { ImportLibraryResult } from '#layers/regal/shared/library/importLibrary'
-import { NotAReadingTrackerExportError } from '#layers/regal/shared/library/importReadingTracker'
 import type { Book } from '#layers/regal/shared/types/book'
-
-/** localStorage key. Bump the version below if the stored shape ever changes incompatibly. */
-export const LIBRARY_STORAGE_KEY = 'regal:library:v1'
-export const LIBRARY_STORAGE_VERSION = 1
-
-export interface StoredLibrary {
-  version: number
-  books: Book[]
-}
+import { assetFaces } from '#layers/regal/app/utils/covers/bookAssets'
+import type { AssetFaces, BookAssetEntry } from '#layers/regal/app/utils/covers/bookAssets'
+import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
+import type { LibraryLoadError, LoadedLibrary } from '#layers/regal/app/utils/library/libraryFile'
 
 export interface LibrarySummary {
   total: number
@@ -18,55 +11,25 @@ export interface LibrarySummary {
   counts: Record<string, number>
 }
 
-function booksState() {
-  // useState: per-request on the server, shared across components on the
-  // client. No module-scope reactive state, so nothing leaks between SSR
-  // requests and nothing reads localStorage before hydration.
-  return useState<Book[]>('library:books', () => [])
-}
-
-function warningsState() {
-  return useState<string[]>('library:warnings', () => [])
-}
-
-function errorState() {
-  return useState<string | null>('library:error', () => null)
+/** Where the shown Library came from. */
+export interface LibrarySource {
+  /** The library file's URL as configured (may be relative to the page). */
+  src: string
+  /** Whose Library it is, when the file says. */
+  owner: string | null
 }
 
 /**
- * True once the client has attempted to restore a Library from localStorage
- * after hydration. Useful for UI that wants to avoid flashing the empty
- * state before restore completes.
- */
-export function useLibraryRestored() {
-  return useState<boolean>('library:restored', () => false)
-}
-
-/**
- * The CSV importer (Papa Parse) and the demo CSVs load on demand, in the
- * browser: kept out of server bundles, where some builds (e.g. a Nuxt host on
- * Cloudflare) rewrite the `typeof window` inside Papa Parse's worker string
- * into invalid code. JSON exports parse without it.
- */
-const browserOnly = () => Promise.reject(new Error('CSV libraries load in the browser only.'))
-const csvImporter = () => import.meta.server
-  ? browserOnly()
-  : import('#layers/regal/shared/library/importLibrary')
-
-async function parseLibraryText(text: string): Promise<ImportLibraryResult> {
-  return (await csvImporter()).importLibrary(text)
-}
-
-/**
- * Reactive Library store, shared across every component that calls it.
- * Persisted to `localStorage` under `regal:library:v1` by the
- * `library-persistence.client` plugin, which restores it after hydration
- * to avoid SSR/client hydration mismatches.
+ * The Library shown, shared across every component that calls it: the Books,
+ * their faces and where they came from, or why there are none. Filled from a
+ * Regal library file by useRegalLibrary. useState: per request on the server
+ * (no module-scope state shared between requests), then in the page payload.
  */
 export function useLibrary() {
-  const books = booksState()
-  const warnings = warningsState()
-  const error = errorState()
+  const books = useState<Book[]>('library:books', () => [])
+  const assets = useState<Record<string, BookAssetEntry>>('library:assets', () => ({}))
+  const source = useState<LibrarySource | null>('library:source', () => null)
+  const error = useState<LibraryLoadError | null>('library:error', () => null)
 
   const summary = computed<LibrarySummary>(() => {
     const counts: Record<string, number> = {}
@@ -76,74 +39,33 @@ export function useLibrary() {
     return { total: books.value.length, counts }
   })
 
-  function applyResult(result: { books: Book[], warnings: string[] }) {
-    books.value = result.books
-    warnings.value = result.warnings
+  /** Shows a Library read from the file at `src`. */
+  function show(library: LoadedLibrary, src: string) {
+    books.value = library.books
+    assets.value = library.assets
+    source.value = { src, owner: library.owner }
     error.value = null
   }
 
-  async function importFile(file: File) {
-    const { importLibrary, NotAGoodreadsExportError } = await csvImporter()
-    try {
-      const text = await file.text()
-      const result = importLibrary(text)
-      applyResult(result)
-    }
-    catch (caught) {
-      warnings.value = []
-      if (caught instanceof NotAGoodreadsExportError) {
-        error.value = 'That doesn\'t look like a Goodreads library export CSV. Export it from Goodreads → My Books → Import and export → Export Library.'
-      }
-      else if (caught instanceof NotAReadingTrackerExportError) {
-        error.value = 'That JSON isn\'t a reading-tracker export. Create one with `reading list --json > library.json`.'
-      }
-      else {
-        error.value = 'Could not read that file. Please try again.'
-      }
-    }
-  }
-
-  /** 'classics' is the public Demo library; 'sun-eater' is a dev test Library (one series, one design). */
-  async function loadDemo(name: 'classics' | 'sun-eater' = 'classics') {
-    try {
-      if (import.meta.server) await browserOnly()
-      const csv = name === 'sun-eater'
-        ? await import('#layers/regal/app/assets/data/sun-eater.csv?raw')
-        : await import('#layers/regal/app/assets/data/demo-library.csv?raw')
-      const result = await parseLibraryText(csv.default)
-      applyResult(result)
-    }
-    catch (caught) {
-      error.value = caught instanceof Error ? caught.message : 'Could not load the demo library.'
-    }
-  }
-
-  /** Loads a Library export from a URL (dev: the asset pipeline's /book-assets/library.json). */
-  async function loadUrl(url: string) {
-    try {
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`${url}: ${response.status}`)
-      applyResult(await parseLibraryText(await response.text()))
-    }
-    catch (caught) {
-      error.value = caught instanceof Error ? caught.message : 'Could not load that library.'
-    }
-  }
-
-  function clear() {
+  /** Shows why there is no Library: never an empty shelf without a word. */
+  function fail(reason: LibraryLoadError, src: string | null) {
     books.value = []
-    warnings.value = []
-    error.value = null
+    assets.value = {}
+    source.value = src ? { src, owner: null } : null
+    error.value = reason
   }
 
-  return {
-    books,
-    summary,
-    warnings,
-    error,
-    importFile,
-    loadDemo,
-    loadUrl,
-    clear,
+  /**
+   * A Book's faces with their URLs resolved against the library file's, in
+   * the browser (where the images load); null when the file has none for it.
+   */
+  function facesOf(bookId: string): AssetFaces | null {
+    const entry = assets.value[bookId]
+    const src = source.value?.src
+    if (!entry || !src || !import.meta.client) return null
+    const page = window.location.href
+    return assetFaces(entry, reference => resolveLibraryUrl(reference, src, page))
   }
+
+  return { books, assets, source, error, summary, show, fail, facesOf }
 }

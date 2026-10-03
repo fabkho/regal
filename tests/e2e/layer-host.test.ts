@@ -2,8 +2,9 @@ import { fileURLToPath } from 'node:url'
 import { $fetch, createPage, fetch, setup, url } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 
-// Regal as a Nuxt layer: tests/fixtures/layer-host extends the repo root in
-// 'embed' mode and puts RegalBooksStage + RegalBooksSidebar on /books.
+// Regal as a Nuxt layer: tests/fixtures/layer-host extends the repo root and
+// puts RegalBooksStage + RegalBooksSidebar on /books, fed a synthetic Regal
+// library file (public/books/library.json).
 describe('Regal as a Nuxt layer', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('../fixtures/layer-host', import.meta.url)),
@@ -20,14 +21,17 @@ describe('Regal as a Nuxt layer', async () => {
     expect(html).toContain('books read')
     expect(html).toContain('The Paper Lighthouse')
     expect(html).toContain('A Grammar of Small Moons')
-    // None of Regal's standalone page: no head title, upload or global CSS.
-    expect(html).not.toContain('Regal — your Goodreads library')
-    expect(html).not.toContain('Try demo library')
+    // None of Regal's standalone page: no head title, demo or global CSS.
+    expect(html).not.toContain('Regal — a reading library')
+    expect(html).not.toContain('Demo Reader')
   })
 
-  it('ships no Regal page and no dev API into the host', async () => {
+  it('ships no Regal page, no demo and no server routes into the host', async () => {
     expect((await fetch('/')).status).toBe(404)
-    expect((await fetch('/api/dev/choices')).status).toBe(404)
+    expect((await fetch('/demo-library.json')).status).toBe(404)
+    for (const route of ['/api/cover?isbn13=9780547928227', '/api/description?title=Dune', '/api/dev/choices', '/api/dev/editions?title=Dune']) {
+      expect((await fetch(route)).status, route).toBe(404)
+    }
   })
 
   it('renders the 3D Stack and the records side by side, linked', async () => {
@@ -49,10 +53,11 @@ describe('Regal as a Nuxt layer', async () => {
     // A Stack-only page keeps the host's URL clean.
     expect(page.url()).not.toContain('view=')
 
-    // The asset set comes from the host's assetsBase.
-    await expect.poll(() => requests.some(path => path === '/books/manifest.json'), { timeout: 10_000 }).toBe(true)
+    // The images resolve against the library file's URL (/books/library.json);
+    // the file itself came with the server-rendered page. Nothing else is asked.
     await expect.poll(() => requests.some(path => /^\/books\/fx-\d+\/spine\.webp$/.test(path)), { timeout: 10_000 }).toBe(true)
-    expect(requests.filter(path => path.startsWith('/book-assets/'))).toEqual([])
+    expect(requests.filter(path => /^\/(book-assets|api)\/|manifest\.json$/.test(path))).toEqual([])
+    expect(requests.filter(path => path.includes('fx-005'))).toEqual([])
 
     // Records pick Books in the 3D; the details card shows over it.
     const sidebar = page.locator('.regal-books-sidebar')

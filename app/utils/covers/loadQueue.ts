@@ -97,7 +97,7 @@ const aborted = () => new DOMException('The load was dropped.', 'AbortError')
 
 /**
  * Runs upstream-bound work a few at a time, the most urgent first. Starting
- * waits a tick, so Books queued together (all of them, once the manifest is
+ * waits a tick, so Books queued together (all of them, once the Library is
  * in) are ranked together instead of the first few taking every slot. An
  * aborted `signal` drops a job that hasn't started (the task itself should
  * pass the signal on, e.g. to fetch).
