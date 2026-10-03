@@ -1,6 +1,9 @@
 // Minimal Gemini REST client for the asset pipeline (image + text).
 // Needs GEMINI_API_KEY; image models have no free tier (billing required).
 
+import type { LargeJson } from './largeJson'
+import { parseLargeJson } from './largeJson'
+
 export const IMAGE_MODEL = 'gemini-3-pro-image'
 export const TEXT_MODEL = 'gemini-flash-lite-latest'
 /** Standard price per 2K image for IMAGE_MODEL. */
@@ -39,10 +42,12 @@ function imageParts(request: ImageRequest): Part[] {
 
 const imageConfig = (request: ImageRequest) => ({ responseModalities: ['IMAGE'], imageConfig: { aspectRatio: request.aspectRatio, imageSize: request.imageSize ?? '2K' } })
 
-function imageOf(parts: Part[]): Buffer | null {
+function imageOf(parts: Part[], large?: LargeJson): Buffer | null {
   const inline = parts.find(part => part.inlineData || part.inline_data)
   const data = inline?.inlineData?.data ?? inline?.inline_data?.data
-  return data ? Buffer.from(data, 'base64') : null
+  if (!data) return null
+  const bytes = large?.bytes(data)
+  return Buffer.from(bytes ? bytes.toString('latin1') : data, 'base64')
 }
 
 /** One image from a prompt and input images; returns PNG/JPEG bytes. */
@@ -112,14 +117,16 @@ export async function getImageBatch(name: string): Promise<BatchStatus> {
     signal: AbortSignal.timeout(300_000),
   })
   if (!response.ok) throw new Error(`Gemini batch ${name}: HTTP ${response.status}`)
-  const data = await response.json() as BatchResponse
+  // Too big for response.json() once done (see largeJson.ts).
+  const large = parseLargeJson(Buffer.from(await response.arrayBuffer()))
+  const data = large.value as BatchResponse
   const raw = (data.metadata?.state ?? '').replace(/^(BATCH|JOB)_STATE_/, '').toLowerCase()
   const state = (['pending', 'running', 'succeeded', 'failed', 'cancelled', 'expired'].includes(raw) ? raw : 'unknown') as BatchState
   const results = new Map<string, Buffer | string>()
   for (const item of data.response?.inlinedResponses?.inlinedResponses ?? []) {
     const key = item.metadata?.key
     if (!key) continue
-    const image = imageOf(item.response?.candidates?.[0]?.content?.parts ?? [])
+    const image = imageOf(item.response?.candidates?.[0]?.content?.parts ?? [], large)
     results.set(key, image ?? item.error?.message ?? 'no image in response')
   }
   return { state, results }
