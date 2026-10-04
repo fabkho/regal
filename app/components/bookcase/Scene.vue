@@ -15,6 +15,7 @@ import {
   KEY_LIGHT,
   TARGET_BOUNDS,
 } from '#layers/regal/app/utils/bookcase/scene'
+import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 
 const props = withDefaults(defineProps<{ debugSlots?: boolean, bookcaseCount?: number }>(), {
   debugSlots: false,
@@ -32,11 +33,14 @@ const reducedMotion = usePreferredReducedMotion()
 const damping = computed(() => reducedMotion.value !== 'reduce')
 
 const keyLight = shallowRef<DirectionalLight | null>(null)
+const quality = useRenderQuality()
 
 watch(keyLight, (light) => {
   if (!light) return
   const { shadow } = light
-  shadow.mapSize.set(2048, 2048)
+  // Phones get a smaller map, as soft (utils/stage/quality.ts).
+  const { mapSize, radius } = shadowFor(quality.value, 2048, 7)
+  shadow.mapSize.set(mapSize, mapSize)
   shadow.camera.near = 0.5
   shadow.camera.far = 16
   shadow.camera.left = -KEY_LIGHT.shadowRadius
@@ -46,7 +50,7 @@ watch(keyLight, (light) => {
   // VSM: a wide blur keeps the shadow soft, like light through a window.
   shadow.bias = -0.0005
   shadow.normalBias = 0.02
-  shadow.radius = 7
+  shadow.radius = radius
   shadow.blurSamples = 16
   shadow.camera.updateProjectionMatrix()
 }, { immediate: true })
