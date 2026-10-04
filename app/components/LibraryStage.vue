@@ -11,6 +11,7 @@ import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
 import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
 import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
+import { resolveSheetVariant } from '#layers/regal/app/utils/books/sheet'
 
 const props = withDefaults(defineProps<{
   /** Sort & filter controls over the 3D (off when a sidebar shows them). */
@@ -83,8 +84,24 @@ useHead({
 const isReady = ref(false)
 /** The stage element: a details card put back as a label lands inside it. */
 const stageElement = ref<HTMLElement | null>(null)
+/** The band over the top of the stage (the view switch, the Stack controls). */
+const topElement = ref<HTMLElement | null>(null)
 const showStackControls = computed(() => props.showControls && mode.value === 'stack' && books.value.length > 0)
 const hasTop = computed(() => !props.stackOnly || showStackControls.value)
+
+// Narrow stages (a phone) show the details as a bottom sheet instead of the
+// card, which would cover the picked Book there (utils/books/sheet.ts).
+// ?sheet=a|b|c picks a prototype variant, ?sheet=off keeps the card.
+const { width: stageWidth, height: stageHeight } = useElementSize(stageElement)
+const sheet = computed(() => (props.showDetails ? resolveSheetVariant(route.query.sheet, stageWidth.value) : null))
+// The picked Book floats below the top band too (utils/books/inspect.ts).
+const { height: topHeight } = useElementSize(topElement, undefined, { box: 'border-box' })
+const insets = useInspectInsets()
+/** The band's fade below it (.stage__top--band::after). */
+const TOP_FADE = 24
+watchEffect(() => {
+  insets.value.top = sheet.value && hasTop.value ? topHeight.value + (mode.value === 'stack' ? TOP_FADE : 0) : 0
+})
 
 function setMode(value: ViewMode) {
   if (mode.value === value) return
@@ -173,6 +190,7 @@ watch(books, (list) => {
          Stack it is paper, so the pile scrolls out underneath it. -->
     <div
       v-if="hasTop"
+      ref="topElement"
       class="stage__top"
       :class="{ 'stage__top--band': mode === 'stack' }"
     >
@@ -234,6 +252,9 @@ watch(books, (list) => {
     <BooksDetails
       v-if="props.showDetails"
       class="stage__details"
+      :class="{ 'stage__details--sheet': sheet }"
+      :sheet="sheet"
+      :stage-height="stageHeight"
     />
 
     <p
@@ -388,5 +409,14 @@ watch(books, (list) => {
   right: 1rem;
   bottom: 1rem;
   width: min(22rem, calc(100% - 2rem));
+}
+
+/* The sheet: full width on the bottom edge, its side and bottom borders just outside. */
+.stage__details--sheet {
+  right: -1px;
+  bottom: -1px;
+  left: -1px;
+  z-index: 4;
+  width: auto;
 }
 </style>

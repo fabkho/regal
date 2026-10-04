@@ -29,6 +29,7 @@ import gsap from 'gsap'
 import type { Book } from '#layers/regal/shared/types/book'
 import { hashString } from '#layers/regal/app/utils/bookcase/layout'
 import type { BookPose } from '#layers/regal/app/utils/books/pose'
+import { inspectFrame } from '#layers/regal/app/utils/books/inspect'
 import { planShuffle, presenceAt, sampleTrack } from '#layers/regal/app/utils/stack/shuffle'
 import { chooseShuffle, countMoves } from '#layers/regal/app/utils/stack/moves'
 import type { ShufflePlan, ShuffleView } from '#layers/regal/app/utils/stack/shuffle'
@@ -98,10 +99,6 @@ const HOVER_TILT = 0.045
 /** First phase of a pick: slide straight out before flying to the camera. */
 const PULL_OUT = 0.2
 const PULL_PHASE = 0.3
-/** The picked Book fills this share of the view height. */
-const INSPECT_FILL = 0.52
-/** Share of the half view width the picked Book moves left, clear of the details card. */
-const INSPECT_ASIDE = 0.3
 const OUT_SECONDS = 1.2
 const RETURN_SECONDS = 0.9
 const FLIP_SECONDS = 0.7
@@ -567,6 +564,18 @@ const { pickedId, face, putAway } = useBookPick()
 const reducedMotion = usePreferredReducedMotion()
 const reduced = computed(() => reducedMotion.value === 'reduce')
 
+// What covers the stage over the 3D (the controls' band, a phone's details
+// sheet), as shares of its height, eased so the picked Book glides when the
+// sheet's height changes rather than jumping.
+const insets = useInspectInsets()
+const inset = { top: 0, bottom: 0 }
+function followInsets(rate: number) {
+  const height = (renderer.domElement as HTMLElement | undefined)?.clientHeight
+  if (!height) return
+  inset.top += (insets.value.top / height - inset.top) * rate
+  inset.bottom += (insets.value.bottom / height - inset.bottom) * rate
+}
+
 const glintLight = shallowRef<PointLight | null>(null)
 const group = shallowRef<Group | null>(null)
 /** Not drawn right now: waiting to appear in a re-sort (the raycaster still finds it). */
@@ -963,6 +972,7 @@ onBeforeRender(({ delta }) => {
   }
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-(delta ?? 0.016) * 12)
+  followInsets(reduced.value ? 1 : 1 - Math.exp(-(delta ?? 0.016) * 6))
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
   // No scroll highlight while a Book is out or a re-sort runs; the mouse wins while it rests on a Book.
   highlight.update(props.poses, delta ?? 0.016, !!pickedId.value || !!running || !!requested, hoveredId)
@@ -1034,19 +1044,25 @@ onBeforeRender(({ delta }) => {
         mesh.quaternion.copy(baseQuaternion)
       }
       else {
-        // In front of the camera, sized to fill part of the view, a little above centre.
+        // In front of the camera, sized to fill part of the view, a little above centre;
+        // left of centre on wide views (the details card, bottom right), above a
+        // phone's details sheet (utils/books/inspect.ts).
         cam.getWorldDirection(forward)
         up.copy(cam.up).applyQuaternion(cam.quaternion)
-        const fov = MathUtils.degToRad(cam.fov ?? 38)
-        const distance = pose.height / (2 * Math.tan(fov / 2) * INSPECT_FILL)
-        // On wide views, sit left of centre so the details card (bottom right) doesn't cover it.
         right.crossVectors(forward, up).normalize()
-        const halfWidth = distance * Math.tan(fov / 2) * (cam.aspect ?? 1)
-        const aside = props.aside && (cam.aspect ?? 1) > 1.1 ? -halfWidth * INSPECT_ASIDE : 0
+        const frame = inspectFrame({
+          fov: MathUtils.degToRad(cam.fov ?? 38),
+          aspect: cam.aspect ?? 1,
+          height: pose.height,
+          depth: pose.depth,
+          top: inset.top,
+          bottom: inset.bottom,
+          aside: props.aside,
+        })
         inspectPosition.copy(cam.position)
-          .addScaledVector(forward, distance)
-          .addScaledVector(up, distance * 0.04)
-          .addScaledVector(right, aside)
+          .addScaledVector(forward, frame.distance)
+          .addScaledVector(up, frame.up)
+          .addScaledVector(right, frame.right)
         lookDummy.position.copy(inspectPosition)
         lookDummy.up.copy(up)
         lookDummy.lookAt(cam.position)
