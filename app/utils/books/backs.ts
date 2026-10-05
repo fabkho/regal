@@ -19,6 +19,18 @@ export interface BackDue {
   queued: boolean
 }
 
+/**
+ * A Book's back art as far as it is known: undefined until its faces from the
+ * library file are known (applyCover sets them a moment after the Book
+ * appears; on a slow entrance a press can come first), then the URL, or null
+ * when the Book has none. A back prepared while it was unknown would count as
+ * having no art and be drawn without it for good, so it waits.
+ */
+export function backArtUrl(set: { back?: string } | null | undefined): string | null | undefined {
+  if (set === undefined) return undefined
+  return set?.back ?? null
+}
+
 export function backDrawDue(state: BackDue): boolean {
   if (state.queued || !state.artReady) return false
   return state.pick >= 1 || state.face === 'back'

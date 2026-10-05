@@ -35,6 +35,8 @@ const debugLoads = computed(() => debug.value.includes('loads'))
 
 const { books, assets, source, error } = useLibrary()
 const { pickedId, putAway } = useBookPick()
+// Short vibrations: a Book taken out or put back, a tiny tick per Book while a finger scrolls (utils/books/haptics.ts).
+useBookHaptics()
 const mode = useViewMode()
 
 // ?view=stack deep-links the Stack view; switching views keeps the URL in step.

@@ -1,8 +1,11 @@
 <script setup lang="ts">
-// Dev-only drawer: links that play the decided re-sort transitions. Settled
-// decisions are not listed here (see DECIDED_LOOK in useDevChoices.ts). The
-// cover-override tool went with the sources (it belongs to the Pipeline).
+// Dev-only drawer: links that play the decided re-sort transitions, and the
+// haptics to compare on a phone. Settled decisions are not listed here (see
+// DECIDED_LOOK in useDevChoices.ts). The cover-override tool went with the
+// sources (it belongs to the Pipeline).
 import { readYears } from '#layers/regal/app/utils/stack/view'
+import { hapticsTuning, patternParam, PULSE_CHOICES, PULSES, tickRun, vibrates } from '#layers/regal/app/utils/books/haptics'
+import type { Pulse } from '#layers/regal/app/utils/books/haptics'
 
 const { books } = useLibrary()
 const mode = useViewMode()
@@ -33,6 +36,37 @@ const nextYear = computed(() => {
 function yearNow() {
   if (mode.value !== 'stack') showStack()
   if (nextYear.value !== null) setStackView({ year: nextYear.value })
+}
+
+// Haptics: each choice goes into the URL (?hapticTick= …, read on every
+// pulse by useBookHaptics, no reload) and plays once, so it can be felt.
+const route = useRoute()
+const router = useRouter()
+const haptics = computed(() => hapticsTuning(route.query))
+const HAPTIC_KINDS: { kind: Pulse, param: string, title: string }[] = [
+  { kind: 'tick', param: 'hapticTick', title: 'Scroll tick (per Book on the focus line)' },
+  { kind: 'out', param: 'hapticOut', title: 'Taking a Book out' },
+  { kind: 'back', param: 'hapticBack', title: 'Putting it back' },
+]
+/** Read in the browser only, so the server's render and the page's agree. */
+const canVibrate = ref(false)
+onMounted(() => {
+  canVibrate.value = typeof navigator.vibrate === 'function'
+})
+
+function chosen(kind: Pulse, steps: readonly number[]) {
+  return patternParam(haptics.value.patterns[kind]) === patternParam(steps)
+}
+
+function setQuery(change: Record<string, string | undefined>) {
+  void router.replace({ query: { ...route.query, ...change } })
+}
+
+function choosePulse(kind: Pulse, param: string, steps: readonly number[]) {
+  // The default needs no parameter.
+  setQuery({ [param]: patternParam(steps) === patternParam(PULSES[kind]) ? undefined : patternParam(steps) })
+  const play = kind === 'tick' ? tickRun(steps) : [...steps]
+  if (canVibrate.value && vibrates(play)) navigator.vibrate(play)
 }
 </script>
 
@@ -82,6 +116,69 @@ function yearNow() {
           >
             New year ({{ stackView.year ?? 'all years' }} → {{ nextYear }})
           </button>
+        </p>
+      </section>
+
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Haptics
+        </h3>
+        <p class="choices__hint">
+          {{ canVibrate
+            ? 'Tap a choice to feel it; it applies at once (kept in the URL).'
+            : 'This browser has no Vibration API (Android Chrome has one; iOS Safari has none).' }}
+        </p>
+        <div
+          class="choices__options"
+          role="group"
+          aria-label="Haptics"
+        >
+          <button
+            type="button"
+            class="choices__option"
+            :aria-pressed="haptics.enabled !== false"
+            @click="setQuery({ haptics: undefined })"
+          >
+            On
+          </button>
+          <button
+            type="button"
+            class="choices__option"
+            :aria-pressed="haptics.enabled === false"
+            @click="setQuery({ haptics: '0' })"
+          >
+            Off
+          </button>
+        </div>
+        <template
+          v-for="{ kind, param, title } in HAPTIC_KINDS"
+          :key="kind"
+        >
+          <p class="choices__label">
+            {{ title }}
+          </p>
+          <div
+            class="choices__options"
+            role="group"
+            :aria-label="title"
+          >
+            <button
+              v-for="choice in PULSE_CHOICES[kind]"
+              :key="choice.label"
+              type="button"
+              class="choices__option"
+              :aria-pressed="chosen(kind, choice.steps)"
+              @click="choosePulse(kind, param, choice.steps)"
+            >
+              {{ choice.label }}<span
+                v-if="patternParam(choice.steps) === patternParam(PULSES[kind])"
+                class="choices__default"
+              > ·</span>
+            </button>
+          </div>
+        </template>
+        <p class="choices__hint">
+          · marks the current default.
         </p>
       </section>
     </aside>
@@ -165,5 +262,37 @@ function yearNow() {
 
 .choices__link + .choices__link {
   margin-left: 0.8rem;
+}
+
+.choices__label {
+  margin: 0.8rem 0 0.35rem;
+  color: var(--color-ink-muted);
+  font-size: var(--text-xs);
+}
+
+.choices__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.choices__option {
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+  background: transparent;
+  border: 1px solid var(--color-ink);
+  cursor: pointer;
+}
+
+.choices__option[aria-pressed="true"] {
+  color: var(--color-bg);
+  background: var(--color-ink);
+}
+
+.choices__default {
+  color: var(--color-accent);
 }
 </style>

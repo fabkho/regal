@@ -42,7 +42,7 @@ import { decodeImage, fetchImage, loadPicture } from '#layers/regal/app/utils/co
 import type { Picture } from '#layers/regal/app/utils/covers/images'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
-import { backDrawDue } from '#layers/regal/app/utils/books/backs'
+import { backArtUrl, backDrawDue } from '#layers/regal/app/utils/books/backs'
 import { CLICK_SLOP } from '#layers/regal/app/utils/books/press'
 import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
@@ -125,8 +125,8 @@ interface BookMaterials {
     /** Head, tail and fore edge. */
     materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
   }
-  /** The Book's faces from the library file; null when it has none. */
-  set: AssetFaces | null
+  /** The Book's faces from the library file; null when it has none, undefined until applyCover has read them. */
+  set: AssetFaces | null | undefined
   /** Asset set artwork (real or AI), as it arrives. */
   art: { spine?: Picture, back?: Picture }
   /** The blurb once it has arrived, for redraws. */
@@ -313,7 +313,7 @@ function materialsFor(pose: BookPose): Material[] {
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -768,13 +768,16 @@ function prepareBack(bookId: string): BackPrep | null {
   const entry = materialsByBook.get(bookId)
   if (!entry) return null
   if (entry.backPrep) return entry.backPrep
+  // Its faces not known yet (a press during a slow entrance): no prep, or the
+  // back would be drawn without its art. The pick asks again every frame.
+  const url = backArtUrl(entry.set)
+  if (url === undefined) return null
   for (const [id, other] of materialsByBook) {
     if (id !== bookId && id !== pickedId.value && other.backPrep && !other.backPrep.queued) releaseBack(id)
   }
   const aborted = new AbortController()
   // The Book going stops it too; the listener goes with the prep.
   entry.aborted.signal.addEventListener('abort', () => aborted.abort(), { once: true, signal: aborted.signal })
-  const url = entry.set?.back
   const prep: BackPrep = {
     bytes: url ? fetchImage(url, loadPriority(bookId, 'hidden'), aborted.signal) : Promise.resolve(null),
     picture: undefined,
