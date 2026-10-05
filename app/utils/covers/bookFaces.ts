@@ -373,8 +373,14 @@ export const WORD_MEASURE_SIZE = 100
  * WORD_MEASURE_SIZE and adds a line up from them, scaled to the size asked.
  * fitTextBlocks searches for its size by wrapping the same words at a dozen
  * sizes, each line re-measured as it grows: on a phone, measuring a back's
- * blurb that way took longer than the rest of drawing it. Kerning across a
- * space is lost, a fraction of a pixel per line.
+ * blurb that way took longer than the rest of drawing it. It assumes a word
+ * is as wide at any size as its width at WORD_MEASURE_SIZE scaled: true for
+ * canvas measureText, which neither hints nor snaps widths (measured in
+ * Chromium with the back's fonts, 5.5–28 px: a line is at most 0.1 %
+ * narrower than estimated, never wider), and nothing on a back's canvas sets
+ * letterSpacing, which would not scale. Kerning across a space is lost, a
+ * fraction of a pixel per line. Should a platform still measure a line wider
+ * than estimated, drawFitted squeezes it into the box rather than past it.
  */
 export function wordMeasure(measure: FitOptions['measure']): FitOptions['measure'] {
   const widths = new Map<string, number>()
@@ -403,7 +409,8 @@ const canvasMeasure = (context: CanvasRenderingContext2D, styles: BlockStyle[]):
   return context.measureText(text).width
 })
 
-function drawFitted(context: CanvasRenderingContext2D, fitted: FitResult, styles: BlockStyle[], color: RGB, x: number, top: number) {
+/** Draws fitted lines; none goes wider than `maxWidth` (canvas squeezes a line that would, a no-op when it fits). */
+function drawFitted(context: CanvasRenderingContext2D, fitted: FitResult, styles: BlockStyle[], color: RGB, x: number, top: number, maxWidth: number) {
   context.textAlign = 'left'
   context.textBaseline = 'top'
   for (const line of fitted.lines) {
@@ -411,7 +418,7 @@ function drawFitted(context: CanvasRenderingContext2D, fitted: FitResult, styles
     const style = styles[line.block]!
     context.font = style.font(line.size)
     context.fillStyle = rgba(color, style.alpha ?? 1)
-    context.fillText(line.text, x, top + line.y)
+    context.fillText(line.text, x, top + line.y, maxWidth)
   }
 }
 
@@ -602,7 +609,7 @@ function drawClassicBack(context: CanvasRenderingContext2D, input: FaceInput, wi
       max: Math.max(7 * k, Math.min(15 * k, width * 0.042)),
       lineHeight: 1.32,
     })
-    drawFitted(context, fitted, styles, color, margin, top)
+    drawFitted(context, fitted, styles, color, margin, top, inner)
     top += fitted.height + height * 0.035
   }
   else {
@@ -645,7 +652,7 @@ function drawClassicBack(context: CanvasRenderingContext2D, input: FaceInput, wi
       last.text = ellipsize(context, `${last.text}…`, inner)
     }
     // A blurb too short to fill even at the largest size sits a little low, not pinned to the top.
-    drawFitted(context, fitted, styles, color, margin, top + (blurbBottom - top - fitted.height) * 0.3)
+    drawFitted(context, fitted, styles, color, margin, top + (blurbBottom - top - fitted.height) * 0.3, inner)
   }
   else if (blurbBottom > top) {
     drawPlaceholderLines(context, color, margin, top, inner, blurbBottom, k)
