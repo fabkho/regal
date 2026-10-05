@@ -1,5 +1,6 @@
 import { createTickState, hapticsTuning, mayPulse, pickPulse, PULSES, scrollTick, vibrates } from '#layers/regal/app/utils/books/haptics'
 import type { HapticsTuning, Pulse } from '#layers/regal/app/utils/books/haptics'
+import type { Ref } from 'vue'
 
 type HapticNavigator = Navigator & { userActivation?: { isActive: boolean, hasBeenActive: boolean } }
 
@@ -12,16 +13,21 @@ const UNTUNED: HapticsTuning = { enabled: null, patterns: PULSES }
  * turned haptics off (runtimeConfig.public.regal.haptics). On the dev server
  * ?haptics=1|0, ?hapticOut=, ?hapticBack= and ?hapticTick= (patterns in ms,
  * `10,45,18`) tune them, read on every change; production builds drop that.
- * Call once per stage.
+ * Call once per stage. A view with its own Pick (RegalBooksRow) hands in
+ * its own picked Book, focused Book and finger scroll.
  */
-export function useBookHaptics() {
+export function useBookHaptics(sources: {
+  pickedId?: Readonly<Ref<string | null>>
+  focusedBook?: Readonly<Ref<string | null>>
+  touchScrolling?: Readonly<Ref<boolean>>
+} = {}) {
   if (!import.meta.client) return
   const { haptics } = useRegalConfig()
   const route = import.meta.dev ? useRoute() : null
   const reducedMotion = usePreferredReducedMotion()
-  const { pickedId } = useBookPick()
-  const focusedBook = useFocusedBook()
-  const touchScrolling = useTouchScrolling()
+  const pickedId = sources.pickedId ?? useBookPick().pickedId
+  const focusedBook = sources.focusedBook ?? useFocusedBook()
+  const touchScrolling = sources.touchScrolling ?? useTouchScrolling()
   const ticks = createTickState()
 
   function pulse(kind: Pulse, userActive: (host: HapticNavigator) => boolean) {

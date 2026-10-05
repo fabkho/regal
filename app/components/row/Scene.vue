@@ -1,8 +1,9 @@
 <script setup lang="ts">
-// Design round (horizontal Stack): the scene of one prototype row. The camera
-// only slides along x, to where the card's native horizontal scroll puts it
-// (RowCard); it renders only when something changed and only while the card
-// is on screen.
+// The scene of a row (RegalBooksRow): its camera only slides along x, to
+// where the card's native horizontal scroll puts it (RowCard), and steps
+// back while a Book is out in the card. Broken out, it keeps the card's view
+// over the whole viewport. It renders only when something changed, and only
+// while the row is on screen.
 import type { DirectionalLight, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, ShadowMaterial } from 'three'
 import { MathUtils, Vector3 } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
@@ -10,17 +11,14 @@ import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
 import type { Book } from '#layers/regal/shared/types/book'
-import type { RowContext } from '#layers/regal/app/prototype/row/context'
-import { PILE_SHEET, STACK_SHEET } from '#layers/regal/app/prototype/row/layout'
-import type { RowLayout, RowPile, RowVariant } from '#layers/regal/app/prototype/row/layout'
+import type { RowContext } from '#layers/regal/app/utils/row/context'
+import { ROW_CAMERA, ROW_SHEET, ROW_SHEET_HEIGHT } from '#layers/regal/app/utils/row/layout'
+import type { RowLayout } from '#layers/regal/app/utils/row/layout'
 
 const props = defineProps<{
-  variant: RowVariant
   layout: RowLayout
   books: Book[]
   ctx: RowContext
-  hoverLook?: 'stack' | 'tip'
-  riffleLook?: 'stack' | 'tip'
 }>()
 
 const { camera, scene, renderer, sizes } = useTres()
@@ -34,17 +32,13 @@ const floorMaterial = shallowRef<ShadowMaterial | null>(null)
 const veil = shallowRef<Mesh | null>(null)
 const veilForward = new Vector3()
 
-const cam = computed(() => props.variant.camera)
+const cam = computed(() => ROW_CAMERA)
 /** Camera distance to the target plane for the view height asked for. */
 const distance = computed(() => cam.value.viewHeight / (2 * Math.tan(MathUtils.degToRad(cam.value.fov) / 2)))
 
 let previousX = Number.NaN
 
-/** Start of this frame's work (this scene's callback runs before its Books'). */
-let frameStart = 0
-
 onBeforeRender(({ delta }) => {
-  frameStart = performance.now()
   const seconds = delta || 0.016
   const view = props.ctx.view
   const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
@@ -75,9 +69,6 @@ onBeforeRender(({ delta }) => {
     light.shadow.camera.right = reach
     light.shadow.camera.updateProjectionMatrix()
   }
-  // A resting mouse or a finger, in world x at the row.
-  const pxPerMetre = (sizes.height.value || 1) / cam.value.viewHeight
-  view.pointerX = view.pointerPx === null ? null : x + (view.pointerPx - (sizes.width.value || 0) / 2) / pxPerMetre
   camera3.updateMatrixWorld()
   props.ctx.onCamera?.(camera3, sizes.width.value, sizes.height.value)
   // The lights travel with the view so every part of the row is lit the same.
@@ -105,7 +96,7 @@ onBeforeRender(({ delta }) => {
 })
 
 /**
- * The projection. In the card: the variant's. Broken out (the canvas covers
+ * The projection. In the card: the row's own. Broken out (the canvas covers
  * the viewport while a Book is out), the camera keeps the card's view, the
  * same pixels where the card is, and its frustum widens to the rest of the
  * viewport: a virtual view centred on the card at the card's focal length,
@@ -192,37 +183,16 @@ let drawnMotion: number | null = null
 let drawnLooks: number | null = null
 render((notify) => {
   const camera3 = camera.value
-  const stats = props.ctx.stats
   if (!camera3 || !props.ctx.visible.value) return
   const canvas = renderer.domElement as HTMLCanvasElement
   const motion = motionKey(scene.value, camera3, canvas.width, canvas.height)
   const looks = motion === drawnMotion ? looksKey(scene.value) : null
-  if (motion === drawnMotion && looks === drawnLooks) {
-    stats.loopMs.push(performance.now() - frameStart)
-    if (stats.loopMs.length > 900) stats.loopMs.shift()
-    return
-  }
-  const started = performance.now()
-  if (props.ctx.breakout.active) renderBrokenOut(camera3)
+  if (motion === drawnMotion && looks === drawnLooks) return
+  if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
   else renderer.render(scene.value, camera3)
-  stats.frames++
-  stats.renderMs = performance.now() - started
-  // The frame's main-thread work: the Books' per-frame pass and the render calls.
-  stats.loopMs.push(performance.now() - frameStart)
-  if (stats.loopMs.length > 900) stats.loopMs.shift()
-  stats.calls = renderer.info.render.calls
-  stats.triangles = renderer.info.render.triangles
-  stats.textures = renderer.info.memory.textures
-  stats.geometries = renderer.info.memory.geometries
   notify()
   drawnMotion = motion
   drawnLooks = looks
-})
-
-// The dev measurements (scripts/prototype-row-measure.mjs) read the scene's textures.
-onMounted(() => {
-  const scenes = ((window as { __rowScenes?: unknown[] }).__rowScenes ??= [])
-  scenes.push({ variant: props.variant.key, scene: scene.value, renderer })
 })
 
 watch(keyLight, (light) => {
@@ -246,61 +216,31 @@ watch(keyLight, (light) => {
 
 // --- Month markers in 3D (the labels are HTML, RowCard) -------------------------------
 
-/** Where the focus line ends at either end: the end Books, or the ends of the end piles. */
-const ends = computed<[number, number]>(() => {
-  const poses = props.layout.poses
-  if (props.layout.piles) return [props.layout.extent[0] + 0.02, props.layout.extent[1] - 0.02]
-  return [poses[0]?.x ?? 0, poses.at(-1)?.x ?? 0]
-})
-
-/** Which Books show their front in the row: every one in the fan, a pile's top one, none on the Shelf. */
-const pileTops = computed(() => {
-  const tops = new Map<RowPile, { id: string, y: number }>()
-  for (const pose of props.layout.poses) {
-    const pile = props.layout.piles?.[pose.bookId]
-    if (pile && (tops.get(pile)?.y ?? -1) < pose.y) tops.set(pile, { id: pose.bookId, y: pose.y })
-  }
-  return new Set([...tops.values()].map(top => top.id))
-})
-function frontShown(bookId: string): boolean {
-  if (props.variant.focus === 'flow') return true
-  return pileTops.value.has(bookId)
-}
-
 /**
  * Spine LOD: the Stack draws Spine art 1024 px tall; a card shows a Book a
  * couple of hundred CSS px tall. Drawn at what the card needs (× DPR, a
  * little to spare), in steps so a resize doesn't redraw.
  */
 const spineScale = computed(() => {
-  const pxPerMetre = (sizes.height.value || 300) / props.variant.camera.viewHeight
+  const pxPerMetre = (sizes.height.value || 300) / ROW_CAMERA.viewHeight
   const needed = 0.24 * pxPerMetre * Math.min(window.devicePixelRatio || 1, quality.value.maxDpr) * 1.2
   return [0.375, 0.5, 0.75, 1].find(step => step * 1024 >= needed) ?? 1
 })
 
-/** (a) An index card between two months; (b) a hairline ink sheet in the pile. */
-const markerBoxes = computed(() => {
-  if (props.variant.labels === 'tab') {
-    return props.layout.markers.map(marker => ({ key: marker.key, position: [marker.x, marker.height! / 2, -0.066] as [number, number, number], scale: [0.0012, marker.height!, 0.12] as [number, number, number], color: '#E6DFD0' }))
-  }
-  if (props.variant.labels === 'leader') {
-    // An ink sheet under each pile.
-    const piles = [...new Set(Object.values(props.layout.piles ?? {}))]
-    return piles.map(pile => ({ key: `${pile.left}`, position: [(pile.left + pile.right) / 2, PILE_SHEET / 2, 0] as [number, number, number], scale: [pile.right - pile.left - 0.012, PILE_SHEET, 0.145] as [number, number, number], color: '#2C2C2A' }))
-  }
-  if (props.variant.labels === 'stack') {
-    // The Stack's 'label' sheet: narrower than the Books (its top stays hidden),
-    // its front edge a hairline just in front of the Spines.
-    return props.layout.markers.map(marker => ({ key: marker.key, position: [marker.x, 0.084, 0.003 - 0.085] as [number, number, number], scale: [STACK_SHEET, 0.16, 0.17] as [number, number, number], color: '#2C2C2A' }))
-  }
-  return []
-})
+/** A hairline ink sheet before each month. */
+const sheets = computed(() => props.layout.markers.map(marker => ({
+  key: marker.key,
+  // The Stack's 'label' sheet: shorter than the Books (only its front edge
+  // shows, a hairline between the Spines), just in front of them.
+  position: [marker.x, ROW_SHEET_HEIGHT / 2 + 0.004, 0.003 - 0.085] as [number, number, number],
+  scale: [ROW_SHEET, ROW_SHEET_HEIGHT, 0.17] as [number, number, number],
+})))
 </script>
 
 <template>
   <TresPerspectiveCamera
     ref="cameraRef"
-    :fov="variant.camera.fov"
+    :fov="ROW_CAMERA.fov"
     :near="0.03"
     :far="20"
     :position="[0, 0.3, 1]"
@@ -331,7 +271,7 @@ const markerBoxes = computed(() => {
   </TresGroup>
 
   <TresMesh
-    v-for="box in markerBoxes"
+    v-for="box in sheets"
     :key="box.key"
     :position="box.position"
     :scale="box.scale"
@@ -340,23 +280,16 @@ const markerBoxes = computed(() => {
   >
     <TresBoxGeometry :args="[1, 1, 1]" />
     <TresMeshStandardMaterial
-      :color="box.color"
+      color="#2C2C2A"
       :roughness="0.9"
     />
   </TresMesh>
 
-  <PrototypeRowBooks
+  <RowBooks
     :poses="layout.poses"
     :books="books"
     :ctx="ctx"
-    :focus="variant.focus"
-    :focus-at="variant.focusAt"
-    :front-shown="frontShown"
     :spine-scale="spineScale"
-    :piles="layout.piles"
-    :ends="ends"
-    :hover-look="hoverLook"
-    :riffle-look="riffleLook"
   />
 
   <TresMesh

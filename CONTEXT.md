@@ -22,8 +22,9 @@ Use these terms in code, issues and commits.
 | **Cover resolver** | **Regal assets** code (`pipeline/src/assets/front.ts`, `pipeline/src/resolvers/`) that finds a Cover for a Book by walking **Cover sources** in order. Not part of the display. |
 | **Cover source** | One upstream lookup strategy (Apple Books, the German National Library, Google Books, Open Library by ISBN or title). |
 | **Placeholder cover** | Procedurally drawn front used when the library file has no front image for a Book (or it doesn't load). |
-| **View** | How the Library is shown: the **Bookcase** (Books standing on Shelves) or the **Stack**. |
+| **View** | How the Library is shown: the **Bookcase** (Books standing on Shelves), the **Stack**, or the **Row** (in a card). |
 | **Stack** | View without furniture: every Book lying flat in one scrollable pile, Spines towards the viewer, what you're reading now on top. |
+| **Row** | The Stack turned 90° for a card (`RegalBooksRow`): the Books standing pressed together left to right, oldest first, scrolled sideways. |
 | **Pose** | Where a Book rests in a View (position, rotation, dimensions). A Shelf **Placement** is a Pose plus its Bookcase and Shelf slot. |
 | **Pick** | The interaction of pulling a Book off the Shelf / out of the Stack into the **Inspect** view. Click cycles front → back → put away. |
 | **Face** | Which side a picked Book shows: `front` (the Cover) or `back`. |

@@ -26,7 +26,7 @@
 Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer"; the portfolio's `/books` extends it). Keep it host-safe:
 
 - Standalone-only setup (global CSS `main.css`, head, `@nuxt/eslint`, test-utils, the dev choices panel, the demo library file served from `demo/`) lives in the `regalApp` module in `nuxt.config.ts` and runs only when Regal is the root app. Don't add globals to the plain config keys.
-- Host API: `RegalBooksStage`, `RegalBooksSidebar` (`app/components/regal/`), config `runtimeConfig.public.regal` (`librarySrc`, the library file's URL). The layer registers no server routes. Keep it small; document changes in the README.
+- Host API: `RegalBooksStage`, `RegalBooksSidebar`, `RegalBooksFilters`, `RegalBooksRow` (`app/components/regal/`), config `runtimeConfig.public.regal` (`librarySrc`, the library file's URL). The layer registers no server routes. Keep it small; document changes in the README.
 - Component CSS: tokens always with a fallback, `var(--color-ink, #2C2C2A)`; no reliance on global classes (`.btn`) in anything the embed components render.
 - In `app/`, import shared code as `~~/shared/...` (layer-aware), never `#shared/...` (that is the host's).
 - Runtime packages go in `dependencies` (hosts install the layer with `{ install: true }`).

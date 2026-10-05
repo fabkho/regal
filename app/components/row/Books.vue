@@ -1,15 +1,17 @@
 <script setup lang="ts">
-// Design round (horizontal Stack): the Books of a prototype row. A trimmed
-// fork of books/Meshes.vue (same materials, lazy faces, Pick, Inspect, drag
-// to turn, backs drawn only for the picked Book) for a row along x:
+// The Books of a row (RegalBooksRow): the Stack's Books (books/Meshes.vue:
+// the same materials, lazy faces, Pick, Inspect, drag and flick to turn, a
+// back drawn only for the picked Book), for a row along x:
 // - the load window runs along x (RowView is a LoadView in x);
-// - no re-sort animation, no scroll highlight; instead one of three focus
-//   looks (props.focus): 'tilt' (the Book tips out at the top), 'riffle'
-//   (a bell of Books fans out around the focus), 'flow' (the Book turns to
-//   face you and the others make room);
-// - its own Pick state (RowContext), so several rows can share a page.
-// Productionising this means folding the axis and the focus looks into
-// Meshes.vue instead of keeping a fork (COMPARE.md).
+// - the Stack's hover turned with the pile (towards you, a little turned,
+//   the glint), and while the scroll leads its riffle, as a row needs it:
+//   Books passing the middle tip their top towards you about their bottom
+//   front edge, as when pulled out with a finger on the head;
+// - its own Pick (RowContext), inspected in the card or in the viewport
+//   (RowCard); a Book put back leaves from where it was shown;
+// - Spine canvases drawn at what the card shows (LOD), fronts loaded only
+//   when a Book is taken out (the row never shows them).
+// No re-sort animation: a row's Books only come and go with the library file.
 import {
   BoxGeometry,
   CanvasTexture,
@@ -38,7 +40,7 @@ import { decodeImage, fetchImage, loadPicture } from '#layers/regal/app/utils/co
 import type { Picture } from '#layers/regal/app/utils/covers/images'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
-import { backDrawDue } from '#layers/regal/app/utils/books/backs'
+import { backArtUrl, backDrawDue } from '#layers/regal/app/utils/books/backs'
 import { CLICK_SLOP, isClick, movePress, startPress } from '#layers/regal/app/utils/books/press'
 import type { Press } from '#layers/regal/app/utils/books/press'
 import { bookAt, toNdc } from '#layers/regal/app/utils/books/hit'
@@ -47,41 +49,20 @@ import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
 import { LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
 import type { Boost, FaceUse } from '#layers/regal/app/utils/covers/loadWindow'
-import { approach, focusLine, liftFor, RIFFLE as STACK_RIFFLE, targetAmount } from '#layers/regal/app/utils/stack/scrollHighlight'
+import { approach, focusLine, liftFor, RIFFLE, targetAmount } from '#layers/regal/app/utils/stack/scrollHighlight'
 import type { Lift } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { createGlintSettle, GLINT_DELAY, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
-import type { RowContext } from '#layers/regal/app/prototype/row/context'
-import type { RowFocus, RowPile } from '#layers/regal/app/prototype/row/layout'
+import type { RowContext } from '#layers/regal/app/utils/row/context'
 
 const props = defineProps<{
   poses: BookPose[]
   books: Book[]
   ctx: RowContext
-  focus: RowFocus
-  focusAt: 'centre' | 'pointer'
-  /**
-   * Which Books show their front in the row (all in the fan, a pile's top
-   * one): those load it with the Spine; the others only once taken out.
-   */
-  frontShown: (bookId: string) => boolean
   /** Spine canvases at this share of their full resolution (a small card needs fewer pixels). */
   spineScale: number
-  /** (b) The pile each Book lies in: the riffle runs through the pile under the focus. */
-  piles?: Record<string, RowPile>
-  /** Where the focus line ends up at either end of the scroll (world x). */
-  ends: [number, number]
-  /**
-   * The horizontal Stack ('stack' focus): how hover and the scroll riffle
-   * look. 'stack' is the vertical Stack's, turned 90° with the pile
-   * (riffle: the Book swings its bottom out about its top end); 'tip' is
-   * the Shelf's (the Book tips its top out about its bottom edge, as when
-   * pulled out with a finger on its head: the riffle's default).
-   */
-  hoverLook?: 'stack' | 'tip'
-  riffleLook?: 'stack' | 'tip'
 }>()
 
 const ctx = props.ctx
@@ -112,14 +93,8 @@ const RETURN_SECONDS = 0.8
 const FLIP_SECONDS = 0.7
 const SPIN_PER_PX = 0.01
 
-/** The vertical Stack's hover (Meshes.vue): towards you and a little turned. */
-const STACK_HOVER = { out: 0.035, tilt: 0.045 }
-/** Focus looks. Tilt: how far the Book tips out (rad) and comes forward. */
-const TILT = { angle: 0.32, out: 0.012, lift: 0.004, rate: 10 }
-/** Riffle (the Stack's, utils/stack/scrollHighlight.ts): Books within this height of the pile's focus fan out. */
-const RIFFLE = { radius: 0.035, rate: STACK_RIFFLE.rate }
-/** Flow: the focused Book turns to face you; the others part by `part` (m) within `radius`. */
-const FLOW = { radius: 0.07, part: 0.06, out: 0.06, lift: 0.006, rate: 8 }
+/** The Stack's hover (Meshes.vue), turned with the pile: towards you and a little turned. */
+const HOVER = { out: 0.035, turn: 0.045 }
 
 const geometry = new BoxGeometry(1, 1, 1)
 
@@ -136,7 +111,8 @@ interface BookMaterials {
     textures: CanvasTexture[]
     materials: [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
   }
-  set: AssetFaces | null
+  /** The Book's faces from the library file; null when it has none, undefined until applyCover has read them. */
+  set: AssetFaces | null | undefined
   art: { spine?: Picture, back?: Picture }
   description?: string | null
   loaded: LoadedCover | null
@@ -292,7 +268,7 @@ function materialsFor(pose: BookPose): Material[] {
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -320,7 +296,8 @@ async function applyCover(pose: BookPose) {
   entry.set = set
 
   const fonts = spineFontsReady()
-  const frontShows = () => props.frontShown(pose.bookId) || !set?.palette
+  // The row shows Spines only: a front loads now only when the Spine's colours must come from it.
+  const frontShows = () => !set?.palette
   const shown = loadPriority(pose.bookId, 'shown')
   const frontPriority = loadPriority(pose.bookId, () => (frontShows() ? 'shown' : 'hidden'))
   // A front the row never shows waits for the Pick (setFullCover), saving its memory.
@@ -660,12 +637,15 @@ function prepareBack(bookId: string): BackPrep | null {
   const entry = materialsByBook.get(bookId)
   if (!entry) return null
   if (entry.backPrep) return entry.backPrep
+  // Its faces not known yet (a press before applyCover read them): no prep, or
+  // the back would be drawn without its art. The pick asks again every frame.
+  const url = backArtUrl(entry.set)
+  if (url === undefined) return null
   for (const [id, other] of materialsByBook) {
     if (id !== bookId && id !== pickedId.value && other.backPrep && !other.backPrep.queued) releaseBack(id)
   }
   const aborted = new AbortController()
   entry.aborted.signal.addEventListener('abort', () => aborted.abort(), { once: true, signal: aborted.signal })
-  const url = entry.set?.back
   const prep: BackPrep = {
     bytes: url ? fetchImage(url, loadPriority(bookId, 'hidden'), aborted.signal) : Promise.resolve(null),
     picture: undefined,
@@ -869,7 +849,6 @@ onMounted(() => {
 // --- Per frame ------------------------------------------------------------------------
 
 const basePosition = new Vector3()
-const targetQuaternion = new Quaternion()
 const pulledPosition = new Vector3()
 const inspectPosition = new Vector3()
 const up = new Vector3()
@@ -884,25 +863,11 @@ const lookDummy = new Object3D()
 const lookAhead = new Vector3()
 const X_AXIS = new Vector3(1, 0, 0)
 const Y_AXIS = new Vector3(0, 1, 0)
-
 const riffleLift: Lift = { out: 0, tilt: 0, yaw: 0, shine: 0 }
 const smooth = (t: number) => t * t * (3 - 2 * t)
-const bell = (distance: number, radius: number) => {
-  const t = Math.min(1, Math.abs(distance) / radius)
-  return 1 - smooth(t)
-}
 
-/** The flow's focus, eased (it follows the pointer, so it must not jump). */
-let flowX = Number.NaN
-/** Hysteresis for the nearest Book to the focus line. */
+/** Hysteresis for the Book nearest the focus line. */
 let focusIndex = -1
-
-function focusTarget(): number {
-  // A resting mouse or a finger (pointer variants), else the middle of the view;
-  // near either end the line slides on to the end Book (as in the Stack).
-  if (props.focusAt === 'pointer' && view.pointerX !== null) return view.pointerX
-  return focusLine(view.cameraX, view.bounds, props.ends)
-}
 
 function nearestIndex(x: number): number {
   let best = -1
@@ -926,52 +891,21 @@ onBeforeRender(({ delta }) => {
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-seconds * 12)
   const blocked = !!pickedId.value
-  const stackMode = props.focus === 'stack'
-  // A resting mouse leads over the scroll focus (until it leaves the Book).
-  const hoverPose = hoveredId ? props.poses.find(pose => pose.bookId === hoveredId) : undefined
-  // The horizontal Stack, as the vertical one (useScrollHighlight): the riffle
-  // runs while the scroll leads; a resting mouse takes over with hover.
-  const pointerId = stackMode && view.scrollLed ? null : hoveredId
-  const riffleOn = stackMode && !blocked && !(hoveredId && !view.scrollLed)
-  const target = hoverPose && props.focusAt === 'centre' && !stackMode ? hoverPose.x : focusTarget()
-  if (Number.isNaN(flowX) || reduced.value) flowX = target
-  else flowX += (target - flowX) * (1 - Math.exp(-seconds * FLOW.rate))
-  focusIndex = blocked ? -1 : nearestIndex(props.focus === 'flow' ? flowX : target)
-  // The riffle runs through the pile under the focus line, top to bottom as it crosses it.
-  let pile: RowPile | null = null
-  let pileY = 0
-  if (props.focus === 'riffle' && props.piles && !blocked) {
-    let best = Infinity
-    for (const pose of props.poses) {
-      const candidate = props.piles[pose.bookId]!
-      const distance = Math.max(0, candidate.left - target, target - candidate.right)
-      if (distance < best) {
-        best = distance
-        pile = candidate
-      }
-    }
-    if (pile) {
-      const across = MathUtils.clamp((target - pile.left) / (pile.right - pile.left), 0, 1)
-      pileY = pile.top * (1 - across)
-      let nearest = Infinity
-      for (let index = 0; index < props.poses.length; index++) {
-        const pose = props.poses[index]!
-        if (props.piles[pose.bookId] !== pile) continue
-        const distance = Math.abs(pose.y - pileY)
-        if (distance < nearest) {
-          nearest = distance
-          focusIndex = index
-        }
-      }
-    }
-  }
-  if (stackMode && !riffleOn) focusIndex = -1
+  const still = reduced.value
+  // As the Stack (useScrollHighlight): the riffle runs while the scroll leads;
+  // a resting mouse takes over with hover until the row is scrolled again.
+  const pointerId = view.scrollLed ? null : hoveredId
+  const riffleOn = !blocked && !(hoveredId && !view.scrollLed)
+  // The focus line: the middle of the view, sliding on to the end Books at either end.
+  const ends: [number, number] = [props.poses[0]?.x ?? 0, props.poses.at(-1)?.x ?? 0]
+  const target = focusLine(view.cameraX, view.bounds, ends)
+  focusIndex = riffleOn ? nearestIndex(target) : -1
   const focusId = focusIndex >= 0 ? props.poses[focusIndex]!.bookId : null
   // The label shows the Book in focus, or the one under the mouse.
-  const labelled = stackMode ? (riffleOn ? focusId : (blocked ? null : pointerId)) : focusId
+  const labelled = riffleOn ? focusId : (blocked ? null : pointerId)
   if (ctx.focused.value !== labelled && !blocked) ctx.focused.value = labelled
   const settled = settledGlint(glintSettle, { focusedId: focusId, speed: view.speed, gap: 0, blocked }, seconds, GLINT_DELAY)
-  if (settled && !reduced.value && !hoverPose) glint(settled)
+  if (settled && !still && !hoveredId) glint(settled)
 
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
   for (const pose of props.poses) {
@@ -981,98 +915,26 @@ onBeforeRender(({ delta }) => {
     const isPicked = pickedId.value === pose.bookId
     const frozen = isPicked || motion.pick.value > 0
 
-    // Focus amount, eased: one Book (tilt), a bell (riffle) or a continuous turn (flow).
-    let focusAim = 0
-    if (!blocked && !frozen) {
-      if (props.focus === 'tilt') focusAim = pose.bookId === focusId ? 1 : 0
-      else if (props.focus === 'riffle') focusAim = pile && props.piles?.[pose.bookId] === pile ? bell(pose.y - pileY, RIFFLE.radius) : 0
-      else if (stackMode && riffleOn) focusAim = targetAmount(pose.x - target)
-    }
-    const rate = props.focus === 'tilt' ? TILT.rate : RIFFLE.rate
-    if (props.focus !== 'flow') motion.focus = reduced.value ? focusAim : approach(motion.focus, focusAim, rate, seconds)
-
-    basePosition.set(pose.x, pose.y, pose.z)
-    targetQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
-    baseQuaternion.copy(targetQuaternion)
-    let shine = motion.focus
-    const still = reduced.value
-
-    if (props.focus === 'tilt' && motion.focus > 0 && !still) {
-      // Tips out at the top about its bottom front edge, as when hooked with a finger.
-      const a = motion.focus
-      pivot.set(pose.x, 0, pose.z + pose.depth / 2)
-      tiltQuaternion.setFromAxisAngle(X_AXIS, TILT.angle * a)
-      basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
-      basePosition.z += TILT.out * a
-      basePosition.y += TILT.lift * a
-      baseQuaternion.premultiply(tiltQuaternion)
-    }
-    else if (props.focus === 'riffle' && motion.focus > 0) {
-      // The Stack's riffle (Meshes.vue): a little out and tilted, turned about its left end.
-      const lift = liftFor(motion.focus, still, riffleLift)
-      basePosition.z += lift.out + pose.height / 2 * Math.sin(lift.yaw)
-      basePosition.x += pose.height / 2 * (Math.cos(lift.yaw) - 1)
-      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.yaw))
-      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.tilt))
-    }
-    else if (stackMode && motion.focus > 0) {
-      // The Stack's riffle turned 90° with the pile: Books passing the middle
-      // fan out like pages flipped through, turned about their top end so the
-      // bottom swings out (as the Stack turns them about their left end).
-      // 'tip': about the bottom edge instead, the top swinging out.
-      // 'tip' (the default): pulled out with a finger on its head: the top
-      // tips towards you about the bottom front edge, the bottom stays put.
-      const lift = liftFor(motion.focus, still, riffleLift)
-      if (props.riffleLook === 'tip') {
-        pivot.set(basePosition.x, 0, pose.z + pose.depth / 2)
-        tiltQuaternion.setFromAxisAngle(X_AXIS, lift.yaw)
-        basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
-        baseQuaternion.premultiply(tiltQuaternion)
-      }
-      else {
-        const swing = pose.height / 2
-        basePosition.z += lift.out + swing * Math.sin(lift.yaw)
-        basePosition.y += swing * (1 - Math.cos(lift.yaw))
-        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, -lift.yaw))
-        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.tilt))
-      }
-    }
-    else if (props.focus === 'flow') {
-      // Turns to face you near the focus; the others part to make room.
-      const d = pose.x - flowX
-      const f = blocked || frozen ? 0 : bell(d, FLOW.radius)
-      motion.focus = f
-      shine = f
-      if (!still) {
-        const part = blocked ? 0 : Math.sign(d) * FLOW.part * smooth(Math.min(1, Math.abs(d) / FLOW.radius))
-        basePosition.x += part
-        basePosition.z += FLOW.out * f
-        basePosition.y += FLOW.lift * f
-        const yaw = MathUtils.lerp(pose.rotation[1], -Math.PI / 2, smooth(f))
-        baseQuaternion.setFromEuler(euler.set(pose.rotation[0], yaw, pose.rotation[2]))
-      }
-    }
-
-    // Hover on the riffle/flow rows is the focus itself; on any row a hovered Book shines.
-    const hovered = (stackMode ? pointerId : hoveredId) === pose.bookId && !frozen ? 1 : 0
+    const focusAim = riffleOn && !frozen ? targetAmount(pose.x - target) : 0
+    motion.focus = still ? focusAim : approach(motion.focus, focusAim, RIFFLE.rate, seconds)
+    const hovered = pointerId === pose.bookId && !frozen ? 1 : 0
     motion.hover += (hovered - motion.hover) * ease
     if (Math.abs(motion.hover - hovered) < 0.001) motion.hover = hovered
-    shine = Math.max(shine, motion.hover)
-    if (stackMode && motion.hover > 0 && !still) {
-      if (props.hoverLook === 'tip') {
-        // Tips out at the top about its bottom front edge.
-        const a = motion.hover
-        pivot.set(basePosition.x, 0, pose.z + pose.depth / 2)
-        tiltQuaternion.setFromAxisAngle(X_AXIS, TILT.angle * a)
-        basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
-        basePosition.z += TILT.out * a
-        baseQuaternion.premultiply(tiltQuaternion)
-      }
-      else {
-        // The Stack's hover turned with the pile: towards you, a little turned.
-        basePosition.z += STACK_HOVER.out * motion.hover
-        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -STACK_HOVER.tilt * motion.hover))
-      }
+
+    basePosition.set(pose.x, pose.y, pose.z)
+    baseQuaternion.setFromEuler(euler.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]))
+    if (motion.focus > 0) {
+      // The riffle, as a row needs it: pulled out by the head, the top tips
+      // towards you about the bottom front edge, the bottom stays put.
+      const lift = liftFor(motion.focus, still, riffleLift)
+      pivot.set(basePosition.x, 0, pose.z + pose.depth / 2)
+      tiltQuaternion.setFromAxisAngle(X_AXIS, lift.yaw)
+      basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
+      baseQuaternion.premultiply(tiltQuaternion)
+    }
+    if (motion.hover > 0 && !still) {
+      basePosition.z += HOVER.out * motion.hover
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -HOVER.turn * motion.hover))
     }
 
     const pick = motion.pick.value
@@ -1087,6 +949,7 @@ onBeforeRender(({ delta }) => {
     else {
       pulledPosition.copy(basePosition)
       pulledPosition.z += PULL_OUT
+      const t = smooth(Math.max(0, (pick - PULL_PHASE) / (1 - PULL_PHASE)))
       if (pick <= PULL_PHASE) {
         mesh.position.lerpVectors(basePosition, pulledPosition, smooth(pick / PULL_PHASE))
         mesh.quaternion.copy(baseQuaternion)
@@ -1096,7 +959,6 @@ onBeforeRender(({ delta }) => {
         cam.updateMatrixWorld()
         inspectPosition.copy(motion.returnFrom.position).applyMatrix4(cam.matrixWorld)
         cam.getWorldQuaternion(inspectQuaternion).multiply(motion.returnFrom.quaternion)
-        const t = smooth((pick - PULL_PHASE) / (1 - PULL_PHASE))
         mesh.position.lerpVectors(pulledPosition, inspectPosition, t)
         mesh.quaternion.slerpQuaternions(baseQuaternion, inspectQuaternion, t)
       }
@@ -1104,7 +966,7 @@ onBeforeRender(({ delta }) => {
         up.copy(cam.up).applyQuaternion(cam.quaternion)
         inspectTarget(cam, pose, inspectPosition)
         // Parallel to the picture, not turned to the camera: off the camera's
-        // axis (a broken-out card) it would show keystoned.
+        // axis (a broken-out row) it would show keystoned.
         cam.getWorldDirection(lookAhead)
         lookDummy.position.copy(inspectPosition)
         lookDummy.up.copy(up)
@@ -1112,13 +974,12 @@ onBeforeRender(({ delta }) => {
         inspectQuaternion.copy(lookDummy.quaternion)
           .multiply(partial.setFromAxisAngle(X_AXIS, motion.spin.y))
           .multiply(partial.setFromAxisAngle(Y_AXIS, motion.spin.x + motion.flip.value - Math.PI / 2))
-        const t = smooth((pick - PULL_PHASE) / (1 - PULL_PHASE))
         mesh.position.lerpVectors(pulledPosition, inspectPosition, t)
         mesh.quaternion.slerpQuaternions(baseQuaternion, inspectQuaternion, t)
       }
     }
 
-    shine = Math.max(shine, pick * 0.6)
+    const shine = Math.max(motion.focus, motion.hover, pick * 0.6)
     const entry = materialsByBook.get(pose.bookId)
     if (entry) {
       applyShine(entry.spine, shine)
@@ -1130,7 +991,7 @@ onBeforeRender(({ delta }) => {
 
   const light = glintLight.value
   if (light) {
-    if (glintBook && !reduced.value) {
+    if (glintBook && !still) {
       const { mesh, pose, motion } = glintBook
       const g = motion.glint.value
       glintOffset.set(0, (0.5 - g) * pose.height * 1.1, 0).applyQuaternion(mesh.quaternion)
