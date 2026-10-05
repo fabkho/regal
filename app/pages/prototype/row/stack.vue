@@ -8,7 +8,7 @@ import { useRowLibrary } from '#layers/regal/app/prototype/row/useRowLibrary'
 const route = useRoute()
 const { books, error, loading, count, year, source } = useRowLibrary()
 const hoverLook = computed(() => (route.query.hover === 'tip' ? 'tip' : 'stack'))
-const riffleLook = computed(() => (route.query.riffle === 'tip' ? 'tip' : 'stack'))
+const riffleLook = computed(() => (route.query.riffle === 'stack' ? 'stack' : 'tip'))
 const hud = computed(() => route.query.hud !== undefined)
 /** A year reads from January; the whole shelf starts at what was read last, as the Stack does. */
 const start = computed(() => (year.value ? 'first' : 'last'))
@@ -35,8 +35,10 @@ useHead({ title: 'Horizontal Stack — Regal prototype' })
         Today's Stack turned 90° clockwise: the pile's bottom on the left, what was read last on the right, where the row starts.
         Books pressed together without a gap; each month after the Stack's hairline sheet, its date above the row with the
         Stack's leader line. The Stack's hover (towards you, a little turned, the glint) and its riffle: Books passing the middle
-        fan out while you scroll, the one in focus with its title and stars. Turned for a row: the Books stand on one line
-        instead of the Stack's sideways offsets.
+        tip out while you scroll, as if pulled by a finger on their head (top forward, bottom in place), the one in focus with
+        its title and stars. Turned for a row: the Books stand on one line instead of the Stack's sideways offsets.
+        Where a picked Book is looked at is the host's choice: <code>inspect="card"</code> keeps it in the card,
+        <code>"viewport"</code> breaks out, <code>"auto"</code> breaks out on narrow screens only.
       </p>
       <p class="hs__controls">
         Books:
@@ -77,12 +79,12 @@ useHead({ title: 'Horizontal Stack — Regal prototype' })
         · Riffle while scrolling:
         <NuxtLink
           :to="query({ riffle: undefined })"
+          :aria-current="riffleLook === 'tip' ? 'true' : undefined"
+        >pulled out by the head (tops tip out, bottoms stay)</NuxtLink>
+        <NuxtLink
+          :to="query({ riffle: 'stack' })"
           :aria-current="riffleLook === 'stack' ? 'true' : undefined"
         >the Stack's, turned (bottoms swing out)</NuxtLink>
-        <NuxtLink
-          :to="query({ riffle: 'tip' })"
-          :aria-current="riffleLook === 'tip' ? 'true' : undefined"
-        >tops tip out</NuxtLink>
       </p>
       <p
         v-if="error"

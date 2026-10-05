@@ -46,12 +46,16 @@ const props = withDefaults(defineProps<{
   hud?: boolean
   /** Where a picked Book is inspected: in the card, the whole viewport, or by screen width. */
   inspect?: 'card' | 'viewport' | 'auto'
-  /** Horizontal Stack: the Stack's hover and riffle turned with the pile, or tipping out at the top. */
+  /**
+   * Horizontal Stack: hover is the Stack's, turned with the pile; the scroll
+   * riffle tips the Books' tops out, bottoms in place ('tip'), or is the
+   * Stack's turned ('stack': bottoms swing out).
+   */
   hoverLook?: 'stack' | 'tip'
   riffleLook?: 'stack' | 'tip'
   /** Where the row starts: its first Book, or its last (the Stack starts at what was read last). */
   start?: 'first' | 'last'
-}>(), { order: 'newest', title: '', hud: false, inspect: 'card', hoverLook: 'stack', riffleLook: 'stack', start: 'first' })
+}>(), { order: 'newest', title: '', hud: false, inspect: 'card', hoverLook: 'stack', riffleLook: 'tip', start: 'first' })
 
 const variant = computed(() => ROW_VARIANTS[props.variant])
 const ordered = computed(() => inRowOrder(props.books, props.order))
@@ -627,53 +631,55 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
         ← Back
       </button>
 
-      <div
-        v-if="pickedBook"
-        ref="caption"
-        class="row-card__details"
-        :class="{
-          'row-card__details--side': !broken && wide,
-          'row-card__details--sheet': sheet,
-          'row-card__details--card': broken && !sheet,
-        }"
-      >
-        <p class="row-card__book-title">
-          {{ pickedBook.title }}
-        </p>
-        <p class="row-card__book-meta">
-          {{ pickedBook.author }}<template v-if="readDate">
-            · {{ readDate }}
-          </template>
-          <span
-            v-if="pickedBook.rating"
-            class="row-card__book-stars"
-          >
-            <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
-          </span>
-        </p>
-        <p
-          v-if="(broken || wide) && pickedBook.description"
-          class="row-card__book-review"
+      <Transition name="row-fade">
+        <div
+          v-if="pickedBook"
+          ref="caption"
+          class="row-card__details"
+          :class="{
+            'row-card__details--side': !broken && wide,
+            'row-card__details--sheet': sheet,
+            'row-card__details--card': broken && !sheet,
+          }"
         >
-          {{ pickedBook.description }}
-        </p>
-        <p
-          v-if="(broken || wide) && pickedBook.review"
-          class="row-card__book-review row-card__book-review--own"
-        >
-          {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
-        </p>
-        <p class="row-card__book-hint">
-          <button
-            type="button"
-            class="row-card__link"
-            @click="turn"
+          <p class="row-card__book-title">
+            {{ pickedBook.title }}
+          </p>
+          <p class="row-card__book-meta">
+            {{ pickedBook.author }}<template v-if="readDate">
+              · {{ readDate }}
+            </template>
+            <span
+              v-if="pickedBook.rating"
+              class="row-card__book-stars"
+            >
+              <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
+            </span>
+          </p>
+          <p
+            v-if="(broken || wide) && pickedBook.description"
+            class="row-card__book-review"
           >
-            {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
-          </button>
-          · drag or flick to turn
-        </p>
-      </div>
+            {{ pickedBook.description }}
+          </p>
+          <p
+            v-if="(broken || wide) && pickedBook.review"
+            class="row-card__book-review row-card__book-review--own"
+          >
+            {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
+          </p>
+          <p class="row-card__book-hint">
+            <button
+              type="button"
+              class="row-card__link"
+              @click="turn"
+            >
+              {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
+            </button>
+            · drag or flick to turn
+          </p>
+        </div>
+      </Transition>
     </Teleport>
 
     <p
@@ -1021,6 +1027,24 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
   border-top: 0;
   border-left: 1px solid var(--color-ink, #2C2C2A);
   overflow-y: auto;
+}
+
+/* The details fade as the Book leaves and comes back; it doesn't wait for them. */
+.row-fade-enter-active,
+.row-fade-leave-active {
+  transition: opacity 0.35s ease;
+}
+
+.row-fade-enter-from,
+.row-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-fade-enter-active,
+  .row-fade-leave-active {
+    transition: none;
+  }
 }
 
 /* Broken out, narrow: a sheet on the viewport's bottom edge (as RegalBooksStage's). */

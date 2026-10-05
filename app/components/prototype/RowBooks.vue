@@ -77,7 +77,8 @@ const props = defineProps<{
    * The horizontal Stack ('stack' focus): how hover and the scroll riffle
    * look. 'stack' is the vertical Stack's, turned 90° with the pile
    * (riffle: the Book swings its bottom out about its top end); 'tip' is
-   * the Shelf's (the Book tips its top out about its bottom edge).
+   * the Shelf's (the Book tips its top out about its bottom edge, as when
+   * pulled out with a finger on its head: the riffle's default).
    */
   hoverLook?: 'stack' | 'tip'
   riffleLook?: 'stack' | 'tip'
@@ -152,6 +153,12 @@ interface Motion {
   flip: { value: number }
   spin: { x: number, y: number }
   glint: { value: number }
+  /**
+   * Where a Book put back starts its way home, relative to the camera: it
+   * leaves from where it was shown, wherever the details, the insets or the
+   * camera go meanwhile (no snap to a recomputed inspect place).
+   */
+  returnFrom: { position: Vector3, quaternion: Quaternion } | null
 }
 
 const materialsByBook = new Map<string, BookMaterials>()
@@ -294,7 +301,7 @@ function materialsFor(pose: BookPose): Material[] {
 function motionFor(bookId: string): Motion {
   let motion = motionByBook.get(bookId)
   if (!motion) {
-    motion = { hover: 0, focus: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
+    motion = { hover: 0, focus: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 }, returnFrom: null }
     motionByBook.set(bookId, motion)
   }
   return motion
@@ -563,9 +570,21 @@ function tween(target: { value: number }, value: number, seconds: number) {
   gsap.to(target, { value, duration: seconds, ease: 'power2.inOut', overwrite: true })
 }
 
+/** Remembers where a Book is shown, relative to the camera, for its way back. */
+function holdForReturn(bookId: string, motion: Motion) {
+  const mesh = meshes.get(bookId)
+  const cam = camera.value as PerspectiveCamera | undefined
+  if (!mesh || !cam || motion.pick.value <= 0) return
+  cam.updateMatrixWorld()
+  const position = cam.worldToLocal(mesh.position.clone())
+  const quaternion = cam.getWorldQuaternion(new Quaternion()).invert().multiply(mesh.quaternion)
+  motion.returnFrom = { position, quaternion }
+}
+
 watch(pickedId, (id, previous) => {
   if (previous) {
     const motion = motionFor(previous)
+    holdForReturn(previous, motion)
     tween(motion.pick, 0, RETURN_SECONDS)
     tween(motion.flip, 0, RETURN_SECONDS)
     gsap.to(motion.spin, { x: 0, y: 0, duration: reduced.value ? 0 : RETURN_SECONDS, ease: 'power2.inOut' })
@@ -573,6 +592,7 @@ watch(pickedId, (id, previous) => {
   tween(dim, id ? 1 : 0, id ? OUT_SECONDS * 0.6 : RETURN_SECONDS)
   if (id) {
     const motion = motionFor(id)
+    motion.returnFrom = null
     motion.spin.x = 0
     motion.spin.y = 0
     motion.flip.value = 0
@@ -1000,18 +1020,22 @@ onBeforeRender(({ delta }) => {
       // fan out like pages flipped through, turned about their top end so the
       // bottom swings out (as the Stack turns them about their left end).
       // 'tip': about the bottom edge instead, the top swinging out.
+      // 'tip' (the default): pulled out with a finger on its head: the top
+      // tips towards you about the bottom front edge, the bottom stays put.
       const lift = liftFor(motion.focus, still, riffleLift)
-      const swing = pose.height / 2
-      basePosition.z += lift.out + swing * Math.sin(lift.yaw)
       if (props.riffleLook === 'tip') {
-        basePosition.y -= swing * (1 - Math.cos(lift.yaw))
-        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.yaw))
+        pivot.set(basePosition.x, 0, pose.z + pose.depth / 2)
+        tiltQuaternion.setFromAxisAngle(X_AXIS, lift.yaw)
+        basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
+        baseQuaternion.premultiply(tiltQuaternion)
       }
       else {
+        const swing = pose.height / 2
+        basePosition.z += lift.out + swing * Math.sin(lift.yaw)
         basePosition.y += swing * (1 - Math.cos(lift.yaw))
         baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, -lift.yaw))
+        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.tilt))
       }
-      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.tilt))
     }
     else if (props.focus === 'flow') {
       // Turns to face you near the focus; the others part to make room.
@@ -1055,6 +1079,7 @@ onBeforeRender(({ delta }) => {
     // On its way out, in or back, the picked Book is drawn over a broken-out viewport too (RowScene).
     if (pick > 0) mesh.layers.enable(1)
     else mesh.layers.disable(1)
+    if (pick <= 0) motion.returnFrom = null
     if (pick <= 0 || !cam) {
       mesh.position.copy(basePosition)
       mesh.quaternion.copy(baseQuaternion)
@@ -1065,6 +1090,15 @@ onBeforeRender(({ delta }) => {
       if (pick <= PULL_PHASE) {
         mesh.position.lerpVectors(basePosition, pulledPosition, smooth(pick / PULL_PHASE))
         mesh.quaternion.copy(baseQuaternion)
+      }
+      else if (motion.returnFrom && !isPicked) {
+        // On its way back: from where it was shown (held relative to the camera) to the row.
+        cam.updateMatrixWorld()
+        inspectPosition.copy(motion.returnFrom.position).applyMatrix4(cam.matrixWorld)
+        cam.getWorldQuaternion(inspectQuaternion).multiply(motion.returnFrom.quaternion)
+        const t = smooth((pick - PULL_PHASE) / (1 - PULL_PHASE))
+        mesh.position.lerpVectors(pulledPosition, inspectPosition, t)
+        mesh.quaternion.slerpQuaternions(baseQuaternion, inspectQuaternion, t)
       }
       else {
         up.copy(cam.up).applyQuaternion(cam.quaternion)
