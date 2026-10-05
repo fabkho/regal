@@ -30,7 +30,7 @@ const theme = computed<RegalTheme | undefined>(() => {
 /** `auto`: the page flips <html data-theme> like a host would. */
 const hostTheme = ref<'light' | 'dark'>('dark')
 useHead({
-  htmlAttrs: computed(() => (look.value === 'auto' ? { 'data-theme': hostTheme.value } : {})),
+  htmlAttrs: { 'data-theme': () => (look.value === 'auto' ? hostTheme.value : undefined) },
 })
 
 const stars = (rating: number) => '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
