@@ -121,3 +121,50 @@ export function hapticsTuning(query: Readonly<Record<string, unknown>>): Haptics
     },
   }
 }
+
+// --- Dev choices (components/dev/Choices.vue) --------------------------------------
+
+export interface PulseChoice {
+  label: string
+  steps: readonly number[]
+}
+
+/** The pulses to compare on a phone in the dev choices drawer; each kind includes its PULSES default. */
+export const PULSE_CHOICES: Readonly<Record<Pulse, readonly PulseChoice[]>> = Object.freeze({
+  tick: [
+    { label: 'off', steps: [0] },
+    { label: '1 ms', steps: [1] },
+    { label: '2 ms', steps: [2] },
+    { label: '3 ms', steps: [3] },
+    { label: '4 ms', steps: [4] },
+  ],
+  out: [
+    { label: 'single 12', steps: [12] },
+    { label: 'gentle 8·40·14', steps: [8, 40, 14] },
+    { label: 'da-dum 10·45·18', steps: [10, 45, 18] },
+    { label: 'firm 12·40·24', steps: [12, 40, 24] },
+  ],
+  back: [
+    { label: 'off', steps: [0] },
+    { label: '5 ms', steps: [5] },
+    { label: '6 ms', steps: [6] },
+    { label: '8 ms', steps: [8] },
+    { label: '10 ms', steps: [10] },
+  ],
+})
+
+/** A pattern as its URL parameter (`10,45,18`). */
+export function patternParam(steps: readonly number[]): string {
+  return steps.join(',')
+}
+
+/** What a scroll tick is like, to feel it once: a few in a row, as a scroll at TICK_GAP_MS makes them. */
+export function tickRun(steps: readonly number[], count = 6): number[] {
+  const tick = steps[0] ?? 0
+  const run: number[] = []
+  for (let index = 0; index < count; index++) {
+    if (index > 0) run.push(Math.max(0, TICK_GAP_MS + 10 - tick))
+    run.push(tick)
+  }
+  return run
+}

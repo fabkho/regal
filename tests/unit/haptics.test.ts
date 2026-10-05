@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createTickState, hapticsTuning, mayPulse, PATTERN_STEPS, pickPulse, PULSE_LIMITS, PULSES, scrollTick, TICK_GAP_MS, vibrates } from '../../app/utils/books/haptics'
+import { createTickState, hapticsTuning, mayPulse, PATTERN_STEPS, patternParam, pickPulse, PULSE_CHOICES, PULSE_LIMITS, PULSES, scrollTick, TICK_GAP_MS, tickRun, vibrates } from '../../app/utils/books/haptics'
 import type { PulseGate } from '../../app/utils/books/haptics'
 
 const gate = (over: Partial<PulseGate> = {}): PulseGate => ({ enabled: true, canVibrate: true, reducedMotion: false, userActive: true, ...over })
@@ -114,5 +114,26 @@ describe('scrollTick', () => {
     expect(scrollTick(state, 'a', true, 0)).toBe(true)
     expect(scrollTick(state, 'b', true, TICK_GAP_MS / 2)).toBe(false)
     expect(scrollTick(state, 'b', true, TICK_GAP_MS * 3)).toBe(false)
+  })
+})
+
+describe('PULSE_CHOICES (dev choices drawer)', () => {
+  it('offers the default of every kind among its choices, and only patterns a phone can play', () => {
+    for (const kind of ['tick', 'out', 'back'] as const) {
+      const choices = PULSE_CHOICES[kind]
+      expect(choices.map(choice => patternParam(choice.steps))).toContain(patternParam(PULSES[kind]))
+      for (const { steps } of choices) {
+        expect(steps.length).toBeLessThanOrEqual(PATTERN_STEPS)
+        expect(steps.every(step => step >= PULSE_LIMITS[0] && step <= PULSE_LIMITS[1])).toBe(true)
+        // What the drawer writes to the URL reads back as the same pattern.
+        expect(hapticsTuning({ hapticOut: patternParam(steps) }).patterns.out).toEqual([...steps])
+      }
+    }
+  })
+
+  it('plays a scroll tick as a run of ticks spaced like a scroll', () => {
+    expect(tickRun([2], 3)).toEqual([2, TICK_GAP_MS + 8, 2, TICK_GAP_MS + 8, 2])
+    expect(tickRun([0], 2)).toEqual([0, TICK_GAP_MS + 10, 0])
+    expect(vibrates(tickRun([0]))).toBe(false)
   })
 })
