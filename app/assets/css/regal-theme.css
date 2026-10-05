@@ -53,6 +53,9 @@
   --_regal-space: var(--regal-space, 1rem);
   --_regal-tooltip-padding: var(--regal-tooltip-padding, 0.3rem 0.55rem);
   --_regal-panel-padding: var(--regal-panel-padding, 1rem 1.1rem);
+
+  /* 3D: the Books' shadow on the floor, 0 (none) to 1 (Regal's), read by the scenes */
+  --_regal-floor-shadow: var(--regal-floor-shadow, 1);
 }
 
 /* The dark set: warm ink-on-night, the same accent a step lighter. A host's
@@ -71,6 +74,8 @@
   --_regal-hairline: var(--regal-hairline, rgba(236, 232, 223, 0.16));
   --_regal-border: var(--regal-border, rgba(236, 232, 223, 0.28));
   --_regal-shadow: var(--regal-shadow, 0 10px 30px rgba(0, 0, 0, 0.45));
+  /* A brown shadow on the dark surface reads as a lit block: none. */
+  --_regal-floor-shadow: var(--regal-floor-shadow, 0);
 }
 
 /* `unstyled`: structure and layout only. Colours, frame and type are unset

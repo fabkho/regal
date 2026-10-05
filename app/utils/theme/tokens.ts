@@ -59,6 +59,8 @@ export const REGAL_TOKENS = [
   'space',
   'tooltip-padding',
   'panel-padding',
+  // 3D
+  'floor-shadow',
 ] as const
 
 export type RegalToken = typeof REGAL_TOKENS[number]
@@ -82,6 +84,28 @@ export const ROW_SHEET_TOKENS = [
   'sheet-grabber-width',
   'sheet-grabber-height',
 ] as const
+
+/**
+ * How strongly the Books' shadow prints on the floor under the 3D (the row,
+ * the Stack, the Bookcase), by scheme: Regal's warm brown shadow on paper in
+ * the light theme; none in the dark one, where it reads as a lit brown block
+ * on the dark surface. `--regal-floor-shadow` overrides it.
+ */
+export const FLOOR_SHADOW_STRENGTH: Readonly<Record<RegalScheme, number>> = Object.freeze({ light: 1, dark: 0 })
+/** The most a host may ask for: twice Regal's shadow. */
+export const FLOOR_SHADOW_MAX = 2
+
+/**
+ * The floor shadow's strength (0: none, 1: Regal's) from the resolved tokens
+ * (`--_regal-floor-shadow`, useRegalUi's `tokens`), else the scheme's
+ * default; clamped to 0..FLOOR_SHADOW_MAX.
+ */
+export function floorShadowStrength(tokens: Readonly<Record<string, string>>, scheme: RegalScheme): number {
+  const raw = tokens['--_regal-floor-shadow']?.trim()
+  const value = raw ? Number(raw) : Number.NaN
+  if (!Number.isFinite(value)) return FLOOR_SHADOW_STRENGTH[scheme]
+  return Math.min(FLOOR_SHADOW_MAX, Math.max(0, value))
+}
 
 export interface SchemeHints {
   /** The theme asked for. */

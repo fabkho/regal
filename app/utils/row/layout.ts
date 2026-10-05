@@ -166,6 +166,73 @@ export function rowScroll(layout: Pick<RowLayout, 'poses'>, width: number, pxPer
   return { cameraStart: first, maxScroll, trackWidth: Math.max(0, width) + maxScroll }
 }
 
+/** Where a row starts: at what was read last (its right end), or at its first Book (a year row's January). */
+export type RowStart = 'newest' | 'oldest'
+
+/**
+ * The scrollLeft (px) a row rests at before the reader scrolls it: the card
+ * full of Books. Starting at the newest, the last Book's Spine is flush with
+ * the card's right edge (the end space that lets it be centred stays out of
+ * sight); starting at the oldest, the first Book's Spine is flush with the
+ * left edge. The Book in focus at rest is then the one in the card's middle.
+ * A row that doesn't fill the card stands centred in it as a group. Measured
+ * at the plane scrolling is matched to (the Spines), from the Spine widths:
+ * the camera's x is `scroll.cameraStart + scrollLeft / pxPerMetre`, the card
+ * shows `width / pxPerMetre` metres around it. Within 0..maxScroll, so
+ * scrolling on still centres either end Book.
+ */
+export function rowRest(layout: Pick<RowLayout, 'poses'>, scroll: RowScroll, width: number, pxPerMetre: number, start: RowStart): number {
+  const first = layout.poses[0]
+  const last = layout.poses.at(-1)
+  if (!first || !last || !scroll.maxScroll || width <= 0 || pxPerMetre <= 0) return 0
+  const left = first.x - first.thickness / 2
+  const right = last.x + last.thickness / 2
+  const half = width / 2 / pxPerMetre
+  const camera = (right - left) * pxPerMetre <= width
+    ? (left + right) / 2
+    : start === 'newest' ? right - half : left + half
+  return Math.min(scroll.maxScroll, Math.max(0, (camera - scroll.cameraStart) * pxPerMetre))
+}
+
+/**
+ * Where the row's resting camera (RowScene at rest: looking at `cameraX`, no
+ * step back, in a card `width` × `height` px) shows the world point (x, y,
+ * z = 0): px from the card's top left. The dates are placed with it, so they
+ * stay where they belong whatever the 3D camera does meanwhile (a Book taken
+ * out, broken out over the viewport, landing back).
+ */
+export function rowProject(x: number, y: number, cameraX: number, width: number, height: number): { x: number, y: number } {
+  const tan = Math.tan(ROW_CAMERA.fov * Math.PI / 360)
+  const tilt = ROW_CAMERA.tilt * Math.PI / 180
+  const distance = ROW_CAMERA.viewHeight / (2 * tan)
+  // The point in the camera's frame: across, up and ahead.
+  const dy = y - ROW_CAMERA.targetY
+  const across = x - cameraX
+  const up = dy * Math.cos(tilt) + ROW_CAMERA.targetZ * Math.sin(tilt)
+  const ahead = distance - dy * Math.sin(tilt) + ROW_CAMERA.targetZ * Math.cos(tilt)
+  const scale = height / 2 / (ahead * tan)
+  return { x: width / 2 + across * scale, y: height / 2 - up * scale }
+}
+
+/** A date keeps at least this far (px) from the card's sides while its sheet is in the card. */
+export const ROW_LABEL_INSET = 6
+
+/**
+ * How far (px) a date `labelWidth` px wide, centred on its sheet at `x` px in
+ * a card `width` px wide, slides sideways to stay inside the card: in from
+ * either side, the inset from it, until its sheet is half a date beyond the
+ * edge (January's sheet at a year row's rest is just off the card, behind
+ * the first Spine's edge), then out with it, without a jump. Its leader line
+ * stays on the sheet.
+ */
+export function rowLabelNudge(x: number, labelWidth: number, width: number, inset = ROW_LABEL_INSET): number {
+  const half = labelWidth / 2
+  const most = labelWidth + inset
+  const fromLeft = Math.min(most, Math.max(0, inset + half - x))
+  const fromRight = Math.min(most, Math.max(0, x + half + inset - width))
+  return fromLeft - fromRight
+}
+
 /** Px between the row's front bottom edge and the top of its focus label. */
 export const ROW_FOCUS_GAP = 10
 

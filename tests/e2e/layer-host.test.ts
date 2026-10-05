@@ -135,9 +135,20 @@ describe('Regal as a Nuxt layer', async () => {
     }
 
     // Breaking out: the canvas covers the viewport, the page is held, Escape lands it back.
+    // Broken out, the dates go to <body> with the canvas box.
+    const dates = async () => {
+      const out = await page.locator('.row-card__view--out').count()
+      return (out ? page.locator('.row-card__view--out .row-label') : second.locator('.row-label'))
+        .evaluateAll(labels => labels.map(label => `${(label as HTMLElement).style.transform} ${(label as HTMLElement).style.getPropertyValue('--leader')}`))
+    }
+    const datesAtRest = await dates()
+    expect(datesAtRest.length).toBeGreaterThan(0)
     await second.locator('.row-card__scroller').focus()
     await page.keyboard.press('Enter')
     await expect.poll(() => second.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
+    // The dates fade out while the Book is out, in place.
+    expect(await page.locator('.row-card__labels--hidden').count()).toBeGreaterThan(0)
+    expect(await dates()).toEqual(datesAtRest)
     expect(await page.locator('body > .row-card__view--out canvas').count()).toBe(1)
     expect(await page.locator('body > article.row-card__details').count()).toBe(1)
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
@@ -149,6 +160,76 @@ describe('Regal as a Nuxt layer', async () => {
     // canvas was resized on the way in, which clears it (utils/stage/frameGate.ts).
     await page.waitForTimeout(1200)
     expect(await inkShare(page, second)).toBeGreaterThan(0.05)
+    // The dates never moved, and are back.
+    expect(await dates()).toEqual(datesAtRest)
+    expect(await second.locator('.row-card__labels--hidden').count()).toBe(0)
+
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('rests with the card full of Books: the newest flush right, a year\'s first flush left', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/rest'), { waitUntil: 'networkidle' })
+    const rows = page.locator('section.row-card')
+    await rows.first().locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    const newest = rows.nth(0)
+    const year = rows.nth(1)
+    await newest.locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    await year.locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    await page.waitForTimeout(1500)
+
+    const scrollOf = (row: typeof newest) => row.locator('.row-card__scroller').evaluate(element => ({ left: element.scrollLeft, max: element.scrollWidth - element.clientWidth }))
+    const atRest = { newest: await scrollOf(newest), year: await scrollOf(year) }
+    // Inside the scroll, not at either end: scrolling on still centres the end Books (the bar's thumb isn't at its end).
+    for (const [name, { left, max }] of Object.entries(atRest)) {
+      expect(left, name).toBeGreaterThan(1)
+      expect(left, name).toBeLessThan(max - 1)
+    }
+    // No jump after the first paint.
+    await page.waitForTimeout(600)
+    expect(await scrollOf(newest)).toEqual(atRest.newest)
+    expect(await scrollOf(year)).toEqual(atRest.year)
+
+    /** Share of a band of the card (x from..to of its width, its middle height) that isn't the paper. */
+    async function filled(row: typeof newest, from: number, to: number) {
+      const box = (await row.boundingBox())!
+      const png = await page.screenshot({ type: 'png', clip: { x: box.x + box.width * from, y: box.y + box.height * 0.45, width: box.width * (to - from), height: box.height * 0.2 } })
+      return page.evaluate(async (data) => {
+        const image = new Image()
+        image.src = `data:image/png;base64,${data}`
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.width
+        canvas.height = image.height
+        const context = canvas.getContext('2d')!
+        context.drawImage(image, 0, 0)
+        const pixels = context.getImageData(0, 0, image.width, image.height).data
+        let ink = 0
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (Math.abs(pixels[index]! - 0xF5) + Math.abs(pixels[index + 1]! - 0xF2) + Math.abs(pixels[index + 2]! - 0xEB) > 60) ink++
+        }
+        return ink / (pixels.length / 4)
+      }, png.toString('base64'))
+    }
+    // Spines right up to the right edge of the newest row, the left edge of the year row (inside the soft end fades).
+    expect(await filled(newest, 0.8, 0.92)).toBeGreaterThan(0.5)
+    expect(await filled(year, 0.08, 0.2)).toBeGreaterThan(0.5)
+
+    // In focus at rest: the Book in the middle, not the newest; scrolled to the end, the newest is centred.
+    const focusOf = (row: typeof newest) => row.locator('.row-focus .title-stars__title').textContent()
+    const restFocus = await focusOf(newest)
+    await newest.locator('.row-card__scroller').evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+    })
+    await expect.poll(() => focusOf(newest), { timeout: 5_000 }).not.toBe(restFocus)
+    // And the year row scrolled to its start centres its year's first Book.
+    await year.locator('.row-card__scroller').evaluate((element) => {
+      element.scrollLeft = 0
+    })
+    await expect.poll(() => focusOf(year), { timeout: 5_000 }).toBe('The Paper Lighthouse')
 
     expect(errors).toEqual([])
     await page.close()

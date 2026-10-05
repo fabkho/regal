@@ -5,6 +5,7 @@
 // placed by the stage on the viewport's bottom edge. Its look is the host's
 // theme (the `--regal-*` tokens), its content can be the host's slots
 // (README: "Theming"); the frame, the swap, the sheet and the morph stay Regal's.
+import { ratingText } from '#layers/regal/app/utils/books/rating'
 
 const props = withDefaults(defineProps<{
   /** Show as a bottom sheet (narrow stages) instead of the card. */
@@ -255,7 +256,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
                     class="details__stars-fill"
                     :style="{ width: `${shown.rating / 5 * 100}%` }"
                   >★★★★★</span></span>
-                  <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
+                  <span class="details__rating-value">{{ ratingText(shown.rating) }}</span>
                 </p>
 
                 <div

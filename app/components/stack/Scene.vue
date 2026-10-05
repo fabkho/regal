@@ -19,6 +19,8 @@ const props = defineProps<{
   stackHeight: number
   /** Width (metres) the view must fit; wider when dates stand beside the pile. */
   fitWidth?: number
+  /** The floor shadow's strength: 1 Regal's, 0 none (the dark theme; utils/theme/tokens.ts). */
+  floorShadow?: number
 }>()
 const emit = defineEmits<{ ready: [] }>()
 
@@ -353,7 +355,8 @@ onBeforeRender(({ delta }) => {
     <TresPlaneGeometry :args="[6, 6]" />
     <TresShadowMaterial
       :color="FLOOR_SHADOW.color"
-      :opacity="FLOOR_SHADOW.opacity"
+      :opacity="FLOOR_SHADOW.opacity * (props.floorShadow ?? 1)"
+      :visible="(props.floorShadow ?? 1) > 0"
       :transparent="true"
     />
   </TresMesh>
