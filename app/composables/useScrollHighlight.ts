@@ -37,6 +37,11 @@ export function useFocusedBook() {
   return useState<string | null>('books:focused', () => null)
 }
 
+/** A finger is scrolling the Stack, or its flick is still gliding (set by the Stack scene; the scroll haptics read it). */
+export function useTouchScrolling() {
+  return useState<boolean>('stack:touch-scrolling', () => false)
+}
+
 /** Where the focus label goes, in canvas pixels: right of the focused Book's end, on the focus line. */
 export function useFocusAnchor() {
   return useState('books:focus-anchor', () => ({ x: 0, y: 0, width: 0 }))

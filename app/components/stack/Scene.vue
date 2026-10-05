@@ -43,6 +43,7 @@ const { camera, renderer, sizes } = useTres()
 const { onBeforeRender } = useLoop()
 const { pickedId } = useBookPick()
 const { scrolled } = useScrollLead()
+const touchScrolling = useTouchScrolling()
 const reducedMotion = usePreferredReducedMotion()
 const quality = useRenderQuality()
 // The touch feel; on the dev server single parameters can be tuned from the
@@ -274,6 +275,9 @@ function moveGlide(seconds: number) {
 onBeforeRender(({ delta }) => {
   const seconds = delta || 0.016
   if (glide.speed !== 0) moveGlide(seconds)
+  // A finger on the pile or its glide: the scroll haptics tick (composables/useBookHaptics.ts).
+  const byTouch = touching || glide.speed !== 0
+  if (touchScrolling.value !== byTouch) touchScrolling.value = byTouch
   const smoothing = reducedMotion.value === 'reduce' || following ? 1 : 1 - Math.exp(-seconds * 7)
   view.y += (view.target - view.y) * smoothing
   // Smoothed, and a jump (a new pile, reduced motion) counts no faster than 3 m/s.
