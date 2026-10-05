@@ -38,10 +38,12 @@ import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
 import { loadCover, loadFullCover, prefetchFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
-import { loadPicture } from '#layers/regal/app/utils/covers/images'
+import { decodeImage, fetchImage, loadPicture } from '#layers/regal/app/utils/covers/images'
 import type { Picture } from '#layers/regal/app/utils/covers/images'
 import { drawPageEdges, pageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
 import type { PageEdgePlan } from '#layers/regal/app/utils/books/pageEdges'
+import { backDrawDue } from '#layers/regal/app/utils/books/backs'
+import { CLICK_SLOP } from '#layers/regal/app/utils/books/press'
 import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
 import { inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
@@ -134,6 +136,8 @@ interface BookMaterials {
   ready: boolean
   /** URL of the full-size Cover on the picked Book. */
   fullCover: string | null
+  /** The Stack's back for a Book about to be or being taken out (see prepareBack). */
+  backPrep: BackPrep | null
   /** Aborted when the Book goes: its Spine and back art are no longer loaded. */
   aborted: AbortController
   /** Below 1 while the Book appears or vanishes. */
@@ -308,7 +312,7 @@ function materialsFor(pose: BookPose): Material[] {
     const back = printed(backTexture)
     const edges = pageEdgesFor(pose, fromHex(pose.color))
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: null, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -331,7 +335,9 @@ function motionFor(bookId: string): Motion {
  * 2. the Spine art (its small pile copy);
  * 3. the front: right away for the top Book, or when the Spine colours must
  *    come from it (no colours in the file); else after the pile's faces;
- * 4. the back and its blurb, seen only once the Book is taken out.
+ * 4. the back and its blurb, seen only once the Book is taken out: on the
+ *    Bookcase (an end or a leaning Book shows it); the Stack draws it for the
+ *    picked Book only (prepareBack).
  * Images decode off the main thread (utils/covers/images.ts). A face the file
  * has no image for (or whose image doesn't load) stays drawn.
  */
@@ -399,7 +405,7 @@ async function applyCover(pose: BookPose) {
     }
     entry.ready = true
   })
-  if (!fronted) return
+  if (!fronted || deferBacks) return
 
   // 4. The back and its blurb (from the file).
   const back = set?.back ? await loadPicture(set.back, hidden, ART_HEIGHT, signal) : null
@@ -416,8 +422,8 @@ function closePicture(picture: Picture | null | undefined) {
   if (picture && 'close' in picture && typeof picture.close === 'function') picture.close()
 }
 
-/** ?debug=loads: a face the pile shows changed; on screen, that is a visible pop. */
-function noteShown(bookId: string, face: 'spine' | 'edges' | 'front') {
+/** ?debug=loads: a face the pile shows (or the picked Book's back) changed; on screen, that is a visible pop. */
+function noteShown(bookId: string, face: 'spine' | 'edges' | 'front' | 'back') {
   if (!props.debugLoads) return
   const y = poseHeights.get(bookId)
   const onScreen = !!stackScroll && y !== undefined && inView(y, stackScroll) && meshes.get(bookId)?.visible === true
@@ -459,6 +465,7 @@ function disposeEntry(entry: BookMaterials) {
   entry.aborted.abort()
   closePicture(entry.art.spine)
   closePicture(entry.art.back)
+  closePicture(entry.backPrep?.picture)
   if (entry.fullCover) releaseFullCover(entry.fullCover)
 }
 
@@ -468,6 +475,8 @@ function disposeEntry(entry: BookMaterials) {
 // faces only seen once a Book is taken out. Ranks are read when a slot frees
 // up, so the window moves with the scroll; the Bookcase loads in Shelf order.
 const stackScroll = inject(STACK_SCROLL, null)
+/** The Stack draws a back only for the picked Book (prepareBack); the Bookcase draws them all. */
+const deferBacks = !!stackScroll
 setBands(LOAD_BANDS)
 /** Height of each Book in the current poses, for the load order. */
 const poseHeights = new Map<string, number>()
@@ -583,7 +592,7 @@ const unseen = (bookId: string) => meshes.get(bookId)?.visible === false
 
 // A Book on its way into or out of the view (not drawn yet, or no longer in
 // the poses) can't be taken out; clicks look through it.
-useBookClicks(group, bookId => !unseen(bookId) && props.poses.some(pose => pose.bookId === bookId))
+useBookClicks(group, bookId => !unseen(bookId) && props.poses.some(pose => pose.bookId === bookId), onPress)
 let hoveredId: string | null = null
 /** Scroll highlight (Stack only): the Book on the focus line comes out like a hovered one. */
 const highlight = useScrollHighlight()
@@ -711,11 +720,135 @@ function clothCover(entry: BookMaterials) {
   plain.dispose()
 }
 
+// --- Backs (Stack) ---------------------------------------------------------------
+// In the pile a back faces down: a Book keeps the plain back it starts with
+// until it is taken out. A press or a resting mouse on a Book fetches its back
+// art's bytes ahead; picking decodes them (off the main thread) and the back
+// is drawn when utils/books/backs.ts says: once the Book has arrived in front
+// of the camera, so the drawing never stutters its flight, or at once when
+// the back is asked for sooner. Put back, the Book gives its drawn back up
+// again, like the full Cover: a back is a canvas up to 686 × 1024 (~3.7 MB of
+// GPU memory with mipmaps), and keeping every one ever looked at would bring
+// back what this saves. Seeing it again costs a decode and a draw; the bytes
+// come from the HTTP cache.
+
+interface BackPrep {
+  /** The back art's bytes, fetched ahead; null without art. */
+  bytes: Promise<Blob | null>
+  /** The decoded art: undefined until decoded, null without art. */
+  picture: Picture | null | undefined
+  decoding: boolean
+  /** In the draw queue or drawn. */
+  queued: boolean
+  drawn: boolean
+  /** Stops the fetch of a press that turned into a scroll. */
+  aborted: AbortController
+}
+
+/** Starts fetching a Book's back art (Stack only). One Book ahead at most besides the picked one. */
+function prepareBack(bookId: string): BackPrep | null {
+  if (!deferBacks) return null
+  const entry = materialsByBook.get(bookId)
+  if (!entry) return null
+  if (entry.backPrep) return entry.backPrep
+  for (const [id, other] of materialsByBook) {
+    if (id !== bookId && id !== pickedId.value && other.backPrep && !other.backPrep.queued) releaseBack(id)
+  }
+  const aborted = new AbortController()
+  // The Book going stops it too; the listener goes with the prep.
+  entry.aborted.signal.addEventListener('abort', () => aborted.abort(), { once: true, signal: aborted.signal })
+  const url = entry.set?.back
+  const prep: BackPrep = {
+    bytes: url ? fetchImage(url, loadPriority(bookId, 'hidden'), aborted.signal) : Promise.resolve(null),
+    picture: undefined,
+    decoding: false,
+    queued: false,
+    drawn: false,
+    aborted,
+  }
+  entry.backPrep = prep
+  return prep
+}
+
+/** Decodes the picked Book's back art, off the main thread. */
+function decodeBack(entry: BookMaterials, prep: BackPrep) {
+  if (prep.decoding) return
+  prep.decoding = true
+  void prep.bytes
+    .then(blob => (blob && !prep.aborted.signal.aborted ? decodeImage(blob, { height: ART_HEIGHT }) : null))
+    .catch(() => null)
+    .then((picture) => {
+      if (entry.backPrep === prep) prep.picture = picture
+      else closePicture(picture)
+    })
+}
+
+/** Each frame: draws the picked Book's back once it is due (utils/books/backs.ts). */
+function drawBackWhenDue() {
+  const bookId = pickedId.value
+  if (!deferBacks || !bookId) return
+  const entry = materialsByBook.get(bookId)
+  const prep = prepareBack(bookId)
+  if (!entry || !prep) return
+  decodeBack(entry, prep)
+  const due = backDrawDue({ pick: motionFor(bookId).pick.value, face: face.value, artReady: prep.picture !== undefined, queued: prep.queued })
+  const pose = due ? rendered.value.find(candidate => candidate.bookId === bookId) : undefined
+  if (!pose) return
+  prep.queued = true
+  void whenDrawn(entry, bookId, (current) => {
+    if (current.backPrep !== prep) return
+    if (prep.picture) current.art.back = prep.picture
+    current.description = booksById.value.get(bookId)?.description?.trim() || null
+    drawFace(pose, current, 'back')
+    noteShown(bookId, 'back')
+    // On the canvas now: the bitmap goes (a later pick decodes anew).
+    closePicture(current.art.back)
+    current.art.back = undefined
+    prep.picture = null
+    prep.drawn = true
+  })
+}
+
+/** Gives a Book's back up: the plain one again, the drawn canvas and any art freed. */
+function releaseBack(bookId: string) {
+  const entry = materialsByBook.get(bookId)
+  const prep = entry?.backPrep
+  if (!entry || !prep) return
+  entry.backPrep = null
+  prep.aborted.abort()
+  closePicture(prep.picture)
+  const pose = rendered.value.find(candidate => candidate.bookId === bookId)
+  if (!prep.drawn || !pose) return
+  const drawn = entry.backTexture.image as HTMLCanvasElement
+  setFace(entry, 'back', plainBack(pose))
+  drawn.width = 0
+}
+
+/** Where a press on a Book went down: its back is fetched, unless the press becomes a scroll. */
+let pressed: { bookId: string, x: number, y: number } | null = null
+
+function onPress(bookId: string | null, event: PointerEvent) {
+  pressed = null
+  if (!bookId || !deferBacks || pickedId.value === bookId) return
+  prepareBack(bookId)
+  pressed = { bookId, x: event.clientX, y: event.clientY }
+}
+
+/** A press that moved further than a click may has become a scroll: its back's fetch stops. */
+function pressMoved(event: PointerEvent) {
+  if (!pressed || Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) <= CLICK_SLOP) return
+  const { bookId } = pressed
+  pressed = null
+  if (pickedId.value !== bookId && hoveredBook.value !== bookId) releaseBack(bookId)
+}
+
 watch(pickedId, (id, previous) => {
   if (id) setFullCover(id, true)
   if (previous && previous !== id) {
     setTimeout(() => {
-      if (pickedId.value !== previous) setFullCover(previous, false)
+      if (pickedId.value === previous) return
+      setFullCover(previous, false)
+      releaseBack(previous)
     }, RETURN_SECONDS * 1000 + 100)
   }
   reschedule()
@@ -728,8 +861,10 @@ watch(hoveredBook, (id) => {
   clearTimeout(hoverTimer)
   if (!id) return
   hoverTimer = setTimeout(() => {
-    const url = hoveredBook.value === id ? fullCoverUrl(id) : null
+    if (hoveredBook.value !== id) return
+    const url = fullCoverUrl(id)
     if (url) prefetchFullCover(url, loadPriority(id, 'shown'))
+    prepareBack(id)
   }, HOVER_PREFETCH_MS)
 })
 
@@ -754,6 +889,7 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
+  pressMoved(event)
   // A release outside the window never reaches us: no button down, no drag.
   if (dragging && !(event.buttons & 1)) dragging = false
   if (!dragging || !pickedId.value) return
@@ -949,6 +1085,7 @@ onBeforeRender(({ delta }) => {
     ranked.targetY = stackScroll.targetY
     reschedule()
   }
+  drawBackWhenDue()
   drawPending()
   const waiting = entranceWaits()
   if (requested && !waiting) {

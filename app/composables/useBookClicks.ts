@@ -17,11 +17,14 @@ import type { Press } from '#layers/regal/app/utils/books/press'
  * moment (what the user aimed at, before a wobble scrolls the Stack or spins
  * the Book), and it counts when the press stayed put (utils/books/press.ts).
  * `pickable` turns down Books that can't be taken out right now (arriving or
- * leaving in a re-sort); a click looks through them. Call inside the TresCanvas.
+ * leaving in a re-sort); a click looks through them. `onPress` hears which
+ * Book (or none) a press went down on, before it is known to be a click, so
+ * what a pick needs can start loading. Call inside the TresCanvas.
  */
 export function useBookClicks(
   books: Readonly<ShallowRef<Object3D | null>>,
   pickable: (bookId: string) => boolean = () => true,
+  onPress?: (bookId: string | null, event: PointerEvent) => void,
 ) {
   const { camera, renderer } = useTres()
   const { clickAt } = useBookPick()
@@ -37,6 +40,7 @@ export function useBookClicks(
     const point = element && event.button === 0 && event.isPrimary ? toNdc(element, event.clientX, event.clientY) : null
     press = point ? startPress(event) : null
     aimed = point ? bookAt(books.value, camera.value, point, pickable) : null
+    if (press) onPress?.(aimed, event)
   }
 
   function onMove(event: PointerEvent) {
