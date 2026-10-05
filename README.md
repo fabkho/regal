@@ -111,7 +111,7 @@ Three steps, each with one job:
 Libellus (library:convert: bridge for old data) ──► library file ──► regal assets ──► library file + images (R2 v2/) ──► Regal display
 ```
 
-1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data. Today that is [Libellus](https://github.com/fabkho/libellus) (`pnpm export:regal`, see [The daily chain](#the-daily-chain)). `pnpm library:convert` stays as a bridge for old published data: it turns a v1 `library.json` + `manifest.json` into a library file ([Converting](docs/library-file.md#converting-old-published-data)). Where the data comes from is the producer's business, not Regal's.
+1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data. Today that is [Libellus](https://github.com/fabkho/libellus): its `regal-export` edge function for the workflow that publishes the shelf, `pnpm export:regal` there by hand (see [The daily chain](#the-daily-chain)). `pnpm library:convert` stays as a bridge for old published data: it turns a v1 `library.json` + `manifest.json` into a library file ([Converting](docs/library-file.md#converting-old-published-data)). Where the data comes from is the producer's business, not Regal's.
 2. **Enrich: Regal assets** ([`pipeline/`](pipeline/README.md)). Takes any library file and returns it with each Book's `assets` (front, Spine, back, pile copies, palette, Spine colour, photo faces, source) and the images, plus a blurb for Books without one.
 3. **Display.** Regal (this layer) renders the enriched file, nothing else.
 
@@ -128,7 +128,7 @@ pnpm regal-assets --in .data/library-v2.json --dry-run --no-ai   # = pnpm --dir 
 - Per Book: what the file brings and is good enough stays (copied into the output, so the published set doesn't depend on where the input's images live); a front below 800 px or none goes through today's front chain (Apple, the German National Library for German editions, Google, the file's own front, Open Library), the taller one wins; photo drop-ins (`<cache>/photos/<key>/front.jpg` …) beat everything; pile copies, palette and Spine colour are made from the faces; a Book without a blurb gets one (Apple's publisher copy, else Open Library/Google).
 - AI Spines/backs (Gemini, `GEMINI_API_KEY` with billing) for Books with a front and no Spine/back art, through the Batch API (half price; `--now` for direct calls). A paid jacket is kept in the cache and never bought twice. `--no-ai` leaves them to Regal's drawn ones, `--no-model` skips the text model too.
 - Incremental and idempotent: a Book is rebuilt only when what its assets are made of changed (its sizing and text fields, its input images' content, its photos); a run without changes rewrites nothing, not even `generatedAt`. Downloads, jackets, open batch jobs and the state live under `.data/regal-assets/` (`--cache`). `--revalidate` asks the servers whether input images changed behind the same URL; `--force` rebuilds anyway; `--limit <n>` takes only the n most recently read Books this run.
-- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`, `wrangler login` once) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (the old v1 files) never, and an empty prefix is refused.
+- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`; `wrangler login` once, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment as in the workflow) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (the old v1 files) never, and an empty prefix is refused.
 - `--dry-run`: nothing remote and nothing paid. No upload (the plan is printed), no Gemini call (the AI cost is printed, as today's build did); the free work runs and the local output is written, so the dry run shows the enriched file.
 
 Books without a blurb now get theirs from Regal assets: the display has no description resolver any more, so a file that skips this step shows them without one.
@@ -137,13 +137,35 @@ Books without a blurb now get theirs from Regal assets: the display has no descr
 
 ### The daily chain
 
-The owner's daily job (09:00, outside this repo) runs two commands: [Libellus](https://github.com/fabkho/libellus) (hosted Supabase) writes the library file, and a Regal checkout enriches and publishes it under `v2/`:
+The shelf is published from the cloud ([libellus#110](https://github.com/fabkho/libellus/issues/110)) by the workflow [`publish-shelf.yml`](.github/workflows/publish-shelf.yml): [Libellus](https://github.com/fabkho/libellus) (hosted Supabase) serves the owner's library file from its `regal-export` edge function, and the workflow enriches and publishes it under `v2/`:
 
-```bash
-# 1. in Libellus: reading data → library file, keeping the art already published
-pnpm export:regal --carry-art https://books.fabkho.dev/v2/library.json
-# 2. in a Regal checkout: enrich and publish under v2/ (no AI in the daily run)
-pnpm regal-assets --in <the file from step 1> --no-ai --no-model --revalidate --publish v2
+```
+Libellus change ─► DB trigger (owner only, ≥ 10 min apart) ─► repository_dispatch libellus-changed ─┐
+daily 05:00 UTC (schedule) ─────────────────────────────────────────────────────────────────────────┼─► publish-shelf
+by hand (workflow_dispatch, dry_run / allow_shrink) ────────────────────────────────────────────────┘
+publish-shelf: GET regal-export ─► validate ─► pnpm regal-assets --no-ai --no-model --revalidate --publish v2 ─► R2 portfolio-books/v2/
 ```
 
-`--carry-art` keeps each Book's published front, Spine and back, matched by ISBN-13, else by title plus the first author's surname, so the export doesn't have to make them again. Step 2 is quick when nothing changed (every Book cached): a quiet day uploads nothing. The portfolio reads `books.fabkho.dev/v2/library.json` ([#41](https://github.com/fabkho/regal/issues/41)). The old reading-tracker build (`books:daily`) and the `library:convert` step are retired from the job; retiring the v1 R2 data is [#48](https://github.com/fabkho/regal/issues/48).
+1. **Export.** `curl -H "Authorization: Bearer $REGAL_EXPORT_TOKEN" "$LIBELLUS_EXPORT_URL"`: the owner's Books read as a library file, with each Book's published art carried over (Libellus reads `books.fabkho.dev/v2/library.json` and keeps every matched Book's front, Spine and back, by ISBN-13, else by title plus the first author's surname), the member's own page count where she set one. The same file `pnpm export:regal --statuses read --carry-art …` writes in Libellus. When Libellus cannot read the published file it answers 502 and nothing is published, so the art is never dropped.
+2. **Validate.** Regal's validator (`pipeline/src/layer.ts`), and a guard: an export with far fewer Books than the shelf shows now (more than 5 and 10 % fewer: a wrong owner, a broken read) is not published unless a manual run sets `allow_shrink`.
+3. **Enrich and publish.** `pnpm regal-assets --in <file> --no-ai --no-model --revalidate --publish v2` with wrangler on an API token. `.data/regal-assets` (downloads, output, the state of the last publish) is kept in the Actions cache between runs, so a quiet run rebuilds and uploads nothing. A run with an empty cache (the first one, or after GitHub evicted it) rebuilds every Book and uploads every file once.
+
+The job summary lists the export's and the published shelf's Book counts, what Regal assets wrote, what it published (or would have) and the Books it rebuilt. Runs never overlap: one waits for the other, and of the waiting ones only the latest runs. A step that fails fails the run (GitHub mails the owner).
+
+A dry run: **Actions → publish-shelf → Run workflow → dry_run**: everything but the upload (`--dry-run`: the plan is printed). Locally, the same as the workflow, never `--publish` while testing:
+
+```bash
+curl -fsS -H "Authorization: Bearer $REGAL_EXPORT_TOKEN" "$LIBELLUS_EXPORT_URL" -o .data/library.json
+pnpm regal-assets --in .data/library.json --no-ai --no-model --revalidate --dry-run --publish v2
+```
+
+Secrets (Settings → Secrets and variables → Actions; never in the repo):
+
+| Secret | |
+|---|---|
+| `REGAL_EXPORT_TOKEN` | The shared bearer secret, the same value as the `regal-export` function secret in Libellus. |
+| `LIBELLUS_EXPORT_URL` | `https://<project>.supabase.co/functions/v1/regal-export`. |
+| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token with R2 Object Read & Write on the bucket `portfolio-books` only. |
+| `CLOUDFLARE_ACCOUNT_ID` | The account that holds the bucket. |
+
+Optional variables: `REGAL_R2_BUCKET` (default `portfolio-books`), `REGAL_PUBLISHED_URL` (the shelf the shrink guard compares with, default `https://books.fabkho.dev/v2/library.json`). The portfolio reads `books.fabkho.dev/v2/library.json` ([#41](https://github.com/fabkho/regal/issues/41)). This replaces the owner's daily job on his Mac (Libellus `pnpm export:regal`, then `regal-assets` in a local checkout), which is retired once the workflow has run green twice. The old reading-tracker build (`books:daily`) and the `library:convert` step are retired; retiring the v1 R2 data is [#48](https://github.com/fabkho/regal/issues/48).
