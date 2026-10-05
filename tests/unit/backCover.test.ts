@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barcodeDigits, ean5Modules, fitTextBlocks, formatIsbn13, splitLede, wrapWith } from '../../app/utils/covers/bookFaces'
+import { barcodeDigits, ean5Modules, fitTextBlocks, formatIsbn13, splitLede, WORD_MEASURE_SIZE, wordMeasure, wrapWith } from '../../app/utils/covers/bookFaces'
 import type { FitBlock, FitOptions } from '../../app/utils/covers/bookFaces'
 
 /** A monospace stand-in for canvas: every glyph is half the font size wide. */
@@ -143,6 +143,50 @@ describe('fitTextBlocks', () => {
     } })
     expect(seen.length).toBeGreaterThan(0)
     expect(new Set(seen).size).toBeGreaterThan(1) // it really searched
+  })
+})
+
+describe('wordMeasure', () => {
+  it('adds a line up from its words and spaces, scaled to the size', () => {
+    const cached = wordMeasure(measure)
+    expect(cached('one two three', 10, 0)).toBeCloseTo(measure('one two three', 10, 0))
+    expect(cached('one two three', 33, 0)).toBeCloseTo(measure('one two three', 33, 0))
+    expect(cached('word', 7.5, 0)).toBeCloseTo(measure('word', 7.5, 0))
+  })
+
+  it('measures each word once per block, at one size', () => {
+    const calls: { text: string, size: number, block: number }[] = []
+    const cached = wordMeasure((text, size, block) => {
+      calls.push({ text, size, block })
+      return text.length * size * 0.5
+    })
+    cached('one two', 10, 0)
+    cached('one two three', 20, 0)
+    cached('two one', 5, 0)
+    expect(calls.map(call => call.text).sort()).toEqual([' ', 'one', 'three', 'two'])
+    expect(calls.every(call => call.size === WORD_MEASURE_SIZE)).toBe(true)
+    cached('one', 10, 1)
+    expect(calls.at(-1)).toEqual({ text: 'one', size: WORD_MEASURE_SIZE, block: 1 })
+  })
+
+  it('keeps blocks apart: each has its own font', () => {
+    const cached = wordMeasure((text, size, block) => text.length * size * (block === 0 ? 0.5 : 0.7))
+    expect(cached('word', 10, 0)).toBeCloseTo(20)
+    expect(cached('word', 10, 1)).toBeCloseTo(28)
+  })
+
+  it('fits a blurb exactly as the plain measure does, with far fewer measurements', () => {
+    let plain = 0
+    let words = 0
+    const counted = (count: () => void): FitOptions['measure'] => (text, size) => {
+      count()
+      return text.length * size * 0.5
+    }
+    const blocks = [{ text: BLURB.split('. ')[0]!, scale: 1.18, gapAfter: 0.5 }, { text: BLURB }]
+    const expected = fit(blocks, { measure: counted(() => plain++) })
+    const actual = fit(blocks, { measure: wordMeasure(counted(() => words++)) })
+    expect(actual).toEqual(expected)
+    expect(words).toBeLessThan(plain / 10)
   })
 })
 
