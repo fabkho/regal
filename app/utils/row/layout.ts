@@ -107,8 +107,15 @@ export function layoutRow(oldestFirst: Book[]): RowLayout {
   return { poses, markers, extent: poses.length ? [-MARGIN, x + MARGIN] : [0, 0] }
 }
 
-/** Px per character of the date's font (IBM Plex Mono 600 at 0.7 rem). */
-const LABEL_CHAR = 7
+/** Px per character of a date's month, year (half size) and count (0.6 em): IBM Plex Mono 600 at 0.7 rem with its tracking. Only until the real width is measured. */
+const LABEL_MONTH_CHAR = 7.4
+const LABEL_YEAR_CHAR = 3.7
+const LABEL_COUNT_CHAR = 4.4
+
+/** Min px between two dates. */
+export const ROW_LABEL_GAP = 12
+/** A date that stepped back for a sliding neighbour only returns with this much more room (px), so it doesn't flicker at the threshold. */
+export const ROW_LABEL_HYSTERESIS = 12
 
 export interface RowLabel extends RowMarker {
   /** The month ('MAR'), or a status ('READING'). */
@@ -117,27 +124,122 @@ export interface RowLabel extends RowMarker {
   small: string
 }
 
-/**
- * The dates that fit at `pxPerMetre`: each month with its year small; a date
- * that would run into the one before it is left out (its sheet still shows),
- * so short months don't pile their dates on each other.
- */
-export function rowLabels(markers: RowMarker[], pxPerMetre: number): RowLabel[] {
-  const years = new Set(markers.map(marker => /\d{4}$/.exec(marker.label)?.[0] ?? marker.label))
-  const oneYear = years.size === 1
-  let lastRight = -Infinity
-  const shown: RowLabel[] = []
-  for (const marker of markers) {
+/** Each month's date text: the month with its year small, as on the Stack's dates. */
+export function rowLabelTexts(markers: RowMarker[]): RowLabel[] {
+  const yearOf = (marker: RowMarker) => /\d{4}$/.exec(marker.label)?.[0] ?? marker.label
+  const oneYear = new Set(markers.map(yearOf)).size === 1
+  return markers.map((marker) => {
     const [, month, year] = /^(.*?)(?: (\d{4}))?$/.exec(marker.label) ?? [marker.label, marker.label, undefined]
-    const small = year && !oneYear ? year : ''
-    const width = (month!.length + small.length * 0.5 + String(marker.count).length + 1) * LABEL_CHAR + 16
-    // Centred on the sheet.
-    const from = marker.x * pxPerMetre - width / 2
-    if (from < lastRight + 6) continue
-    lastRight = from + width
-    shown.push({ ...marker, text: month!, small })
+    return { ...marker, text: month!, small: year && !oneYear ? year : '' }
+  })
+}
+
+/** A date's width (px) before it is measured: its characters, the year half size, the count, the gaps. */
+export function rowLabelEstimate(label: Pick<RowLabel, 'text' | 'small' | 'count'>): number {
+  return label.text.length * LABEL_MONTH_CHAR + label.small.length * LABEL_YEAR_CHAR + String(label.count).length * LABEL_COUNT_CHAR + (label.small ? 8 : 4)
+}
+
+/** A date on one line: the box's middle (px) and its width. */
+interface LabelBox {
+  centre: number
+  width: number
+}
+
+/** Whether two dates have less than `gap` px between them. */
+function labelsCollide(a: LabelBox, b: LabelBox, gap: number): boolean {
+  return Math.abs(a.centre - b.centre) < (a.width + b.width) / 2 + gap
+}
+
+export interface RowLabelPlan extends RowLabel {
+  /** The measured (else estimated) width, px. */
+  width: number
+  /** False: crowded out by a later month, it keeps only its leader line. */
+  shown: boolean
+}
+
+/**
+ * Which dates the row shows, whatever the scroll. A date's box is centred on
+ * its month's sheet, `widths` px wide as measured (else estimated), at
+ * `pxPerMetre`. Going from the end the row rests at (the newest month; for a
+ * row that starts at its oldest, the oldest), a date stays if it clears the
+ * ones already kept by ROW_LABEL_GAP; else it collapses to its leader line.
+ * So the month at the resting end always has its date, and of two close
+ * months the one nearer that end wins. It depends on the row and the card's
+ * height only, never on the scroll: the same dates at every position, nothing
+ * flickers.
+ */
+export function rowLabelPlan(labels: RowLabel[], widths: ReadonlyMap<string, number>, pxPerMetre: number, start: RowStart = 'newest'): RowLabelPlan[] {
+  const plan: RowLabelPlan[] = labels.map(label => ({ ...label, width: widths.get(label.key) || rowLabelEstimate(label), shown: false }))
+  const kept: LabelBox[] = []
+  for (const label of start === 'newest' ? [...plan].reverse() : plan) {
+    const box: LabelBox = { centre: label.x * pxPerMetre, width: label.width }
+    if (kept.some(other => labelsCollide(box, other, ROW_LABEL_GAP))) continue
+    kept.push(box)
+    label.shown = true
   }
-  return shown
+  return plan
+}
+
+/** A sliding date still ranks first while its sheet is at most this far (px) off the card (January's at a year row's rest). */
+export const ROW_LABEL_SHEET_REACH = 10
+
+export interface RowLabelPlace {
+  key: string
+  /** Px of the date's sheet from the card's left. */
+  x: number
+  width: number
+}
+
+export interface RowLabelSlot {
+  /** Px the date slides sideways (rowLabelNudge). */
+  nudge: number
+  /** False: it steps back to its leader line for now. */
+  shown: boolean
+}
+
+/**
+ * The planned dates near the card at one scroll position (`x` from the
+ * resting camera). A date at the card's edge slides in to stay readable
+ * (rowLabelNudge) and then may run into a neighbour that isn't sliding. While
+ * it is whole inside the card and its sheet is (all but) in the card, it
+ * keeps its label (it is the one being read) and the neighbour steps back to
+ * its leader line until there is room again; of two sliding ones the one
+ * nearer the card's middle wins. A date on its way out (cut by the card's
+ * edge), or still coming in with its sheet off the card, gives way to the
+ * others. A date that stepped
+ * back for the sliding (in `hidden`) returns only with ROW_LABEL_HYSTERESIS
+ * more room, so it doesn't flicker when the scroll rests on the threshold.
+ * Dates outside the card block no one.
+ */
+export function rowLabelSlots(items: RowLabelPlace[], cardWidth: number, hidden: ReadonlySet<string> = new Set()): Map<string, RowLabelSlot> {
+  const ranked = items.map((item) => {
+    const nudge = rowLabelNudge(item.x, item.width, cardWidth)
+    const box: LabelBox = { centre: item.x + nudge, width: item.width }
+    const inCard = box.centre + item.width / 2 > 0 && box.centre - item.width / 2 < cardWidth
+    const whole = box.centre - item.width / 2 >= 0 && box.centre + item.width / 2 <= cardWidth
+    // 0: slid in, whole, its sheet (just) in the card; 1: where its sheet puts it; 2: slid but cut, or its sheet well outside the card.
+    const rank = nudge === 0 ? 1 : whole && item.x > -ROW_LABEL_SHEET_REACH && item.x < cardWidth + ROW_LABEL_SHEET_REACH ? 0 : 2
+    return { key: item.key, nudge, box, inCard, rank, middle: Math.abs(item.x - cardWidth / 2) }
+  })
+  // Within a rank: the slid ones by the smaller slide, the ones on their way out or in by the nearer the middle, the rest in order.
+  const order = [...ranked].sort((a, b) => a.rank - b.rank || (a.rank === 0 ? Math.abs(a.nudge) - Math.abs(b.nudge) : a.rank === 2 ? a.middle - b.middle : 0))
+  const slots = new Map<string, RowLabelSlot>()
+  const kept: typeof ranked = []
+  for (const entry of order) {
+    if (!entry.inCard) {
+      slots.set(entry.key, { nudge: entry.nudge, shown: true })
+      continue
+    }
+    const back = hidden.has(entry.key)
+    const clash = kept.some((other) => {
+      // Only room lost to the sliding needs more to come back; dates planned this close stay as they are.
+      const slid = entry.nudge !== 0 || other.nudge !== 0
+      return labelsCollide(entry.box, other.box, ROW_LABEL_GAP + (back && slid ? ROW_LABEL_HYSTERESIS : 0))
+    })
+    slots.set(entry.key, { nudge: entry.nudge, shown: !clash })
+    if (!clash) kept.push(entry)
+  }
+  return slots
 }
 
 /** Where the row's native scroll puts the camera (RowCard). */

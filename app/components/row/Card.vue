@@ -39,7 +39,7 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
-import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelNudge, rowLabels, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
 import { backgroundOf } from '#layers/regal/app/utils/theme/color'
@@ -346,15 +346,34 @@ function setLabel(key: string, element: unknown) {
   if (element instanceof HTMLElement) labelElements.set(key, element)
   else labelElements.delete(key)
 }
-/** Each date's width (px), measured once it shows (again for other dates, other sizes or a late font). */
-const labelWidths = new Map<string, number>()
+/**
+ * Each date's width (px), measured once it is on the page (again for other
+ * dates, other sizes or a late font); until then the plan uses an estimate.
+ */
+const labelWidths = shallowRef<ReadonlyMap<string, number>>(new Map())
+/** The dates that stepped back for a neighbour at the edge, kept between frames for the hysteresis. */
+let steppedBack = new Set<string>()
 
-const labels = computed(() => rowLabels(layout.value.markers, pxPerMetre.value))
-watch(labels, () => labelWidths.clear())
-onMounted(() => document.fonts?.ready.then(() => {
-  labelWidths.clear()
-  placeLabels()
-}))
+const labelTexts = computed(() => rowLabelTexts(layout.value.markers))
+const labels = computed(() => rowLabelPlan(labelTexts.value, labelWidths.value, pxPerMetre.value, props.start))
+watch(labelTexts, () => {
+  labelWidths.value = new Map()
+  nextTick(measureLabels)
+})
+function measureLabels() {
+  const widths = new Map<string, number>()
+  for (const [key, element] of labelElements) {
+    const width = (element.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0
+    if (width) widths.set(key, width)
+  }
+  const before = labelWidths.value
+  const same = widths.size === before.size && [...widths].every(([key, width]) => Math.abs((before.get(key) ?? 0) - width) < 0.5)
+  if (!same) labelWidths.value = widths
+}
+onMounted(() => {
+  measureLabels()
+  document.fonts?.ready.then(() => measureLabels())
+})
 /** The focus label stays put: centred across the card, just under the row (rowFocusLabelTop). */
 const focusTop = computed(() => `${rowFocusLabelTop(height.value || 300).toFixed(1)}px`)
 
@@ -369,21 +388,33 @@ function placeLabels() {
   const h = height.value
   if (!w || !h) return
   const cameraX = ctx.view.cameraX
+  // Where each date's sheet is in the card; the planned dates near it compete for room at its edges.
+  const near: { label: typeof labels.value[number], x: number, y: number }[] = []
   for (const label of labels.value) {
     const element = labelElements.get(label.key)
     if (!element) continue
     const { x, y } = rowProject(label.x, ROW_LABEL_Y, cameraX, w, h)
     const off = x < -240 || x > w + 240
     element.style.visibility = off ? 'hidden' : 'visible'
-    if (off) continue
+    if (!off) near.push({ label, x, y })
+  }
+  const slots = rowLabelSlots(
+    near.filter(({ label }) => label.shown).map(({ label, x }) => ({ key: label.key, x, width: label.width })),
+    w,
+    steppedBack,
+  )
+  steppedBack = new Set()
+  for (const { label, x, y } of near) {
+    const element = labelElements.get(label.key)!
+    const slot = slots.get(label.key)
+    const shown = label.shown && !!slot?.shown
+    if (label.shown && !shown) steppedBack.add(label.key)
     element.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`
-    // A date at the card's edge (January's at a year row's rest) slides in to stay readable; its leader stays on the sheet.
-    let labelWidth = labelWidths.get(label.key)
-    if (!labelWidth) {
-      labelWidth = (element.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0
-      if (labelWidth) labelWidths.set(label.key, labelWidth)
-    }
-    element.style.setProperty('--nudge', `${rowLabelNudge(x, labelWidth, w).toFixed(1)}px`)
+    // Out at once (two dates are never on top of each other, not even while one fades), back in softly.
+    element.style.setProperty('--shown', shown ? '1' : '0')
+    element.style.setProperty('--fade', shown ? '160ms' : '0ms')
+    // A date at the card's edge slides in to stay readable; its leader stays on the sheet.
+    element.style.setProperty('--nudge', `${(slot?.nudge ?? 0).toFixed(1)}px`)
     // The leader line runs down from the date to the top of the row.
     const top = rowProject(label.x, label.height, cameraX, w, h).y
     element.style.setProperty('--leader', `${Math.max(0, top - y).toFixed(1)}px`)
@@ -698,6 +729,7 @@ function scrub(value: number) {
                   :key="item.key"
                   :ref="(element: unknown) => setLabel(item.key, element)"
                   class="row-label"
+                  :data-shown="item.shown"
                 >
                   <span class="row-label__inner">
                     <span class="row-label__text">{{ item.text }}</span>
@@ -1014,6 +1046,14 @@ function scrub(value: number) {
   background: var(--_regal-ink);
 }
 
+/* A date crowded out by a neighbour steps back to its leader line (at once; it returns with a short fade). */
+.row-card__labels .row-label__text,
+.row-card__labels .row-label__small,
+.row-card__labels .row-label__count {
+  opacity: var(--shown, 1);
+  transition: opacity var(--fade, 0ms) linear;
+}
+
 .row-card__labels .row-label__small {
   margin-left: -0.25em;
   font-size: 0.5em;
@@ -1086,7 +1126,10 @@ function scrub(value: number) {
 
 @media (prefers-reduced-motion: reduce) {
   .row-card__labels,
-  .row-card__labels--hidden {
+  .row-card__labels--hidden,
+  .row-card__labels .row-label__text,
+  .row-card__labels .row-label__small,
+  .row-card__labels .row-label__count {
     transition: none;
   }
 }

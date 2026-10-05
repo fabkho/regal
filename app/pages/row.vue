@@ -2,7 +2,8 @@
 // Regal's own site: RegalBooksRow, the Library as one row for a card, at a
 // phone card's size and a wide one, keeping a picked Book in the card or
 // breaking out. Shows `librarySrc` (the demo) or `?src=<url>`; `?year=` and
-// `?limit=` go to the rows. Hosts don't get this page (nuxt.config.ts).
+// `?limit=` go to the rows, `?theme=dark` makes them dark. Hosts don't get
+// this page (nuxt.config.ts).
 const route = useRoute()
 const visitorSrc = computed(() => {
   const value = route.query.src
@@ -16,6 +17,7 @@ const number = (value: unknown) => {
 }
 const year = computed(() => number(route.query.year))
 const limit = computed(() => number(route.query.limit))
+const themeQ = computed(() => (route.query.theme === 'dark' ? 'dark' : 'auto') as 'dark' | 'auto')
 
 useHead({ title: 'Regal — the row' })
 </script>
@@ -46,6 +48,7 @@ useHead({ title: 'Regal — the row' })
             inspect="card"
             :year="year"
             :limit="limit"
+            :theme="themeQ"
           />
         </figure>
         <figure>
@@ -55,6 +58,7 @@ useHead({ title: 'Regal — the row' })
             inspect="viewport"
             :year="year"
             :limit="limit"
+            :theme="themeQ"
           />
         </figure>
       </section>
@@ -67,6 +71,7 @@ useHead({ title: 'Regal — the row' })
             inspect="auto"
             :year="year"
             :limit="limit"
+            :theme="themeQ"
           />
         </figure>
       </section>

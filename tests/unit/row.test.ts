@@ -1,7 +1,8 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import type { Book } from '../../shared/types/book'
-import { layoutRow, ROW_CAMERA, ROW_FOCUS_GAP, ROW_LABEL_INSET, ROW_SHEET, rowBooks, rowFocusLabelTop, rowLabelNudge, rowLabels, rowProject, rowRest, rowScroll } from '../../app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_FOCUS_GAP, ROW_LABEL_GAP, ROW_LABEL_HYSTERESIS, ROW_LABEL_INSET, ROW_SHEET, rowBooks, rowFocusLabelTop, rowLabelEstimate, rowLabelNudge, rowLabelPlan, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '../../app/utils/row/layout'
+import type { RowMarker } from '../../app/utils/row/layout'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,
@@ -72,20 +73,209 @@ describe('layoutRow', () => {
   })
 })
 
-describe('rowLabels', () => {
-  const markers = [
+describe('rowLabelTexts', () => {
+  const markers: RowMarker[] = [
     { key: 'a', label: 'JAN 2026', count: 1, x: 0, height: 0.2 },
     { key: 'b', label: 'FEB 2026', count: 2, x: 0.01, height: 0.2 },
     { key: 'c', label: 'MAR 2025', count: 3, x: 0.5, height: 0.2 },
   ]
 
-  it('sets the month with its year small, and leaves out a date that would run into the one before', () => {
-    expect(rowLabels(markers, 800).map(label => [label.key, label.text, label.small])).toEqual([['a', 'JAN', '2026'], ['c', 'MAR', '2025']])
+  it('sets the month with its year small', () => {
+    expect(rowLabelTexts(markers).map(label => [label.key, label.text, label.small])).toEqual([['a', 'JAN', '2026'], ['b', 'FEB', '2026'], ['c', 'MAR', '2025']])
   })
 
   it('drops the year when the whole row is one year', () => {
-    expect(rowLabels(markers.slice(0, 1), 800)[0]!.small).toBe('')
+    expect(rowLabelTexts(markers.slice(0, 2)).map(label => label.small)).toEqual(['', ''])
   })
+
+  it('keeps a status as it is', () => {
+    expect(rowLabelTexts([{ key: 'r', label: 'READING', count: 1, x: 0, height: 0.2 }]).map(label => [label.text, label.small])).toEqual([['READING', '']])
+  })
+})
+
+/** Dates for a row: a month every `spacing` metres (sheets), one count each. */
+function monthLabels(months: number, spacing: number, firstMonth = 0) {
+  const names = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  return rowLabelTexts(Array.from({ length: months }, (_, index): RowMarker => {
+    const at = firstMonth + index
+    return { key: `m${index}`, label: `${names[at % 12]} ${2025 + Math.floor(at / 12)}`, count: 1 + (index % 4), x: index * spacing, height: 0.2 }
+  }))
+}
+
+describe('rowLabelPlan (dates never collide, the month at the resting end wins)', () => {
+  const pxPerMetre = 300 / ROW_CAMERA.viewHeight
+  const nobody = new Map<string, number>()
+
+  it('shows every date when the months are far apart', () => {
+    const plan = rowLabelPlan(monthLabels(6, 0.2), nobody, pxPerMetre)
+    expect(plan.every(label => label.shown)).toBe(true)
+  })
+
+  it('collapses the earlier of two months a few Books apart to its leader line', () => {
+    // DEC 2025 and JAN 2026 44 px apart; dates are about 70 px wide.
+    const labels = monthLabels(2, 44 / pxPerMetre, 11)
+    expect(labels.map(label => `${label.text} ${label.small}`)).toEqual(['DEC 2025', 'JAN 2026'])
+    expect(rowLabelPlan(labels, nobody, pxPerMetre).map(label => label.shown)).toEqual([false, true])
+  })
+
+  it('lets the oldest month win in a row that starts at its oldest (a year row\'s January)', () => {
+    const labels = monthLabels(2, 30 / pxPerMetre)
+    expect(rowLabelPlan(labels, nobody, pxPerMetre, 'oldest').map(label => label.shown)).toEqual([true, false])
+  })
+
+  it('keeps the date that clears the gap exactly, and not one closer', () => {
+    const width = rowLabelEstimate(monthLabels(1, 0)[0]!)
+    const apart = (px: number) => rowLabelPlan(monthLabels(2, px / pxPerMetre), nobody, pxPerMetre).map(label => label.shown)
+    expect(apart(width + ROW_LABEL_GAP)).toEqual([true, true])
+    expect(apart(width + ROW_LABEL_GAP - 1)).toEqual([false, true])
+  })
+
+  it('chooses by the measured widths when it has them', () => {
+    const labels = monthLabels(2, 60 / pxPerMetre)
+    expect(rowLabelPlan(labels, new Map([['m0', 40], ['m1', 40]]), pxPerMetre).map(label => label.shown)).toEqual([true, true])
+    expect(rowLabelPlan(labels, new Map([['m0', 80], ['m1', 80]]), pxPerMetre).map(label => label.shown)).toEqual([false, true])
+  })
+
+  it('thins a run of close months from the newest back', () => {
+    const plan = rowLabelPlan(monthLabels(7, 30 / pxPerMetre), nobody, pxPerMetre)
+    expect(plan.at(-1)!.shown).toBe(true)
+    const shown = plan.filter(label => label.shown)
+    expect(shown.length).toBeLessThan(plan.length)
+    for (let index = 1; index < shown.length; index++) {
+      const a = shown[index - 1]!
+      const b = shown[index]!
+      expect((b.x - a.x) * pxPerMetre).toBeGreaterThanOrEqual((a.width + b.width) / 2 + ROW_LABEL_GAP - 1e-9)
+    }
+  })
+
+  it('does not depend on the scroll or on the dates around it', () => {
+    const labels = monthLabels(20, 41 / pxPerMetre)
+    const whole = rowLabelPlan(labels, nobody, pxPerMetre).map(label => label.shown)
+    // The same months without the oldest ones: the newest ones decide the same way.
+    const tail = rowLabelPlan(labels.slice(8), nobody, pxPerMetre).map(label => label.shown)
+    expect(tail).toEqual(whole.slice(8))
+  })
+})
+
+describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
+  const width = 360
+  const wide = 70
+
+  it('leaves dates inside the card where their sheets are', () => {
+    const slots = rowLabelSlots([{ key: 'a', x: 100, width: wide }, { key: 'b', x: 250, width: wide }], width)
+    expect([...slots.values()]).toEqual([{ nudge: 0, shown: true }, { nudge: 0, shown: true }])
+  })
+
+  it('keeps the later of two dates sliding in together (DEC 2025 and JAN 2026 at the left)', () => {
+    // Both would slide to the same place: the one nearer the middle (JAN) stays.
+    const slots = rowLabelSlots([{ key: 'dec', x: -10, width: wide }, { key: 'jan', x: 30, width: wide }], width)
+    const dec = slots.get('dec')!
+    const jan = slots.get('jan')!
+    expect(dec.nudge).toBeGreaterThan(0)
+    expect([dec.shown, jan.shown]).toEqual([false, true])
+  })
+
+  it('keeps the one nearer the middle when two slide in from the same side', () => {
+    const slots = rowLabelSlots([{ key: 'old', x: -60, width: wide }, { key: 'new', x: 4, width: wide }], width)
+    expect(slots.get('new')!.shown).toBe(true)
+    expect(slots.get('old')!.shown).toBe(false)
+  })
+
+  it('steps the neighbour back at the right edge too', () => {
+    const slots = rowLabelSlots([{ key: 'jun', x: 270, width: wide }, { key: 'oct', x: 350, width: wide }], width)
+    expect(slots.get('oct')!.nudge).toBeLessThan(0)
+    expect(slots.get('jun')!.shown).toBe(false)
+    expect(slots.get('oct')!.shown).toBe(true)
+  })
+
+  it('lets a date on its way out (cut by the edge) give way to the one coming in', () => {
+    const slots = rowLabelSlots([{ key: 'leaving', x: -70, width: wide }, { key: 'next', x: 6, width: wide }], width)
+    expect(slots.get('leaving')!.shown).toBe(false)
+    expect(slots.get('next')!.shown).toBe(true)
+  })
+
+  it('does not let dates outside the card block those inside', () => {
+    const slots = rowLabelSlots([{ key: 'gone', x: -400, width: wide }, { key: 'here', x: 20, width: wide }], width)
+    expect(slots.get('gone')!.shown).toBe(true)
+    expect(slots.get('here')!.shown).toBe(true)
+  })
+
+  it('returns a date that stepped back only with more room, so it does not flicker at the threshold', () => {
+    // DEC slid in to [6, 76]; JAN's box starts `room` px after it.
+    const at = (room: number, hidden: string[]) => rowLabelSlots(
+      [{ key: 'dec', x: -5, width: wide }, { key: 'jan', x: 41 + wide + room, width: wide }],
+      width,
+      new Set(hidden),
+    ).get('jan')!.shown
+    expect(at(ROW_LABEL_GAP - 1, [])).toBe(false)
+    expect(at(ROW_LABEL_GAP + 1, [])).toBe(true)
+    // Having stepped back, it waits for the gap and the hysteresis...
+    expect(at(ROW_LABEL_GAP + 1, ['jan'])).toBe(false)
+    expect(at(ROW_LABEL_GAP + ROW_LABEL_HYSTERESIS - 1, ['jan'])).toBe(false)
+    // ... and comes back once it has them.
+    expect(at(ROW_LABEL_GAP + ROW_LABEL_HYSTERESIS + 1, ['jan'])).toBe(true)
+  })
+
+  it('does not hold a date back for a neighbour it never clashed with', () => {
+    // Planned apart by the gap + 1 px (more than the gap, less than gap + hysteresis): stepping back for something else must not trap it.
+    const slots = rowLabelSlots([{ key: 'a', x: 150, width: wide }, { key: 'b', x: 150 + wide + ROW_LABEL_GAP + 1, width: wide }], width, new Set(['b']))
+    expect(slots.get('b')!.shown).toBe(true)
+  })
+
+  /** A sweep of scroll positions over a row; the dates in the card, shown, as boxes. */
+  function sweep(plan: ReturnType<typeof rowLabelPlan>, cardWidth: number, positions: number[]) {
+    const hidden = new Set<string>()
+    const history: Map<string, boolean[]> = new Map()
+    const frames = positions.map((scroll) => {
+      const items = plan.filter(label => label.shown)
+        .map(label => ({ key: label.key, x: label.x * (300 / ROW_CAMERA.viewHeight) - scroll, width: label.width }))
+        .filter(item => item.x > -300 && item.x < cardWidth + 300)
+      const slots = rowLabelSlots(items, cardWidth, hidden)
+      hidden.clear()
+      const boxes = items.map((item) => {
+        const slot = slots.get(item.key)!
+        if (!slot.shown) hidden.add(item.key)
+        const centre = item.x + slot.nudge
+        const state = history.get(item.key) ?? []
+        state.push(slot.shown)
+        history.set(item.key, state)
+        return { key: item.key, from: centre - item.width / 2, to: centre + item.width / 2, shown: slot.shown }
+      })
+      return boxes.filter(box => box.shown && box.to > 0 && box.from < cardWidth).sort((a, b) => a.from - b.from)
+    })
+    return { frames, history }
+  }
+
+  const pxPerMetre = 300 / ROW_CAMERA.viewHeight
+  for (const [name, months, spacing] of [['close months', 30, 40], ['very close months', 30, 18], ['mixed', 30, 63], ['wide months', 12, 160]] as const) {
+    for (const cardWidth of [220, 360, 412, 720]) {
+      it(`never overlaps at any scroll position: ${name}, card ${cardWidth} px`, () => {
+        const plan = rowLabelPlan(monthLabels(months, spacing / pxPerMetre), new Map(), pxPerMetre)
+        const positions = Array.from({ length: Math.ceil((months * spacing + cardWidth) / 3) }, (_, index) => index * 3 - cardWidth / 2)
+        const { frames } = sweep(plan, cardWidth, positions)
+        for (const [index, boxes] of frames.entries()) {
+          for (let box = 1; box < boxes.length; box++) {
+            expect(boxes[box]!.from - boxes[box - 1]!.to, `scroll ${positions[index]}: ${boxes[box - 1]!.key} / ${boxes[box]!.key}`).toBeGreaterThanOrEqual(ROW_LABEL_GAP - 1e-9)
+          }
+        }
+      })
+
+      it(`no date blinks (shown/hidden for a few px of scroll only): ${name}, card ${cardWidth} px`, () => {
+        const plan = rowLabelPlan(monthLabels(months, spacing / pxPerMetre), new Map(), pxPerMetre)
+        const positions = Array.from({ length: Math.ceil((months * spacing + cardWidth) / 1) }, (_, index) => index - cardWidth / 2)
+        const { history } = sweep(plan, cardWidth, positions)
+        for (const [key, states] of history) {
+          // Runs of one state in 1 px steps; all but the first and the last (cut by the sweep or the date coming into the list) last a while.
+          const runs: number[] = []
+          for (const [index, state] of states.entries()) {
+            if (index > 0 && state === states[index - 1]) runs[runs.length - 1]!++
+            else runs.push(1)
+          }
+          expect(runs.slice(1, -1).every(run => run >= ROW_LABEL_HYSTERESIS), `${key}: ${runs.join(',')}`).toBe(true)
+        }
+      })
+    }
+  }
 })
 
 describe('rowScroll', () => {
