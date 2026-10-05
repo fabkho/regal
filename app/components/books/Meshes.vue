@@ -49,6 +49,7 @@ import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
 import { inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
 import type { Boost, FaceUse } from '#layers/regal/app/utils/covers/loadWindow'
 import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
+import { createGlintSettle, GLINT_DELAY, glintDelay, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
@@ -598,10 +599,16 @@ let hoveredId: string | null = null
 const highlight = useScrollHighlight()
 const { focusedBook, scrollLed } = highlight
 
-watch(focusedBook, (bookId) => {
-  if (!bookId || reduced.value) return
+// The focused Book glints once the scroll has come to rest on it, a beat
+// later (utils/stack/glintSettle.ts), not each Book a scroll passes. On the
+// dev server ?glintDelay= (s) tunes the beat; production builds drop that.
+const glintSettle = createGlintSettle()
+const route = import.meta.dev ? useRoute() : null
+const settleDelay = (): number => (import.meta.dev ? glintDelay(route!.query) : GLINT_DELAY)
+
+function glint(bookId: string) {
   gsap.fromTo(motionFor(bookId).glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
-})
+}
 
 function setMesh(bookId: string, element: unknown) {
   const object = (element as { isObject3D?: boolean } | null)?.isObject3D
@@ -621,6 +628,16 @@ function setCursor(value: string) {
 // handlers created per render pile up (one more call per re-sort).
 type BookPointerEvent = { object?: { userData?: { bookId?: string } } }
 
+/**
+ * The kind of pointer last seen (read in the capture phase, before the scene
+ * hands out its enter events). Touch has no hover: a finger sliding over the
+ * pile enters Book after Book without pointing at any of them.
+ */
+let pointerType = 'mouse'
+function notePointer(event: PointerEvent) {
+  pointerType = event.pointerType
+}
+
 function onEnter(event: BookPointerEvent) {
   const bookId = event.object?.userData?.bookId
   if (!bookId) return
@@ -628,9 +645,9 @@ function onEnter(event: BookPointerEvent) {
   hoveredId = bookId
   hoveredBook.value = bookId
   setCursor('pointer')
-  if (reduced.value || pickedId.value === bookId) return
-  const glint = motionFor(bookId).glint
-  gsap.fromTo(glint, { value: 0 }, { value: 1, duration: 0.9, ease: 'power1.inOut', overwrite: true })
+  // A Book the mouse enters glints at once: the user is pointing at it.
+  if (reduced.value || pickedId.value === bookId || pointerType === 'touch') return
+  glint(bookId)
 }
 
 function onLeave(event: BookPointerEvent) {
@@ -916,6 +933,8 @@ onMounted(() => {
   const element = renderer.domElement as HTMLElement
   element.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerdown', notePointer, { capture: true })
+  window.addEventListener('pointermove', notePointer, { capture: true })
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('keydown', onKey)
@@ -1112,7 +1131,17 @@ onBeforeRender(({ delta }) => {
   followInsets(reduced.value ? 1 : 1 - Math.exp(-(delta ?? 0.016) * 6))
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
   // No scroll highlight while a Book is out or a re-sort runs; the mouse wins while it rests on a Book.
-  highlight.update(props.poses, delta ?? 0.016, !!pickedId.value || !!running || !!requested, hoveredId)
+  const blocked = !!pickedId.value || !!running || !!requested
+  highlight.update(props.poses, delta ?? 0.016, blocked, hoveredId)
+  if (stackScroll) {
+    const settled = settledGlint(glintSettle, {
+      focusedId: focusedBook.value,
+      speed: stackScroll.speed,
+      gap: Math.abs(stackScroll.targetY - stackScroll.focusY),
+      blocked,
+    }, delta ?? 0.016, settleDelay())
+    if (settled && !reduced.value) glint(settled)
+  }
   // Once the user scrolls, the Book under a resting mouse gives way to the focus.
   const pointerId = scrollLed.value ? null : hoveredId
 
@@ -1247,6 +1276,8 @@ onBeforeUnmount(() => {
   const element = renderer.domElement as HTMLElement | undefined
   element?.removeEventListener('pointerdown', onPointerDown)
   window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerdown', notePointer, { capture: true })
+  window.removeEventListener('pointermove', notePointer, { capture: true })
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('keydown', onKey)
