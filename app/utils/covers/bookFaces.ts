@@ -365,10 +365,43 @@ interface BlockStyle {
   alpha?: number
 }
 
-const canvasMeasure = (context: CanvasRenderingContext2D, styles: BlockStyle[]): FitOptions['measure'] => (text, size, block) => {
+/** Font size (px) wordMeasure measures words at; widths scale with the size. */
+export const WORD_MEASURE_SIZE = 100
+
+/**
+ * A measure that measures each word, and the space, once per block at
+ * WORD_MEASURE_SIZE and adds a line up from them, scaled to the size asked.
+ * fitTextBlocks searches for its size by wrapping the same words at a dozen
+ * sizes, each line re-measured as it grows: on a phone, measuring a back's
+ * blurb that way took longer than the rest of drawing it. Kerning across a
+ * space is lost, a fraction of a pixel per line.
+ */
+export function wordMeasure(measure: FitOptions['measure']): FitOptions['measure'] {
+  const widths = new Map<string, number>()
+  const width = (word: string, block: number) => {
+    const key = `${block}\u0000${word}`
+    let value = widths.get(key)
+    if (value === undefined) {
+      value = measure(word, WORD_MEASURE_SIZE, block)
+      widths.set(key, value)
+    }
+    return value
+  }
+  return (text, size, block) => {
+    const words = text.split(' ')
+    let total = 0
+    for (let index = 0; index < words.length; index++) {
+      if (index > 0) total += width(' ', block)
+      total += width(words[index]!, block)
+    }
+    return total * size / WORD_MEASURE_SIZE
+  }
+}
+
+const canvasMeasure = (context: CanvasRenderingContext2D, styles: BlockStyle[]): FitOptions['measure'] => wordMeasure((text, size, block) => {
   context.font = styles[block]!.font(size)
   return context.measureText(text).width
-}
+})
 
 function drawFitted(context: CanvasRenderingContext2D, fitted: FitResult, styles: BlockStyle[], color: RGB, x: number, top: number) {
   context.textAlign = 'left'
