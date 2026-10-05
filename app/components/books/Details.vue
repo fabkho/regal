@@ -44,14 +44,29 @@ watch(() => shown.value?.id, () => {
 
 // --- Bottom sheet (narrow stages) -------------------------------------------
 
-// At most maxHeight; what doesn't fit scrolls inside. The cap is on the
-// body, not the sheet: the sheet's height animates (useCardSwap) and must
-// not squeeze what it measures. Less the grip and the bottom padding, so the
-// whole sheet stays within it.
-const bodyStyle = computed(() => {
-  if (!props.sheet || !props.maxHeight) return undefined
-  return { maxHeight: `calc(${props.maxHeight}px - 2.3rem - env(safe-area-inset-bottom, 0px))` }
-})
+// At most maxHeight. The head and the actions always show; the blurb and
+// the review below them scroll inside, in what is left of maxHeight. Set
+// in px from what the rest measures rather than by flex: the sheet's height
+// animates (useCardSwap) and must not squeeze what it measures.
+const gripElement = ref<HTMLElement | null>(null)
+const more = ref<HTMLElement | null>(null)
+const moreMax = ref(0)
+/** The scrolling part never gets shorter than this (px): on a tiny screen the sheet grows instead. */
+const MORE_MIN = 48
+function fitMore() {
+  const card = root.value
+  if (!props.sheet || !props.maxHeight || !card || !content.value) {
+    moreMax.value = 0
+    return
+  }
+  const style = getComputedStyle(card)
+  const frame = (gripElement.value?.offsetHeight ?? 0) + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
+    + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth)
+  const rest = content.value.offsetHeight - (more.value?.offsetHeight ?? 0)
+  moreMax.value = Math.max(MORE_MIN, Math.floor(props.maxHeight - frame - rest))
+}
+const moreStyle = computed(() => (props.sheet && moreMax.value ? { maxHeight: `${moreMax.value}px` } : undefined))
+watch(() => [props.sheet, props.maxHeight], () => nextTick(fitMore))
 
 const { dragging, handlers: grip } = useSheetDrag({
   sheet: root,
@@ -61,17 +76,20 @@ const { dragging, handlers: grip } = useSheetDrag({
   },
 })
 
-/** More of the sheet below its lower edge: it fades out there. */
+/** More of the blurb below the sheet's scrolling part: it fades out there. */
 const moreBelow = ref(false)
 function checkBelow() {
-  const element = body.value
+  const element = more.value
   moreBelow.value = props.sheet && !!element && element.scrollTop + element.clientHeight < element.scrollHeight - 1
 }
-useResizeObserver([body, content], checkBelow)
+useResizeObserver([content, more], () => {
+  fitMore()
+  checkBelow()
+})
 
-// A new Book starts at the top of the sheet.
+// A new Book starts at the top of its blurb.
 watch(() => shown.value?.id, () => {
-  body.value?.scrollTo({ top: 0 })
+  more.value?.scrollTo({ top: 0 })
   checkBelow()
 })
 
@@ -160,6 +178,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
       <!-- The sheet's grip: drag it down to put the Book back. -->
       <div
         v-if="props.sheet"
+        ref="gripElement"
         class="details__grip"
         aria-hidden="true"
         v-on="grip"
@@ -169,8 +188,6 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
       <div
         ref="body"
         class="details__body"
-        :style="bodyStyle"
-        @scroll.passive="checkBelow"
       >
         <div
           v-if="shown"
@@ -214,37 +231,46 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
             </p>
           </div>
 
+          <!-- The sheet keeps the head and the actions in view; this part scrolls. -->
           <div
-            v-if="shown.review"
-            class="details__opinion"
+            v-if="shown.review || description"
+            ref="more"
+            class="details__more"
+            :style="moreStyle"
+            @scroll.passive="checkBelow"
           >
-            <button
-              v-if="shown.reviewHasSpoiler && !showSpoiler"
-              type="button"
-              class="details__spoiler"
-              @click="showSpoiler = true"
+            <div
+              v-if="shown.review"
+              class="details__opinion"
             >
-              My review contains spoilers — show
-            </button>
-            <blockquote
-              v-else
-              class="details__review"
-            >
-              {{ shown.review }}
-            </blockquote>
-          </div>
+              <button
+                v-if="shown.reviewHasSpoiler && !showSpoiler"
+                type="button"
+                class="details__spoiler"
+                @click="showSpoiler = true"
+              >
+                My review contains spoilers — show
+              </button>
+              <blockquote
+                v-else
+                class="details__review"
+              >
+                {{ shown.review }}
+              </blockquote>
+            </div>
 
-          <section
-            v-if="description"
-            class="details__about"
-          >
-            <h3 class="details__label">
-              About
-            </h3>
-            <p class="details__description">
-              {{ description }}
-            </p>
-          </section>
+            <section
+              v-if="description"
+              class="details__about"
+            >
+              <h3 class="details__label">
+                About
+              </h3>
+              <p class="details__description">
+                {{ description }}
+              </p>
+            </section>
+          </div>
 
           <div class="details__actions">
             <button
@@ -268,8 +294,11 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
               rel="noopener"
             >Goodreads ↗</a>
           </div>
-          <p class="details__hint">
-            {{ props.sheet ? 'Drag to turn · tap the book to flip' : 'Drag to turn · click the book to flip · Esc to put back' }}
+          <p
+            v-if="!props.sheet"
+            class="details__hint"
+          >
+            Drag to turn · click the book to flip · Esc to put back
           </p>
         </div>
       </div>
@@ -508,11 +537,6 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   transform: translateX(-50%);
 }
 
-.details--sheet .details__body {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 /* Title on its own line, author and stars side by side, then the meta. */
 .details--sheet .details__head {
   display: grid;
@@ -571,11 +595,8 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   overflow: visible;
 }
 
-.details--sheet .details__hint {
-  margin-top: 0.75rem;
-}
-
-/* The actions right under the title, so they stay in reach; the blurb and the review below. */
+/* Head and actions stay in view (the actions right under the title, in
+   reach); the blurb, then the review, scroll below them. */
 .details--sheet .details__content {
   display: flex;
   flex-direction: column;
@@ -585,20 +606,26 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   order: 1;
 }
 
-.details--sheet .details__about {
+.details--sheet .details__more {
   order: 2;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.details--sheet .details__about {
+  order: 1;
+  margin-top: 0;
 }
 
 .details--sheet .details__opinion {
-  order: 3;
+  order: 2;
 }
 
-.details--sheet .details__hint {
-  order: 4;
-}
-
-/* What is still below fades out at the sheet's lower edge. */
-.details--more-below .details__body {
+/* What is still below fades out at the scrolling part's lower edge. */
+.details--more-below .details__more {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
 }
 

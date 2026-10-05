@@ -7,7 +7,7 @@
 /** Stages this wide or narrower show the sheet instead of the card. */
 export const SHEET_MAX_WIDTH = 560
 /** How far up the stage the sheet reaches at most, as a share of the stage. */
-export const SHEET_SHARE = 0.4
+export const SHEET_SHARE = 0.3
 
 /**
  * The sheet's most height (px): SHEET_SHARE of the stage, plus the room
