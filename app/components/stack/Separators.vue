@@ -297,6 +297,8 @@ function buildLabel(separator: StackSeparator, room: number): Built {
   b.geometries.push(planeGeometry)
   const material = b.material(new MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.02, roughness: 0.9, side: DoubleSide }))
   material.userData.alwaysTransparent = true
+  // A flat sheet seen from the front: one pass, not three's two for transparent double-sided materials.
+  material.forceSinglePass = true
   const plane = mesh(planeGeometry, material, false)
   // The leader line runs on the sheet's height and its right end reaches into the pile.
   plane.position.set(-sheetWidth / 2 - width / 2, height / 2 - separator.thickness / 2, PILE_DEPTH / 2)
@@ -364,6 +366,8 @@ function buildTab(separator: StackSeparator, room: number): Built {
   b.geometries.push(plane)
   const material = b.material(new MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5, roughness: 0.9, side: DoubleSide }))
   material.userData.alwaysTransparent = true
+  // A flat sheet seen from the front: one pass, not three's two for transparent double-sided materials.
+  material.forceSinglePass = true
   const tab = mesh(plane, material, false)
   // Stands on the card's left end, a little behind the Spines, leaning back slightly.
   tab.position.set(-PILE_WIDTH / 2 + 0.017 - width / 2, height / 2 + separator.thickness / 2, PILE_DEPTH / 2 - 0.035)
