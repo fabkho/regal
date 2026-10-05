@@ -78,6 +78,8 @@ export default defineNuxtConfig({
 })
 ```
 
+**The scroll ticks and the first tap.** Chrome only lets a page vibrate once the user has tapped, clicked or typed in it ("sticky user activation", `navigator.userActivation.hasBeenActive`); a swipe that scrolls doesn't count (its touch ends as a `pointercancel`). So on a page opened fresh (a reload, a shared link, a PWA start) the ticks of the first swipes stay silent until the first tap anywhere in the document: taking a Book out is one, so is the host's link that led to the page if the navigation kept the document (an SPA route change). After that they come with every swipe. Regal itself keeps no state of its own that a pick would set: the ticks follow the focus line and the finger only (checked with the activation granted from the start: they tick before any Book was taken out). Taking out and putting back pulse within the tap itself, so they always can.
+
 **Changed with the library file** ([#39](https://github.com/fabkho/regal/issues/39)): `mode` and `assetsBase` are gone. There is one way to get a Library (the file at `librarySrc`, its images listed in it), so a host that still sets them gets no error, they are ignored; drop them when you switch. `librarySrc` now names a library file, not a reading-tracker export (Libellus writes one; `pnpm library:convert` converts old published data, see below); such an export shows the error card. The Cover and description resolvers (`/api/cover`, `/api/description`, `NUXT_GOOGLE_BOOKS_API_KEY`) are no longer part of the layer.
 
 ### Components
@@ -92,12 +94,14 @@ export default defineNuxtConfig({
 <RegalBooksRow class="books-row" :year="2025" />
 ```
 
-- **`RegalBooksStage`**: the 3D Stack only (no Bookcase/Stack switch), the picked Book's details card over it. On narrow stages (≤ 560 px) the details are a bottom sheet instead: it sits on the viewport's bottom edge (in `<body>`, `position: fixed`) while a Book is out, covering what the host has under the stage, at `z-index: var(--regal-sheet-z-index, 15)`: above page content, below sticky bars at 20 and up. Give it a height (it fills its box; `min-height: 24rem`). Prop `controls` (default `false`) adds the sort & filter chips over the 3D; `theme`, `unstyled` and the `#tooltip` / `#detail…` slots theme the tooltip and the detail panel ([Theming](#theming)).
+- **`RegalBooksStage`**: the 3D Stack only (no Bookcase/Stack switch), the picked Book's details card over it. On narrow stages (≤ 560 px) the details are a bottom sheet instead: it sits on the viewport's bottom edge (in `<body>`, `position: fixed`) while a Book is out, covering what the host has under the stage, at `z-index: var(--regal-sheet-z-index, 15)`: above page content, below sticky bars at 20 and up. Give it a height (it fills its box; `min-height: 24rem`). Prop `controls` (default `false`) adds the sort & filter chips over the 3D; `rotate` (`'turntable'`) how a drag turns a picked Book: `'turntable'` turns it left/right and tips it at most ~75° (as always), `'free'` spins it about both axes like a trackball and lets it glide on after a quick release (the row's default); `theme`, `unstyled` and the `#tooltip` / `#detail…` slots theme the tooltip and the detail panel ([Theming](#theming)).
 - **`RegalBooksSidebar`**: the count of read Books, the Stack's sort/year/rating filters and the Books as records (hover lifts the Book in the 3D, click takes it out). Props: `heading` (`'Bookshelf'`, `''` hides it), `countLabel` (`'Books read'`), `filters` (`true`), `list` (`true`); `theme`, `unstyled` and the `#detail…` slots for the detail panel it shows while a Book is out. Fills the height it gets; the records scroll. Its filters section has the class `sidebar__filters`, so a host can hide it where `RegalBooksFilters` takes over.
-- **`RegalBooksRow`**: the Library as one horizontal row for a card: the Stack turned 90°, the Books pressed together left to right (oldest first, the row starts at the newest), each month after a hairline sheet with its date above (`MAR`, the year small), the Stack's hover and, while you scroll, Books passing the middle tipping out as if pulled by the head, with the title and stars of the one in focus under it. It scrolls with the browser's own horizontal scrolling: a sideways swipe scrolls the row, an up/down swipe the page (nothing is trapped); a trackpad, Shift+wheel, a mouse drag, the ‹ › buttons and the arrow keys (once focused) too. A tap or click takes a Book out, again turns it, a drag or a flick turns it; the button, the browser's Back, Escape or a tap beside it put it back. Give it a size (it fills its box; `min-height: 18rem`; a phone card of 360 × 300 shows about 20 Books). Props:
+- **`RegalBooksRow`**: the Library as one horizontal row for a card: the Stack turned 90°, the Books pressed together left to right (oldest first, the row starts at the newest), each month after a hairline sheet with its date above (`MAR`, the year small), the Stack's hover and, while you scroll, Books passing the middle tipping out as if pulled by the head, with the title and stars of the one in focus under it. The Book in focus is always the one in the card's middle, the first and the last too: the scroll has room before the first Book and after the last (half the card), so the row at rest has the newest Book in the middle (or January's first with `year`), and the focus label stays in one place, centred under the row (a long title is cut short with …). It scrolls with the browser's own horizontal scrolling: a sideways swipe scrolls the row, an up/down swipe the page (nothing is trapped); a trackpad, Shift+wheel, a mouse drag, the ‹ › buttons and the arrow keys (once focused) too. A tap or click takes a Book out, again turns it; a drag spins it freely (up/down tips it, left/right turns it, a quick release lets it glide on; in the card a finger's up/down swipe still scrolls the page), a sideways flick turns it over; the Back button, the browser's Back, Escape or a tap beside it put it back. Give it a size (it fills its box; `min-height: 18rem`; a phone card of 360 × 300 shows about 20 Books). Props:
   - `inspect` (`'card'`): where a Book taken out is looked at. `'card'` keeps it in the card (the camera steps back, the Book comes forward and grows a little; the details under it, or beside it on a wide card). `'viewport'` breaks out: the row's canvas moves into a fixed box over the whole viewport (the row stays exactly in place), the Book comes to the middle of the screen with its details as a bottom sheet (≤ 560 px wide) or a card at the bottom right, the page is veiled and does not scroll until the Book is back in the row. `'auto'`: the viewport on narrow screens (≤ 560 px), the card elsewhere. Broken out it sits at `z-index: var(--regal-row-z-index, 40)`, above the host's page and its sticky bars; it moves to `<body>`, so a CSS transform on the card's ancestors doesn't trap it.
   - `limit` (`null`): only the newest this many Books (read and being read).
   - `year` (`null`): only the Books read in that year; the row then starts at January.
+  - `back-button` (`true`): Regal's Back button while a Book is out. `false` hides it (e.g. with your own close in `#detail`); Escape, the browser's/Android's Back, a tap beside the Book and the details' `close` still put it back. The `#back="{ book, close, broken }"` slot replaces it with your own markup in its place (top left of the card; broken out, of the screen).
+  - `rotate` (`'free'`): how a drag turns a Book taken out: `'free'` (a trackball, both axes), or `'turntable'` (the Stage's: left/right, a little tip, only left/right for a finger in the card).
   - `label` (`''`): the row's accessible name (default "Books read", "Books read in 2025").
   - `theme`, `unstyled` and the `#tooltip` / `#detail…` slots, as on `RegalBooksStage` ([Theming](#theming)): the card, its focus label and details, also broken out.
 
@@ -191,6 +195,7 @@ Three ways, from light to full control. Regal always keeps placing them, opening
 | `#detail-meta` | `{ book, meta }` | Only the meta line (`meta`: `['Read', 'Finished 1 Mar 2025', '200 pages', 'Paperback']`) | Only the line under the title, stars included (`meta`: `['Ada Example', '1 Mar 2025']`, the author and the date read) |
 | `#detail-about` | `{ book, description }` | The "About" part with the blurb (shown for Books without one too when passed) | The blurb, on a wide card and broken out (shown for Books without one too when passed); the owner's review stays |
 | `#detail-actions` | `{ book, close, flip, face }` | Show back / Put back / Goodreads | "Turn over · drag or flick to turn" |
+| `#back` | `{ book, close, broken }` | – | The Back button while a Book is out (`broken`: the row broke out to the viewport); `:back-button="false"` hides it instead |
 
 `close` puts the Book back (like Escape), `flip` turns it, `face` is `'front'` or `'back'`, `sheet` is true in the phone's sheet (the Stage's, or the row's broken out on a phone). The tooltip, the sheet and a broken-out row's details render in `<body>`: style slot content with your component's scoped classes (they come along) rather than descendant selectors from your page.
 
@@ -204,6 +209,47 @@ Three ways, from light to full control. Regal always keeps placing them, opening
     <UiButton @click="close">Done</UiButton>
   </template>
 </RegalBooksStage>
+```
+
+**The row's card and sheet.** A few tokens only `RegalBooksRow` reads, for a host that puts the row in its own card or its own markup in the broken-out phone sheet (`#detail`). Unset, the look above. Set them on the class you give the row (the sheet's are carried to `<body>` with it):
+
+| Token | Default | What |
+|---|---|---|
+| `--regal-row-border` | `var(--regal-border-width) solid var(--regal-border)` | The card's border (`0` or `none`: frameless) |
+| `--regal-row-radius` | `--regal-radius` | The card's corners |
+| `--regal-row-background` | `--regal-surface` | The card's background (`transparent`: the host's card shows through; the veil behind a Book taken out then takes the colour behind) |
+| `--regal-row-z-index` | `40` | Broken out: the canvas box, the sheet and Back sit at this (+1) |
+| `--regal-sheet-radius` | `--regal-radius` | The sheet's top corners |
+| `--regal-sheet-background` | `--regal-surface-raised` | The sheet's background |
+| `--regal-sheet-border` | `var(--regal-border-width) solid var(--regal-border)` | The sheet's border (only its top edge shows) |
+| `--regal-sheet-shadow` | `--regal-shadow` | The sheet's `box-shadow` |
+| `--regal-sheet-padding` | `0.8rem 1rem 1rem` | The sheet's padding; `0` lets a `#detail` slot fill it edge to edge |
+| `--regal-sheet-max-width` | `none` | The sheet's most width (centred when narrower than the screen) |
+| `--regal-sheet-max-height` | `34dvh` | The sheet's most height (it scrolls beyond) |
+| `--regal-sheet-grabber` | `none` | `block` shows a grabber at the sheet's top; dragging it down puts the Book back |
+| `--regal-sheet-grabber-color` | `--regal-ink-faint` | The grabber's colour |
+| `--regal-sheet-grabber-width` | `2.25rem` | The grabber's width |
+| `--regal-sheet-grabber-height` | `2px` | The grabber's height |
+
+```vue
+<!-- Libellus: the row inside its own card, its own sheet content -->
+<RegalBooksRow class="year-row" theme="auto" inspect="viewport" :year="2025" :back-button="false">
+  <template #detail="{ book, close }"><BookSheet :book="book" @close="close" /></template>
+</RegalBooksRow>
+
+<style scoped>
+.year-row {
+  --regal-row-border: 0;
+  --regal-row-radius: 0;
+  --regal-row-background: transparent;
+  --regal-sheet-padding: 0;
+  --regal-sheet-radius: 20px;
+  --regal-sheet-border: 0;
+  --regal-sheet-shadow: 0 -8px 30px rgb(0 0 0 / 0.2);
+  --regal-sheet-max-width: 32rem;
+  --regal-sheet-grabber: block;
+}
+</style>
 ```
 
 **`unstyled`.** `<RegalBooksStage unstyled />` / `<RegalBooksRow unstyled />` keep the structure (classes `hover-label`, `focus-label`, `details`, `details__title` …; `row-card`, `row-focus`, `row-label`, `row-card__details` (`--sheet`, `--card` broken out), `row-card__back` …; each surface also `.regal.regal--unstyled`) and the layout (positions, padding, gaps, the sheet's grip), and drop Regal's colours, frame and type: they inherit from the host (the parts in `<body>` from `<body>`). Style them from global CSS, e.g. `.regal--unstyled.details { background: … }`. The row's card is then transparent and frameless, and its veil takes the colour that shows behind it (the nearest background up the page).

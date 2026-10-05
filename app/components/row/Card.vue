@@ -38,8 +38,9 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
-import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowLabels } from '#layers/regal/app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabels, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { backgroundOf } from '#layers/regal/app/utils/theme/color'
+import { ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
 
 const props = withDefaults(defineProps<{
   /** The Books, newest first (rowBooks). */
@@ -50,7 +51,11 @@ const props = withDefaults(defineProps<{
   start?: 'newest' | 'oldest'
   /** What the row is, for assistive technology ('Books read in 2025'). */
   label?: string
-}>(), { inspect: 'card', start: 'newest', label: 'Books read' })
+  /** Regal's Back button while a Book is out (the host's #back slot replaces it). */
+  backButton?: boolean
+  /** Turning a Book taken out: about both axes (a trackball) or the Stage's turntable. */
+  rotate?: 'free' | 'turntable'
+}>(), { inspect: 'card', start: 'newest', label: 'Books read', backButton: true, rotate: 'free' })
 
 const oldestFirst = computed(() => [...props.books].reverse())
 const layout = computed(() => layoutRow(oldestFirst.value))
@@ -76,6 +81,7 @@ const ctx: RowContext = {
   veil: { color: '#F5F2EB' },
   onCamera: null,
   visible: ref(true),
+  rotate: computed(() => props.rotate),
 }
 const pickedId = computed(() => pick.value.bookId)
 const pickedBook = computed(() => (pickedId.value ? booksById.value.get(pickedId.value) ?? null : null))
@@ -89,29 +95,39 @@ useBookHaptics({ pickedId, focusedBook: ctx.focused, touchScrolling })
 
 // --- Scroll ↔ camera ------------------------------------------------------------------
 
-/** Card px between the row's ends and the card's edges. */
-const MARGIN = 14
 /** Px per metre at the plane the camera looks at: the Spines move with the finger. */
 const pxPerMetre = computed(() => (height.value || 300) / ROW_CAMERA.viewHeight)
-const extent = computed(() => layout.value.extent)
-const contentPx = computed(() => (extent.value[1] - extent.value[0]) * pxPerMetre.value)
-const scrolls = computed(() => contentPx.value + 2 * MARGIN > width.value + 1)
-const trackWidth = computed(() => (scrolls.value ? Math.ceil(contentPx.value + 2 * MARGIN) : width.value))
+/**
+ * The track has room before the first Book and after the last (rowScroll):
+ * the Book in focus is always in the card's middle, the end ones too.
+ */
+const scroll = computed(() => rowScroll(layout.value, width.value, pxPerMetre.value))
+const trackWidth = computed(() => scroll.value.trackWidth)
 /** Camera x at scrollLeft 0, and its range. */
-const cameraStart = computed(() => (scrolls.value
-  ? extent.value[0] + (width.value / 2 - MARGIN) / pxPerMetre.value
-  : (extent.value[0] + extent.value[1]) / 2))
-const maxScroll = computed(() => Math.max(0, trackWidth.value - width.value))
+const cameraStart = computed(() => scroll.value.cameraStart)
+const maxScroll = computed(() => scroll.value.maxScroll)
+const scrolls = computed(() => maxScroll.value > 0)
 
 /** Scroll progress 0..1, for the hairline indicator. */
 const progress = ref(0)
 
-/** The row starts at its last Book once (the Stack starts at its top). */
+/**
+ * The row starts at its last Book (the Stack starts at its top) once the card
+ * has its size, and again when other Books come in or the card resizes while
+ * it still rests where it started (not once the reader scrolled it).
+ */
 let started = false
-watch(maxScroll, (max) => {
-  if (started || !max || !scroller.value) return
+/** The reader has scrolled the row (touch, wheel, a mouse drag, keys, ‹ ›): it stays where they put it. */
+let readerScrolled = false
+function noteReader() {
+  readerScrolled = true
+}
+watch([maxScroll, width, oldestFirst], ([max, cardWidth]) => {
+  const element = scroller.value
+  if (!max || !cardWidth || !element || readerScrolled) return
+  if (props.start === 'newest') element.scrollLeft = max
+  else if (started) element.scrollLeft = 0
   started = true
-  if (props.start === 'newest') scroller.value.scrollLeft = max
 }, { flush: 'post' })
 
 function syncCamera() {
@@ -152,6 +168,7 @@ function stopGlide() {
 
 function onPointerDown(event: PointerEvent) {
   if (event.pointerType !== 'mouse' || event.button !== 0 || pickedId.value || !scroller.value) return
+  noteReader()
   stopGlide()
   drag = { x: event.clientX, left: scroller.value.scrollLeft, lastX: event.clientX, lastT: event.timeStamp, speed: 0 }
 }
@@ -191,16 +208,19 @@ function onMouseMove(event: PointerEvent) {
 
 function onTouch(event: TouchEvent) {
   const touching = event.touches.length > 0
+  if (touching) noteReader()
   ctx.view.touching = touching
   if (touching) ctx.view.scrollLed = true
   if (event.type === 'touchmove') touchScrolling.value = true
 }
 
 function scrollStep(direction: number) {
+  noteReader()
   scroller.value?.scrollBy({ left: direction * width.value * 0.7, behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth' })
 }
 
 function onKey(event: KeyboardEvent) {
+  noteReader()
   if (event.key === 'Enter' && !pickedId.value && ctx.focused.value) {
     event.preventDefault()
     pick.value = { bookId: ctx.focused.value, face: 'front' }
@@ -217,8 +237,8 @@ function setLabel(key: string, element: unknown) {
 
 const labels = computed(() => rowLabels(layout.value.markers, pxPerMetre.value))
 const point = new Vector3()
-const posesById = computed(() => new Map(layout.value.poses.map(pose => [pose.bookId, pose])))
-const focusLabel = ref<HTMLElement | null>(null)
+/** The focus label stays put: centred across the card, just under the row (rowFocusLabelTop). */
+const focusTop = computed(() => `${rowFocusLabelTop(height.value || 300).toFixed(1)}px`)
 
 ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
   // Broken out, the dates stay in the card, under the veil: not placed.
@@ -236,15 +256,6 @@ ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
     // The leader line runs down from the date to the top of the row.
     point.set(label.x, label.height, 0).project(camera)
     element.style.setProperty('--leader', `${Math.max(0, (1 - point.y) / 2 * h - y).toFixed(1)}px`)
-  }
-  // The Stack's focus label: title and stars under the Book in focus (beside its end in the Stack).
-  const element = focusLabel.value
-  const pose = ctx.focused.value ? posesById.value.get(ctx.focused.value) : undefined
-  if (element && pose) {
-    point.set(pose.x, 0, pose.z + pose.depth / 2).project(camera)
-    const x = MathUtils.clamp((point.x + 1) / 2 * w, 12, w - 12)
-    const y = (1 - point.y) / 2 * h
-    element.style.transform = `translate3d(${x.toFixed(1)}px, ${(y + 10).toFixed(1)}px, 0)`
   }
 }
 
@@ -343,15 +354,33 @@ function putAway() {
   pick.value = SHELVED
 }
 
+// The sheet's grabber (shown with --regal-sheet-grabber: block): drag it down to put the Book back.
+const { handlers: grabber } = useSheetDrag({
+  sheet: caption,
+  enabled: () => sheet.value,
+  onSettle: (settle) => {
+    if (settle === 'dismiss') putAway()
+  },
+})
+
 // --- Theme ------------------------------------------------------------------------------
 
 const ui = useRegalUi()
 /**
- * Public tokens the row reads as they are, with its own (smaller) defaults
- * instead of the theme's: they are carried to <body> along with the resolved
- * ones when set.
+ * Public tokens the row reads as they are: those with its own (smaller)
+ * defaults instead of the theme's, the broken-out sheet's (README: "The
+ * row's sheet") and its z-index. They are carried to <body> along with the
+ * resolved ones when set.
  */
-const OWN_DEFAULTS = ['font-title', 'style-title', 'weight-title', 'tooltip-padding', 'panel-padding']
+const OWN_DEFAULTS = [
+  'font-title',
+  'style-title',
+  'weight-title',
+  'tooltip-padding',
+  'panel-padding',
+  'row-z-index',
+  ...ROW_SHEET_TOKENS,
+]
 const carried = shallowRef<Record<string, string>>({})
 function readCarried() {
   if (!root.value) return
@@ -451,6 +480,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
       @touchend.passive="onTouch"
       @touchcancel.passive="onTouch"
       @keydown="onKey"
+      @wheel.passive="noteReader"
     >
       <div
         class="row-card__track"
@@ -513,8 +543,8 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
                 </div>
                 <p
                   v-if="focusedBook && !pickedId"
-                  ref="focusLabel"
                   class="row-focus"
+                  :style="{ top: focusTop }"
                 >
                   <span class="row-focus__inner">
                     <BooksHostSlot
@@ -565,8 +595,20 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
       to="body"
       :disabled="!broken"
     >
+      <!-- The host's own Back (#back), placed where Regal's goes. -->
+      <div
+        v-if="pickedBook && ui.hasSlot('back')"
+        v-bind="surface"
+        class="row-card__back-slot"
+        :class="{ 'row-card__back-slot--out': broken }"
+      >
+        <BooksHostSlot
+          name="back"
+          :scope="{ book: pickedBook, close: putAway, broken }"
+        />
+      </div>
       <button
-        v-if="pickedId"
+        v-else-if="pickedId && props.backButton"
         v-bind="surface"
         type="button"
         class="row-card__back"
@@ -589,6 +631,14 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
           }"
           :aria-label="`${pickedBook.title} details`"
         >
+          <div
+            v-if="sheet"
+            class="row-card__grabber"
+            aria-hidden="true"
+            v-on="grabber"
+          >
+            <span class="row-card__grabber-bar" />
+          </div>
           <!-- The host's whole details (#detail); Regal keeps placing, fading and Back. -->
           <div
             v-if="ui.hasSlot('detail')"
@@ -682,12 +732,18 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 </template>
 
 <style scoped>
+/*
+ * The card's own frame: --regal-row-border / -radius / -background turn it off
+ * or restyle it alone (e.g. `none`, `0`, `transparent` inside a host's own
+ * card); unset, the theme's frame and surface. The veil behind a Book taken
+ * out takes this background (transparent: what shows behind the card).
+ */
 .row-card {
   position: relative;
   overflow: hidden;
-  border: var(--_regal-border-width) solid var(--_regal-border);
-  border-radius: var(--_regal-radius);
-  background: var(--_regal-surface);
+  border: var(--regal-row-border, var(--_regal-border-width) solid var(--_regal-border));
+  border-radius: var(--regal-row-radius, var(--_regal-radius));
+  background: var(--regal-row-background, var(--_regal-surface));
   color: var(--_regal-ink);
   font-family: var(--_regal-font-body);
   font-size: var(--_regal-size-body);
@@ -790,13 +846,15 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   font-weight: 500;
 }
 
-/* The Stack's focus label, under the Book in focus. */
+/* The focus label: in one place, centred across the card under the row (top: rowFocusLabelTop). */
 .row-focus {
   position: absolute;
   top: 0;
-  left: 0;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  justify-content: center;
   margin: 0;
-  will-change: transform;
 }
 
 /* The row's tooltip: the tooltip's tokens, its own (smaller) padding and size by default. */
@@ -804,7 +862,8 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   display: flex;
   gap: 0.5rem;
   align-items: baseline;
-  max-width: 15rem;
+  min-width: 0;
+  max-width: min(15rem, 100%);
   padding: var(--regal-tooltip-padding, 0.2rem 0.45rem);
   overflow: hidden;
   border: var(--_regal-border-width) solid var(--_regal-border);
@@ -815,12 +874,18 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   color: var(--_regal-ink);
   font-size: var(--_regal-size-label);
   white-space: nowrap;
-  transform: translateX(-50%);
 }
 
+/* A long title truncates inside the label; the stars stay whole. */
 .row-focus__inner :deep(.title-stars__title) {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.row-focus__inner :deep(.title-stars__stars),
+.row-focus__inner :deep(.title-stars__unrated) {
+  flex-shrink: 0;
 }
 
 .row-card__labels {
@@ -939,6 +1004,21 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   z-index: calc(var(--regal-row-z-index, 40) + 1);
 }
 
+/* The host's Back (#back): only placed, its look is the host's. */
+.row-card__back-slot {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 3;
+}
+
+.row-card__back-slot--out {
+  position: fixed;
+  top: 0.8rem;
+  left: 0.8rem;
+  z-index: calc(var(--regal-row-z-index, 40) + 1);
+}
+
 .row-card__back:hover {
   color: var(--_regal-accent);
 }
@@ -991,21 +1071,49 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   }
 }
 
-/* Broken out, narrow: a sheet on the viewport's bottom edge (as RegalBooksStage's). */
+/*
+ * Broken out, narrow: a sheet on the viewport's bottom edge (as RegalBooksStage's).
+ * The host can make it its own (README: "The row's sheet"): --regal-sheet-*
+ * tokens for its frame, padding (0: a #detail slot fills it edge to edge),
+ * width and the grabber; unset, today's look.
+ */
 .row-card__details--sheet {
   position: fixed;
   right: -1px;
   bottom: -1px;
   left: -1px;
   z-index: calc(var(--regal-row-z-index, 40) + 1);
-  max-height: 34dvh;
-  padding: 0.8rem 1rem 1rem;
-  border: var(--_regal-border-width) solid var(--_regal-border);
-  border-radius: var(--_regal-radius) var(--_regal-radius) 0 0;
-  box-shadow: var(--_regal-shadow);
+  max-width: var(--regal-sheet-max-width, none);
+  max-height: var(--regal-sheet-max-height, 34dvh);
+  margin: 0 auto;
+  padding: var(--regal-sheet-padding, 0.8rem 1rem 1rem);
+  border: var(--regal-sheet-border, var(--_regal-border-width) solid var(--_regal-border));
+  border-radius: var(--regal-sheet-radius, var(--_regal-radius)) var(--regal-sheet-radius, var(--_regal-radius)) 0 0;
+  background: var(--regal-sheet-background, var(--_regal-surface-raised));
+  box-shadow: var(--regal-sheet-shadow, var(--_regal-shadow));
   backdrop-filter: var(--_regal-backdrop);
   overflow-y: auto;
   font-size: var(--_regal-size-body);
+}
+
+/* The grabber: hidden unless the host shows it; drag it down to put the Book back. */
+.row-card__grabber {
+  position: relative;
+  display: var(--regal-sheet-grabber, none);
+  height: 1.1rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.row-card__grabber-bar {
+  position: absolute;
+  top: 0.4rem;
+  left: 50%;
+  width: var(--regal-sheet-grabber-width, 2.25rem);
+  height: var(--regal-sheet-grabber-height, 2px);
+  border-radius: 999px;
+  background: var(--regal-sheet-grabber-color, var(--_regal-ink-faint));
+  transform: translateX(-50%);
 }
 
 /* Broken out, wide: the Stack's details card, bottom right. */

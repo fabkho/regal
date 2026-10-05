@@ -63,6 +63,26 @@ export const REGAL_TOKENS = [
 
 export type RegalToken = typeof REGAL_TOKENS[number]
 
+/**
+ * RegalBooksRow's broken-out phone sheet (without the `--regal-` prefix): its
+ * container, for a host that puts its own markup in it (#detail). Read as they
+ * are, with today's look as their fallbacks (row/Card.vue), and carried to
+ * <body> with the sheet. README: "The row's sheet".
+ */
+export const ROW_SHEET_TOKENS = [
+  'sheet-radius',
+  'sheet-background',
+  'sheet-border',
+  'sheet-shadow',
+  'sheet-padding',
+  'sheet-max-width',
+  'sheet-max-height',
+  'sheet-grabber',
+  'sheet-grabber-color',
+  'sheet-grabber-width',
+  'sheet-grabber-height',
+] as const
+
 export interface SchemeHints {
   /** The theme asked for. */
   theme: RegalTheme
