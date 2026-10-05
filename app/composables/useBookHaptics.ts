@@ -1,17 +1,18 @@
-import { createTickState, hapticsTuning, mayPulse, pickPulse, PULSE_MS, scrollTick } from '#layers/regal/app/utils/books/haptics'
+import { createTickState, hapticsTuning, mayPulse, pickPulse, PULSES, scrollTick, vibrates } from '#layers/regal/app/utils/books/haptics'
 import type { HapticsTuning, Pulse } from '#layers/regal/app/utils/books/haptics'
 
 type HapticNavigator = Navigator & { userActivation?: { isActive: boolean, hasBeenActive: boolean } }
 
-const UNTUNED: HapticsTuning = { enabled: null, durations: PULSE_MS }
+const UNTUNED: HapticsTuning = { enabled: null, patterns: PULSES }
 
 /**
- * Short vibrations (utils/books/haptics.ts): a pulse when a Book is taken out
- * or put back, a tiny tick when a new Book reaches the focus line while a
- * finger scrolls the Stack. Off when the host turned haptics off
- * (runtimeConfig.public.regal.haptics). On the dev server ?haptics=1|0,
- * ?hapticOut=, ?hapticBack= and ?hapticTick= (ms) tune them, read on every
- * change; production builds drop that. Call once per stage.
+ * Short vibrations (utils/books/haptics.ts): a double pulse when a Book is
+ * taken out, a pulse when it is put back, a tiny tick when a new Book
+ * reaches the focus line while a finger scrolls the Stack. Off when the host
+ * turned haptics off (runtimeConfig.public.regal.haptics). On the dev server
+ * ?haptics=1|0, ?hapticOut=, ?hapticBack= and ?hapticTick= (patterns in ms,
+ * `10,45,18`) tune them, read on every change; production builds drop that.
+ * Call once per stage.
  */
 export function useBookHaptics() {
   if (!import.meta.client) return
@@ -32,7 +33,8 @@ export function useBookHaptics() {
       reducedMotion: reducedMotion.value === 'reduce',
       userActive: userActive(host),
     })
-    if (allowed && tuning.durations[kind] > 0) host.vibrate(tuning.durations[kind])
+    const steps = tuning.patterns[kind]
+    if (allowed && vibrates(steps)) host.vibrate([...steps])
   }
 
   watch(pickedId, (next, previous) => {

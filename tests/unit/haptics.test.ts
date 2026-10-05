@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createTickState, hapticsTuning, mayPulse, pickPulse, PULSE_LIMITS, PULSE_MS, scrollTick, TICK_GAP_MS } from '../../app/utils/books/haptics'
+import { createTickState, hapticsTuning, mayPulse, PATTERN_STEPS, pickPulse, PULSE_LIMITS, PULSES, scrollTick, TICK_GAP_MS, vibrates } from '../../app/utils/books/haptics'
 import type { PulseGate } from '../../app/utils/books/haptics'
 
 const gate = (over: Partial<PulseGate> = {}): PulseGate => ({ enabled: true, canVibrate: true, reducedMotion: false, userActive: true, ...over })
@@ -27,21 +27,39 @@ describe('mayPulse', () => {
   })
 })
 
-describe('PULSE_MS', () => {
-  it('keeps pulses short ticks (5–15 ms): putting back shorter than taking out, a scroll tick the faintest', () => {
-    for (const ms of Object.values(PULSE_MS)) {
-      expect(ms).toBeGreaterThanOrEqual(5)
-      expect(ms).toBeLessThanOrEqual(15)
-    }
-    expect(PULSE_MS.back).toBeLessThan(PULSE_MS.out)
-    expect(PULSE_MS.tick).toBeLessThan(PULSE_MS.back)
+/** How long a pattern vibrates in all (its even steps). */
+const buzz = (steps: readonly number[]) => steps.reduce((sum, step, index) => sum + (index % 2 === 0 ? step : 0), 0)
+
+describe('PULSES', () => {
+  it('makes a scroll tick the faintest pulse there is: a single pulse of a few ms', () => {
+    expect(PULSES.tick).toHaveLength(1)
+    expect(PULSES.tick[0]).toBeGreaterThanOrEqual(1)
+    expect(PULSES.tick[0]).toBeLessThan(5)
+  })
+
+  it('makes taking a Book out an event, more than putting it back, still no buzz', () => {
+    expect(PULSES.out.length).toBeGreaterThan(1)
+    expect(buzz(PULSES.out)).toBeGreaterThan(buzz(PULSES.back))
+    expect(buzz(PULSES.back)).toBeGreaterThan(buzz(PULSES.tick))
+    expect(buzz(PULSES.out)).toBeLessThanOrEqual(30)
+    expect(PULSES.out.reduce((sum, step) => sum + step, 0)).toBeLessThan(100)
+  })
+})
+
+describe('vibrates', () => {
+  it('is true when a vibrating step is longer than 0', () => {
+    expect(vibrates([2])).toBe(true)
+    expect(vibrates([0, 45, 18])).toBe(true)
+    expect(vibrates([0])).toBe(false)
+    expect(vibrates([0, 45])).toBe(false)
+    expect(vibrates([])).toBe(false)
   })
 })
 
 describe('hapticsTuning (dev server only)', () => {
   it('follows the host and the constants without tuning parameters', () => {
-    expect(hapticsTuning({})).toEqual({ enabled: null, durations: PULSE_MS })
-    expect(hapticsTuning({ haptics: 'yes', hapticOut: '' })).toEqual({ enabled: null, durations: PULSE_MS })
+    expect(hapticsTuning({})).toEqual({ enabled: null, patterns: PULSES })
+    expect(hapticsTuning({ haptics: 'yes', hapticOut: '' })).toEqual({ enabled: null, patterns: PULSES })
   })
 
   it('turns them on or off with ?haptics=1|0', () => {
@@ -49,11 +67,17 @@ describe('hapticsTuning (dev server only)', () => {
     expect(hapticsTuning({ haptics: '0' }).enabled).toBe(false)
   })
 
-  it('sets pulse lengths in ms, rounded and clamped', () => {
-    expect(hapticsTuning({ hapticOut: '15', hapticBack: '10.4', hapticTick: '0' }).durations).toEqual({ out: 15, back: 10, tick: 0 })
-    expect(hapticsTuning({ hapticOut: '500' }).durations.out).toBe(PULSE_LIMITS[1])
-    expect(hapticsTuning({ hapticBack: '-3' }).durations.back).toBe(PULSE_LIMITS[0])
-    expect(hapticsTuning({ hapticOut: 'long' }).durations.out).toBe(PULSE_MS.out)
+  it('reads patterns in ms, rounded and clamped; 0 turns one off', () => {
+    expect(hapticsTuning({ hapticOut: '12,40,20', hapticBack: '6.4', hapticTick: '0' }).patterns).toEqual({ out: [12, 40, 20], back: [6], tick: [0] })
+    expect(hapticsTuning({ hapticOut: '500' }).patterns.out).toEqual([PULSE_LIMITS[1]])
+    expect(hapticsTuning({ hapticBack: '-3' }).patterns.back).toEqual([PULSE_LIMITS[0]])
+  })
+
+  it('keeps the constant for anything that is not a short list of numbers', () => {
+    expect(hapticsTuning({ hapticOut: 'long' }).patterns.out).toBe(PULSES.out)
+    expect(hapticsTuning({ hapticOut: '10,,18' }).patterns.out).toBe(PULSES.out)
+    expect(hapticsTuning({ hapticOut: Array.from({ length: PATTERN_STEPS + 1 }, () => '5').join(',') }).patterns.out).toBe(PULSES.out)
+    expect(hapticsTuning({ hapticTick: ['3'] }).patterns.tick).toBe(PULSES.tick)
   })
 })
 

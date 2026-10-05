@@ -1,6 +1,6 @@
-// Haptics: one short pulse when a Book is taken out (or another swapped in),
-// a shorter one when it is put back (the Put back button, Escape, the sheet
-// swiped shut), and a tiny tick each time a new Book reaches the focus line
+// Haptics: a soft double pulse when a Book is taken out (or another swapped
+// in), one short pulse when it is put back (the Put back button, Escape, the
+// sheet swiped shut), and a tiny tick each time a new Book reaches the focus line
 // while a finger scrolls the pile or its flick glides on, like the detents of
 // a dial. The ticks are rate-limited (TICK_GAP_MS), so a fast flick ticks
 // sparsely instead of buzzing. Only where the Vibration API exists (Android
@@ -12,18 +12,27 @@
 export type Pulse = 'out' | 'back' | 'tick'
 
 /**
- * Pulse lengths (ms): ticks, not buzzes, the scroll tick the faintest. Some
- * phone motors round very short pulses up or skip them; the pulse then just
- * isn't felt (no error, nothing else changes). If they are too faint, 15, 10
- * and 8 are the next step.
+ * The pulses, as navigator.vibrate patterns (ms: vibrate, pause, vibrate…).
+ * The web can't set how strong a vibration is, only how long, so the
+ * difference is in length and rhythm. A scroll tick is the shortest pulse a
+ * motor still makes: on the owner's Pixel 8 Pro 5 and 8 ms already felt
+ * heavy while scrolling. Taking a Book out is an event: a soft "da-dum", two
+ * pulses, the second firmer. Putting it back is one short pulse. Some phone
+ * motors skip pulses this short; then the tick just isn't felt (no error,
+ * nothing else changes); 4 ms is the next step up for it.
  */
-export const PULSE_MS: Readonly<Record<Pulse, number>> = Object.freeze({ out: 12, back: 8, tick: 5 })
+export const PULSES: Readonly<Record<Pulse, readonly number[]>> = Object.freeze({
+  out: Object.freeze([10, 45, 18]),
+  back: Object.freeze([8]),
+  tick: Object.freeze([2]),
+})
 
 /** Scroll ticks come at most this often (ms): about 16 a second, sparse on a fast flick. */
 export const TICK_GAP_MS = 60
 
-/** What the dev-only ?hapticOut= / ?hapticBack= / ?hapticTick= may be set to (ms). */
-export const PULSE_LIMITS = [0, 50] as const
+/** What each step of a dev-only ?hapticOut= / ?hapticBack= / ?hapticTick= pattern may be (ms), and how many steps. */
+export const PULSE_LIMITS = [0, 100] as const
+export const PATTERN_STEPS = 5
 
 /** The pulse a change of the picked Book makes: taking one out (or swapping to another), putting it back. */
 export function pickPulse(previous: string | null, next: string | null): 'out' | 'back' | null {
@@ -80,27 +89,35 @@ export function mayPulse(gate: PulseGate): boolean {
 export interface HapticsTuning {
   /** On or off regardless of the host (?haptics=1|0), or null to follow it. */
   enabled: boolean | null
-  durations: Readonly<Record<Pulse, number>>
+  patterns: Readonly<Record<Pulse, readonly number[]>>
 }
 
-function duration(value: unknown, fallback: number): number {
-  const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
-  return Number.isFinite(parsed) ? Math.round(Math.min(PULSE_LIMITS[1], Math.max(PULSE_LIMITS[0], parsed))) : fallback
+/** A pattern from `10,45,18` (ms, rounded and clamped, at most PATTERN_STEPS); anything else keeps `fallback`. */
+function pattern(value: unknown, fallback: readonly number[]): readonly number[] {
+  if (typeof value !== 'string' || value.trim() === '') return fallback
+  const steps = value.split(',').map(step => (step.trim() === '' ? Number.NaN : Number(step)))
+  if (steps.length > PATTERN_STEPS || !steps.every(Number.isFinite)) return fallback
+  return steps.map(step => Math.round(Math.min(PULSE_LIMITS[1], Math.max(PULSE_LIMITS[0], step))))
+}
+
+/** A pattern that vibrates at all (its vibrating steps are the even ones): `0` turns a pulse off. */
+export function vibrates(steps: readonly number[]): boolean {
+  return steps.some((step, index) => index % 2 === 0 && step > 0)
 }
 
 /**
  * Haptics tuned from a route query on the dev server, to feel them on a
  * phone without a rebuild: `haptics=1|0` turns them on or off,
- * `hapticOut=` / `hapticBack=` / `hapticTick=` set the pulse lengths (ms,
- * clamped; 0 turns that one off).
+ * `hapticOut=` / `hapticBack=` / `hapticTick=` set the pulses as patterns
+ * (ms, `10,45,18`: vibrate, pause, vibrate; clamped; `0` turns one off).
  */
 export function hapticsTuning(query: Readonly<Record<string, unknown>>): HapticsTuning {
   return {
     enabled: query.haptics === '1' ? true : query.haptics === '0' ? false : null,
-    durations: {
-      out: duration(query.hapticOut, PULSE_MS.out),
-      back: duration(query.hapticBack, PULSE_MS.back),
-      tick: duration(query.hapticTick, PULSE_MS.tick),
+    patterns: {
+      out: pattern(query.hapticOut, PULSES.out),
+      back: pattern(query.hapticBack, PULSES.back),
+      tick: pattern(query.hapticTick, PULSES.tick),
     },
   }
 }
