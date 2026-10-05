@@ -8,16 +8,14 @@ const BACK_MS = 220
 const REST_MS = 80
 
 /**
- * Dragging a bottom sheet by its grip (utils/books/sheet.ts decides what a
- * release does): the sheet follows the finger down and gives a little up.
+ * Dragging a bottom sheet down by its grip (utils/books/sheet.ts decides what
+ * a release does): the sheet follows the finger down and gives a little up.
  * Bind `handlers` on the grip (touch-action: none). A put-back leaves the
  * sheet where the finger let go: the label morph starts from there.
  */
 export function useSheetDrag(options: {
   sheet: Ref<HTMLElement | null>
   enabled: () => boolean
-  expandable: () => boolean
-  expanded: () => boolean
   onSettle: (settle: SheetSettle) => void
 }) {
   const dragging = ref(false)
@@ -78,8 +76,6 @@ export function useSheetDrag(options: {
           dy: event.clientY - startY,
           velocity,
           height: options.sheet.value?.offsetHeight ?? 0,
-          expandable: options.expandable(),
-          expanded: options.expanded(),
         })
     dragging.value = false
     if (settle !== 'dismiss') springBack()

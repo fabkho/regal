@@ -11,7 +11,7 @@ import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
 import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
 import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
-import { resolveSheetVariant } from '#layers/regal/app/utils/books/sheet'
+import { showsSheet } from '#layers/regal/app/utils/books/sheet'
 
 const props = withDefaults(defineProps<{
   /** Sort & filter controls over the 3D (off when a sidebar shows them). */
@@ -91,9 +91,8 @@ const hasTop = computed(() => !props.stackOnly || showStackControls.value)
 
 // Narrow stages (a phone) show the details as a bottom sheet instead of the
 // card, which would cover the picked Book there (utils/books/sheet.ts).
-// ?sheet=a|b|c picks a prototype variant, ?sheet=off keeps the card.
 const { width: stageWidth, height: stageHeight } = useElementSize(stageElement)
-const sheet = computed(() => (props.showDetails ? resolveSheetVariant(route.query.sheet, stageWidth.value) : null))
+const sheet = computed(() => props.showDetails && showsSheet(stageWidth.value))
 // The picked Book floats below the top band too (utils/books/inspect.ts).
 const { height: topHeight } = useElementSize(topElement, undefined, { box: 'border-box' })
 const insets = useInspectInsets()

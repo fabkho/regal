@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { INSPECT_ASIDE, INSPECT_FILL, INSPECT_LIFT, inspectFrame } from '../../app/utils/books/inspect'
-import { dragOffset, resolveSheetVariant, RUBBER, settleDrag, SHEET_MAX_WIDTH } from '../../app/utils/books/sheet'
+import { dragOffset, RUBBER, settleDrag, SHEET_MAX_WIDTH, showsSheet } from '../../app/utils/books/sheet'
 
 const FOV = 38 * Math.PI / 180
 const tan = Math.tan(FOV / 2)
@@ -56,46 +56,32 @@ describe('inspectFrame', () => {
   })
 })
 
-describe('resolveSheetVariant', () => {
-  it('shows the card on wide or unmeasured stages', () => {
-    expect(resolveSheetVariant('a', 0)).toBeNull()
-    expect(resolveSheetVariant('a', SHEET_MAX_WIDTH + 1)).toBeNull()
-  })
-
-  it('reads ?sheet, defaulting to a', () => {
-    expect(resolveSheetVariant(undefined, 412)).toBe('a')
-    expect(resolveSheetVariant('b', 412)).toBe('b')
-    expect(resolveSheetVariant(['C'], 412)).toBe('c')
-    expect(resolveSheetVariant('zzz', 412)).toBe('a')
-    expect(resolveSheetVariant('off', 412)).toBeNull()
+describe('showsSheet', () => {
+  it('shows the sheet on narrow stages only, the card until measured', () => {
+    expect(showsSheet(0)).toBe(false)
+    expect(showsSheet(412)).toBe(true)
+    expect(showsSheet(SHEET_MAX_WIDTH)).toBe(true)
+    expect(showsSheet(SHEET_MAX_WIDTH + 1)).toBe(false)
   })
 })
 
 describe('settleDrag', () => {
-  const base = { height: 160, expandable: true, expanded: false }
-
-  it('tells a tap from a drag', () => {
-    expect(settleDrag({ ...base, dy: 2, velocity: 0.01 })).toBe('tap')
-    expect(settleDrag({ ...base, dy: 2, velocity: 1 })).toBe('dismiss')
+  it('springs back from a tap or a short drag', () => {
+    expect(settleDrag({ dy: 2, velocity: 0.01, height: 160 })).toBe('stay')
+    expect(settleDrag({ dy: 30, velocity: 0.1, height: 160 })).toBe('stay')
   })
 
-  it('puts the Book back on a long or fast drag down, closes an open sheet first', () => {
-    expect(settleDrag({ ...base, dy: 80, velocity: 0.1 })).toBe('dismiss')
-    expect(settleDrag({ ...base, dy: 20, velocity: 0.8 })).toBe('dismiss')
-    expect(settleDrag({ ...base, expanded: true, dy: 125, velocity: 0.1 })).toBe('collapse')
-    // A tall open sheet doesn't ask for a drag of a third of its height.
-    expect(settleDrag({ ...base, height: 600, expanded: true, dy: 125, velocity: 0.1 })).toBe('collapse')
+  it('puts the Book back on a long or fast drag down', () => {
+    expect(settleDrag({ dy: 80, velocity: 0.1, height: 160 })).toBe('dismiss')
+    expect(settleDrag({ dy: 20, velocity: 0.8, height: 160 })).toBe('dismiss')
   })
 
-  it('springs back from a short drag, or a drag down flicked back up', () => {
-    expect(settleDrag({ ...base, dy: 30, velocity: 0.1 })).toBe('stay')
-    expect(settleDrag({ ...base, dy: 90, velocity: -0.8 })).toBe('expand')
-    expect(settleDrag({ ...base, expandable: false, dy: 90, velocity: -0.8 })).toBe('stay')
+  it('asks a tall sheet for no more than DISMISS_MAX of drag', () => {
+    expect(settleDrag({ dy: 125, velocity: 0.1, height: 600 })).toBe('dismiss')
   })
 
-  it('opens a compact sheet on a drag up', () => {
-    expect(settleDrag({ ...base, dy: -50, velocity: 0 })).toBe('expand')
-    expect(settleDrag({ ...base, expanded: true, dy: -50, velocity: 0 })).toBe('stay')
+  it('springs back from a drag down flicked back up', () => {
+    expect(settleDrag({ dy: 90, velocity: -0.8, height: 160 })).toBe('stay')
   })
 })
 
