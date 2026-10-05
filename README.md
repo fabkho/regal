@@ -62,8 +62,19 @@ export default defineNuxtConfig({
 | Key | Default | Meaning |
 |---|---|---|
 | `librarySrc` | `''` | URL of the [Regal library file](docs/library-file.md) to show: absolute, or relative to the page (`/books/library.json` from the host's `public/`). Unset: the components show an error saying so. |
+| `haptics` | `true` | A short vibration when a Book is taken out (12 ms) or put back (8 ms), on phones that can (Android Chrome; iOS Safari has no Vibration API), only right after a tap or click, never with reduced motion, and never while scrolling. `false` turns it off. |
 
-Env override as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`.
+Env override as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_REGAL_HAPTICS=false`.
+
+To turn haptics off on a host page:
+
+```ts
+// nuxt.config.ts of the host
+export default defineNuxtConfig({
+  extends: [/* Regal */],
+  runtimeConfig: { public: { regal: { librarySrc: '/books/library.json', haptics: false } } },
+})
+```
 
 **Changed with the library file** ([#39](https://github.com/fabkho/regal/issues/39)): `mode` and `assetsBase` are gone. There is one way to get a Library (the file at `librarySrc`, its images listed in it), so a host that still sets them gets no error, they are ignored; drop them when you switch. `librarySrc` now names a library file, not a reading-tracker export (Libellus writes one; `pnpm library:convert` converts old published data, see below); such an export shows the error card. The Cover and description resolvers (`/api/cover`, `/api/description`, `NUXT_GOOGLE_BOOKS_API_KEY`) are no longer part of the layer.
 

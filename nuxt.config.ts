@@ -84,6 +84,8 @@ export default defineNuxtConfig({
       regal: {
         /** URL of the Regal library file to show (docs/library-file.md). Regal's own site: the demo. */
         librarySrc: '',
+        /** A short vibration when a Book is taken out or put back, where the phone can (README). */
+        haptics: true,
       },
     },
   },
