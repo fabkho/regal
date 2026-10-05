@@ -748,8 +748,10 @@ watch(face, (value) => {
 })
 
 // Clicks (as useBookClicks, with this row's own Pick): raycast when the press
-// goes down, count it when it ends where it began. A finger that scrolls the
-// row is cancelled by the browser (pointercancel), so it never clicks.
+// goes down, count it when it ends where it began. A finger that drags the
+// row moves past the click's slop, one the page scrolls is cancelled
+// (pointercancel), and one that only stops a flinging row (ctx.view.caught)
+// doesn't count: none of them clicks.
 let press: Press | null = null
 let aimed: string | null = null
 let pressed: { bookId: string, x: number, y: number } | null = null
@@ -773,7 +775,7 @@ function canvas() {
 
 function onDown(event: PointerEvent) {
   const element = canvas()
-  const point = element && event.button === 0 && event.isPrimary ? toNdc(element, event.clientX, event.clientY) : null
+  const point = element && event.button === 0 && event.isPrimary && !ctx.view.caught ? toNdc(element, event.clientX, event.clientY) : null
   press = point ? startPress(event) : null
   aimed = point ? bookAt(group.value, camera.value, point) : null
   // A finger is wider than a thin Spine: a tap that misses looks a little to either side.

@@ -2,7 +2,6 @@
 // handed down as a prop. Each row has its own: its own Pick, so a row and
 // RegalBooksStage (or two rows) can share a page.
 import type { Ref } from 'vue'
-import type { PerspectiveCamera } from 'three'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import type { LoadView } from '#layers/regal/app/utils/covers/loadWindow'
 import type { SpinMode } from '#layers/regal/app/utils/books/spin'
@@ -23,6 +22,8 @@ export interface RowView extends LoadView {
   scrollLed: boolean
   /** A finger is on the row (the scroll haptics). */
   touching: boolean
+  /** The press going down only stopped a flinging row (RowCard): it takes no Book out. */
+  caught: boolean
 }
 
 /** Where a broken-out row was on screen (viewport px) when its Book came out. */
@@ -48,10 +49,10 @@ export interface RowContext {
   breakout: RowBreakout
   /** How faded the row is behind a picked Book, 0..1 (RowBooks; the paper veil and the floor's shadow follow it). */
   dim: { value: number }
+  /** The floor shadow's strength (utils/theme/tokens.ts floorShadowStrength): 1 in the light theme, 0 in the dark (RowCard). */
+  floorShadow: { value: number }
   /** The veil's colour (`#rrggbb`): the card's surface (`--regal-surface`), so it is dark in the dark theme (RowCard). */
   veil: { color: string }
-  /** Each frame once the camera is placed: the card places its HTML labels in step with the 3D. */
-  onCamera: ((camera: PerspectiveCamera, width: number, height: number) => void) | null
   /** Render only while the row shows (an IntersectionObserver in RowCard). */
   visible: Ref<boolean>
   /** How a drag turns a Book taken out (RegalBooksRow's `rotate`, utils/books/spin.ts). */
@@ -59,5 +60,5 @@ export interface RowContext {
 }
 
 export function createRowView(): RowView {
-  return { cameraX: 0, focusY: 0, targetY: 0, halfView: 0.3, speed: 0, bounds: [0, 0], distance: 1, scrollLed: false, touching: false }
+  return { cameraX: 0, focusY: 0, targetY: 0, halfView: 0.3, speed: 0, bounds: [0, 0], distance: 1, scrollLed: false, touching: false, caught: false }
 }

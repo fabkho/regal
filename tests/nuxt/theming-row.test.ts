@@ -38,7 +38,7 @@ const BOOK: Book = {
 type RowOptions = NonNullable<Parameters<typeof mountSuspended<typeof RegalBooksRow>>[1]>
 
 /** The card's own state (script setup, read through the test wrapper). */
-type CardState = { pick: PickState, ctx: { focused: { value: string | null } } }
+type CardState = { pick: PickState, ctx: { focused: { value: string | null }, floorShadow: { value: number } } }
 
 async function mountRow(options: RowOptions = {}) {
   const wrapper = await mountSuspended(RegalBooksRow, {
@@ -116,6 +116,52 @@ describe('RegalBooksRow theming', () => {
     await pickBook(wrapper)
     expect(wrapper.find('.row-card__details').classes()).toContain('regal--unstyled')
     expect(wrapper.find('.row-card__book-title').text()).toBe(BOOK.title)
+  })
+})
+
+describe('RegalBooksRow focus label: the rating\'s number', () => {
+  it('shows the number after the stars, two decimals only when needed', async () => {
+    useState<Book[]>('library:books').value = [{ ...BOOK, rating: 4.25 }]
+    const wrapper = await mountRow()
+    await focusBook(wrapper)
+    const rating = wrapper.find('.row-focus .title-stars__rating')
+    expect(rating.find('.title-stars__stars').attributes('aria-label')).toBe('Rated 4.25 out of 5')
+    expect(rating.find('.title-stars__value').text()).toBe('4.25')
+    // After the stars: the stars come first.
+    expect(rating.element.firstElementChild?.classList.contains('title-stars__stars')).toBe(true)
+    // Read once, by the stars' label.
+    expect(rating.find('.title-stars__value').attributes('aria-hidden')).toBe('true')
+  })
+
+  it('shows neither stars nor a number for an unrated Book', async () => {
+    useState<Book[]>('library:books').value = [{ ...BOOK, rating: 0 }]
+    const wrapper = await mountRow()
+    await focusBook(wrapper)
+    expect(wrapper.find('.row-focus .title-stars__rating').exists()).toBe(false)
+    expect(wrapper.find('.row-focus .title-stars__value').exists()).toBe(false)
+  })
+})
+
+describe('RegalBooksRow floor shadow and dates', () => {
+  it('has Regal\'s floor shadow in the light theme, none in the dark, switching live', async () => {
+    const wrapper = await mountRow()
+    const card = wrapper.findComponent(RowCard).vm as unknown as CardState
+    expect(card.ctx.floorShadow.value).toBe(1)
+    await wrapper.setProps({ theme: 'dark' })
+    await nextTick()
+    await nextTick()
+    expect(card.ctx.floorShadow.value).toBe(0)
+    await wrapper.setProps({ theme: 'light' })
+    await nextTick()
+    await nextTick()
+    expect(card.ctx.floorShadow.value).toBe(1)
+  })
+
+  it('fades the dates out while a Book is out', async () => {
+    const wrapper = await mountRow()
+    expect(wrapper.find('.row-card__labels').classes()).not.toContain('row-card__labels--hidden')
+    await pickBook(wrapper)
+    expect(wrapper.find('.row-card__labels').classes()).toContain('row-card__labels--hidden')
   })
 })
 

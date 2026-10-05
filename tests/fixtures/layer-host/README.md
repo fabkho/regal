@@ -1,8 +1,9 @@
 # layer-host fixture
 
 A minimal Nuxt app that `extends` the Regal repo root as a layer, the way the
-portfolio's `/books` page does (`app/pages/books.vue`), and a profile page with
-two `RegalBooksRow` cards (`app/pages/profile.vue`). `tests/e2e/layer-host.test.ts` builds it.
+portfolio's `/books` page does (`app/pages/books.vue`), a profile page with
+two `RegalBooksRow` cards (`app/pages/profile.vue`) and two rows in cards too
+narrow for their Books, for the rest position (`app/pages/rest.vue`). `tests/e2e/layer-host.test.ts` builds it.
 
 `public/books/` is a **synthetic** Library, never real reading data:
 

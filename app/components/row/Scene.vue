@@ -72,10 +72,14 @@ onBeforeRender(({ delta }) => {
     light.shadow.camera.updateProjectionMatrix()
   }
   camera3.updateMatrixWorld()
-  props.ctx.onCamera?.(camera3, sizes.width.value, sizes.height.value)
   // The lights travel with the view so every part of the row is lit the same.
   if (rig.value) rig.value.position.x = x
-  if (floorMaterial.value) floorMaterial.value.opacity = FLOOR_SHADOW.opacity * (1 - props.ctx.dim.value)
+  // The floor shadow fades with the row behind a picked Book; the dark theme has none (ctx.floorShadow).
+  const floor = floorMaterial.value
+  if (floor) {
+    floor.opacity = FLOOR_SHADOW.opacity * (1 - props.ctx.dim.value) * props.ctx.floorShadow.value
+    floor.visible = floor.opacity > 0
+  }
   // A veil between the row and a picked Book, the card's surface (paper by default): one transparent plane, no material changes.
   // The camera sees both layers (one pass) unless broken out (two, renderBrokenOut).
   if (!props.ctx.breakout.active) camera3.layers.enable(1)

@@ -78,7 +78,7 @@ const surface = useRegalSurface()
   text-overflow: ellipsis;
 }
 
-.focus-label :deep(.title-stars__stars),
+.focus-label :deep(.title-stars__rating),
 .focus-label :deep(.title-stars__unrated) {
   flex-shrink: 0;
 }

@@ -17,9 +17,15 @@ import {
 } from '#layers/regal/app/utils/bookcase/scene'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 
-const props = withDefaults(defineProps<{ debugSlots?: boolean, bookcaseCount?: number }>(), {
+const props = withDefaults(defineProps<{
+  debugSlots?: boolean
+  bookcaseCount?: number
+  /** The floor shadow's strength: 1 Regal's, 0 none (the dark theme; utils/theme/tokens.ts). */
+  floorShadow?: number
+}>(), {
   debugSlots: false,
   bookcaseCount: 1,
+  floorShadow: 1,
 })
 
 /** Extra Bookcases stand to the right of the first one. */
@@ -140,7 +146,8 @@ function clampTarget(controls: OrbitControlsImpl) {
     <TresPlaneGeometry :args="[16, 16]" />
     <TresShadowMaterial
       :color="FLOOR_SHADOW.color"
-      :opacity="FLOOR_SHADOW.opacity"
+      :opacity="FLOOR_SHADOW.opacity * props.floorShadow"
+      :visible="props.floorShadow > 0"
       :transparent="true"
     />
   </TresMesh>

@@ -2,13 +2,15 @@
 // A row of Books inline in a card (RegalBooksRow): the Stack turned 90°,
 // oldest on the left, what was read last on the right. It fills its box.
 //
-// Scrolling is the browser's own: the card is a horizontal scroll container
-// (overflow-x) holding a track as wide as the row, the canvas sticky at its
-// left edge. Swiping sideways scrolls the row with the platform's momentum;
-// swiping up or down scrolls the page as usual (touch-action pan-x pan-y:
-// nothing is trapped); a trackpad or Shift+wheel scrolls it, arrow keys once
-// focused, a mouse can drag it. The camera follows scrollLeft, matched so the
-// Spines move with the finger. The dates are HTML, placed each frame from the
+// The card is a horizontal scroll container (overflow-x) holding a track as
+// wide as the row, the canvas sticky at its left edge. A trackpad or
+// Shift+wheel scrolls it natively, arrow keys once focused, the scroll bar,
+// a mouse can drag it. A finger swiping sideways drags it too, with a fling
+// like the platform's (utils/row/touchDrag.ts: a native touch scroll would
+// end in a pointercancel, which keeps the scroll ticks from vibrating until a
+// first tap); swiping up or down scrolls the page as usual (touch-action
+// pan-y: nothing is trapped). At rest the card is full of Books (rowRest).
+// The camera follows scrollLeft, matched so the Spines move with the finger. The dates are HTML, placed each frame from the
 // camera, in step with the 3D.
 //
 // A Book taken out: tap or click turns it, a drag turns it, a flick turns it
@@ -29,8 +31,7 @@
 // break-out (the canvas box with its labels, Back, the details) is a `.regal`
 // surface carrying the tokens resolved on RegalBooksRow's root, and the veil
 // takes the card's surface colour.
-import { ACESFilmicToneMapping, SRGBColorSpace, Vector3, VSMShadowMap } from 'three'
-import type { PerspectiveCamera } from 'three'
+import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
 import gsap from 'gsap'
 import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
 import type { Book } from '#layers/regal/shared/types/book'
@@ -38,9 +39,11 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
-import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabels, rowScroll } from '#layers/regal/app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelNudge, rowLabels, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
+import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
+import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
 import { backgroundOf } from '#layers/regal/app/utils/theme/color'
-import { ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
+import { floorShadowStrength, ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
 
 const props = withDefaults(defineProps<{
   /** The Books, newest first (rowBooks). */
@@ -78,8 +81,8 @@ const ctx: RowContext = {
   zoom: { value: 1 },
   breakout: reactive({ active: false, rect: { left: 0, top: 0, width: 0, height: 0 } }),
   dim: { value: 0 },
+  floorShadow: { value: 1 },
   veil: { color: '#F5F2EB' },
-  onCamera: null,
   visible: ref(true),
   rotate: computed(() => props.rotate),
 }
@@ -116,22 +119,28 @@ let scrollingTimer: ReturnType<typeof setTimeout> | undefined
 const scrollerId = useId()
 
 /**
- * The row starts at its last Book (the Stack starts at its top) once the card
- * has its size, and again when other Books come in or the card resizes while
- * it still rests where it started (not once the reader scrolled it).
+ * At rest the card is full of Books (rowRest): the last Book flush with its
+ * right edge (or, for a year row, January's first with its left edge), the
+ * Book then in the middle in focus. Set once the card has its size, and again
+ * when other Books come in or the card resizes while it still rests (not
+ * once the reader scrolled it). The camera follows in the same tick, so the
+ * first frame drawn is already the rest.
  */
 let started = false
 /** The reader has scrolled the row (touch, wheel, a mouse drag, keys, ‹ ›): it stays where they put it. */
 let readerScrolled = false
 function noteReader() {
   readerScrolled = true
+  // The wheel, keys, the scroll bar or a finger take over from a glide.
+  stopGlide()
 }
-watch([maxScroll, width, oldestFirst], ([max, cardWidth]) => {
+const rest = computed(() => rowRest(layout.value, scroll.value, width.value, pxPerMetre.value, props.start))
+watch([rest, maxScroll, width], ([left, max, cardWidth]) => {
   const element = scroller.value
   if (!max || !cardWidth || !element || readerScrolled) return
-  if (props.start === 'newest') element.scrollLeft = max
-  else if (started) element.scrollLeft = 0
+  element.scrollLeft = left
   started = true
+  syncCamera()
 }, { flush: 'post' })
 
 function syncCamera() {
@@ -140,6 +149,7 @@ function syncCamera() {
   ctx.view.cameraX = cameraStart.value + left / pxPerMetre.value
   ctx.view.bounds = [cameraStart.value, cameraStart.value + maxScroll.value / pxPerMetre.value]
   progress.value = maxScroll.value ? left / maxScroll.value : 0
+  placeLabels()
 }
 
 watch([cameraStart, maxScroll, pxPerMetre], () => nextTick(syncCamera), { immediate: true })
@@ -160,17 +170,109 @@ function onScroll() {
 }
 
 function onScrollEnd() {
-  if (!ctx.view.touching) touchScrolling.value = false
+  // Our own fling sets scrollLeft every frame (a scrollend each time): it ends the ticks itself.
+  if (!ctx.view.touching && !touchDrag && !flingFrame) touchScrolling.value = false
 }
 
-// A mouse drags the row too (touch and trackpads scroll it natively) and
-// lets it glide on a little.
+// A mouse drags the row too (trackpads scroll it natively) and lets it glide
+// on a little.
 let drag: { x: number, left: number, lastX: number, lastT: number, speed: number } | null = null
 let glideFrame = 0
+
+// A finger (or pen) drags the row sideways itself (utils/row/touchDrag.ts):
+// the scroller is touch-action pan-y, so Chrome leaves sideways moves to the
+// page and an up/down swipe still scrolls the page (and cancels this drag).
+// Its pointerup is a user activation, a native scroll's pointercancel is
+// not: the scroll ticks work from the first swipe on. A flick flings on
+// along Android's curve; a finger on a flinging row stops it (and doesn't
+// take a Book out, as with the native scroll).
+let touchDrag: { id: number, x: number, y: number, left: number, axis: DragAxis, samples: DragSample[] } | null = null
+let fling: { start: number, left: number, curve: Fling } | null = null
+let flingFrame = 0
+
+function stopFling() {
+  cancelAnimationFrame(flingFrame)
+  flingFrame = 0
+  fling = null
+}
 
 function stopGlide() {
   cancelAnimationFrame(glideFrame)
   glideFrame = 0
+  stopFling()
+}
+
+/** The fling's speed now (px/s), for a flick that boosts it. */
+function flingSpeed(now: number): number {
+  return fling ? flingAt(fling.curve, now - fling.start).velocity * Math.sign(fling.curve.distance) : 0
+}
+
+function runFling(velocity: number) {
+  const element = scroller.value
+  const curve = startFling(velocity)
+  if (!element || !curve) {
+    stopFling()
+    if (!ctx.view.touching) touchScrolling.value = false
+    return
+  }
+  fling = { start: performance.now(), left: element.scrollLeft, curve }
+  const step = (now: number) => {
+    if (!fling || !scroller.value) return
+    const at = flingAt(fling.curve, now - fling.start)
+    const target = fling.left + at.offset
+    scroller.value.scrollLeft = target
+    // Done, or stopped at either end of the row.
+    if (at.done || target <= 0 || target >= maxScroll.value) {
+      stopFling()
+      if (!ctx.view.touching) touchScrolling.value = false
+      return
+    }
+    flingFrame = requestAnimationFrame(step)
+  }
+  touchScrolling.value = true
+  cancelAnimationFrame(flingFrame)
+  flingFrame = requestAnimationFrame(step)
+}
+
+/** Capture phase, before the Books hear the press: a finger on a flinging row only stops it. */
+function onPointerDownCapture(event: PointerEvent) {
+  ctx.view.caught = false
+  if (event.pointerType === 'mouse' || !event.isPrimary || pickedId.value || !scroller.value) return
+  ctx.view.caught = !!fling
+  stopGlide()
+  touchDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: scroller.value.scrollLeft, axis: 'pending', samples: [] }
+  trackDrag(touchDrag.samples, event.timeStamp, event.clientX)
+}
+
+function onTouchDragMove(event: PointerEvent) {
+  if (!touchDrag || event.pointerId !== touchDrag.id || !scroller.value) return
+  const dx = event.clientX - touchDrag.x
+  if (touchDrag.axis === 'pending') {
+    touchDrag.axis = dragAxis(dx, event.clientY - touchDrag.y)
+    if (touchDrag.axis === 'x') {
+      noteReader()
+      ctx.view.scrollLed = true
+      touchScrolling.value = true
+    }
+  }
+  if (touchDrag.axis === 'y') return
+  // Every position the finger reported since the last frame, for the release speed.
+  const moves = event.getCoalescedEvents?.() ?? []
+  for (const move of moves.length ? moves : [event]) trackDrag(touchDrag.samples, move.timeStamp, move.clientX)
+  if (touchDrag.axis === 'x') scroller.value.scrollLeft = touchDrag.left - followed(dx)
+}
+
+function onTouchDragEnd(event: PointerEvent) {
+  if (!touchDrag || event.pointerId !== touchDrag.id) return
+  const ended = touchDrag
+  touchDrag = null
+  // Cancelled: the page took an up/down swipe (or the system the touch).
+  if (ended.axis !== 'x' || event.type !== 'pointerup' || pickedId.value) {
+    if (!ctx.view.touching) touchScrolling.value = false
+    return
+  }
+  const now = performance.now()
+  runFling(boostFling(-releaseVelocity(ended.samples, event.timeStamp), flingSpeed(now)))
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -181,6 +283,7 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return onTouchDragMove(event)
   if (!drag || !scroller.value) return
   if (!(event.buttons & 1)) {
     drag = null
@@ -193,7 +296,8 @@ function onPointerMove(event: PointerEvent) {
   scroller.value.scrollLeft = drag.left - (event.clientX - drag.x)
 }
 
-function onPointerUp() {
+function onPointerUp(event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return onTouchDragEnd(event)
   if (!drag) return
   let speed = -drag.speed * 16
   drag = null
@@ -219,6 +323,7 @@ function onTouch(event: TouchEvent) {
   ctx.view.touching = touching
   if (touching) ctx.view.scrollLed = true
   if (event.type === 'touchmove') touchScrolling.value = true
+  else if (!touching && !touchDrag && !flingFrame) touchScrolling.value = false
 }
 
 function scrollStep(direction: number) {
@@ -241,30 +346,50 @@ function setLabel(key: string, element: unknown) {
   if (element instanceof HTMLElement) labelElements.set(key, element)
   else labelElements.delete(key)
 }
+/** Each date's width (px), measured once it shows (again for other dates, other sizes or a late font). */
+const labelWidths = new Map<string, number>()
 
 const labels = computed(() => rowLabels(layout.value.markers, pxPerMetre.value))
-const point = new Vector3()
+watch(labels, () => labelWidths.clear())
+onMounted(() => document.fonts?.ready.then(() => {
+  labelWidths.clear()
+  placeLabels()
+}))
 /** The focus label stays put: centred across the card, just under the row (rowFocusLabelTop). */
 const focusTop = computed(() => `${rowFocusLabelTop(height.value || 300).toFixed(1)}px`)
 
-ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
-  // Broken out, the dates stay in the card, under the veil: not placed.
-  if (ctx.breakout.active) return
+/**
+ * Places the dates where the row's resting camera shows them (rowProject):
+ * from the scroll and the card's size only, never the 3D camera, so they
+ * hold still while a Book is out, broken out or landing back (they are faded
+ * out then, see `datesShown`). On every scroll, resize and change of dates.
+ */
+function placeLabels() {
+  const w = width.value
+  const h = height.value
+  if (!w || !h) return
+  const cameraX = ctx.view.cameraX
   for (const label of labels.value) {
     const element = labelElements.get(label.key)
     if (!element) continue
-    point.set(label.x, ROW_LABEL_Y, 0).project(camera)
-    const x = (point.x + 1) / 2 * w
-    const y = (1 - point.y) / 2 * h
+    const { x, y } = rowProject(label.x, ROW_LABEL_Y, cameraX, w, h)
     const off = x < -240 || x > w + 240
     element.style.visibility = off ? 'hidden' : 'visible'
     if (off) continue
     element.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`
+    // A date at the card's edge (January's at a year row's rest) slides in to stay readable; its leader stays on the sheet.
+    let labelWidth = labelWidths.get(label.key)
+    if (!labelWidth) {
+      labelWidth = (element.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0
+      if (labelWidth) labelWidths.set(label.key, labelWidth)
+    }
+    element.style.setProperty('--nudge', `${rowLabelNudge(x, labelWidth, w).toFixed(1)}px`)
     // The leader line runs down from the date to the top of the row.
-    point.set(label.x, label.height, 0).project(camera)
-    element.style.setProperty('--leader', `${Math.max(0, (1 - point.y) / 2 * h - y).toFixed(1)}px`)
+    const top = rowProject(label.x, label.height, cameraX, w, h).y
+    element.style.setProperty('--leader', `${Math.max(0, top - y).toFixed(1)}px`)
   }
 }
+watch([labels, width, height], () => placeLabels(), { flush: 'post' })
 
 // --- A Book out ------------------------------------------------------------------------
 
@@ -320,10 +445,22 @@ function landBack() {
     broken.value = false
     ctx.inspectFull.value = false
     document.documentElement.style.overflow = ''
+    // Back in the card first, then the fade (one frame later, so it runs).
+    requestAnimationFrame(() => {
+      if (!pickedId.value) datesShown.value = true
+    })
   }, reducedMotion.value === 'reduce' ? 0 : RETURN_SECONDS * 1000 + 80)
 }
 
+/**
+ * The dates (and the focus label) show while the row rests: they fade out as
+ * a Book comes out and back in once it has landed, in place all the while
+ * (placeLabels).
+ */
+const datesShown = ref(true)
+
 watch(pickedId, (id, previous) => {
+  if (id) datesShown.value = false
   if (id && !previous) {
     // A host may have changed its tokens since (a class on its page).
     readTheme()
@@ -331,13 +468,18 @@ watch(pickedId, (id, previous) => {
     else gsap.to(ctx.zoom, { value: CARD_ZOOM, duration: reducedMotion.value === 'reduce' ? 0 : OUT_SECONDS, ease: 'power2.inOut', overwrite: true })
   }
   if (!id && previous) {
-    gsap.to(ctx.zoom, { value: 1, duration: reducedMotion.value === 'reduce' ? 0 : RETURN_SECONDS, ease: 'power2.inOut', overwrite: true })
+    const landed = broken.value
+      ? undefined
+      : () => {
+          if (!pickedId.value) datesShown.value = true
+        }
+    gsap.to(ctx.zoom, { value: 1, duration: reducedMotion.value === 'reduce' ? 0 : RETURN_SECONDS, ease: 'power2.inOut', overwrite: true, onComplete: landed })
     if (broken.value) landBack()
   }
 })
 
-/** Touch on the canvas: the row and the page scroll natively; a picked Book turns sideways; broken out, it has the screen. */
-const touchAction = computed(() => (broken.value && pickedId.value ? 'none' : pickedId.value ? 'pan-y' : 'pan-x pan-y'))
+/** Touch on the canvas: up/down scrolls the page, sideways the row (its own drag) or a picked Book; broken out, it has the screen. */
+const touchAction = computed(() => (broken.value && pickedId.value ? 'none' : 'pan-y'))
 
 // Back (the browser's, Android's) puts the Book away: a history entry while it is out.
 let pushed = false
@@ -415,6 +557,10 @@ function readTheme() {
   readCarried()
 }
 watch([ui.scheme, ui.unstyled, ui.tokens], readTheme, { flush: 'post' })
+// The Books' floor shadow: Regal's in the light theme, none in the dark (--regal-floor-shadow), switching live.
+watchEffect(() => {
+  ctx.floorShadow.value = floorShadowStrength(ui.tokens.value, ui.scheme.value)
+})
 
 function turn() {
   if (pick.value.bookId) pick.value = { bookId: pick.value.bookId, face: pick.value.face === 'front' ? 'back' : 'front' }
@@ -457,7 +603,6 @@ onBeforeUnmount(() => {
   clearTimeout(landing)
   gsap.killTweensOf(ctx.zoom)
   if (broken.value) document.documentElement.style.overflow = ''
-  ctx.onCamera = null
 })
 
 const dpr = computed<[number, number]>(() => [1, quality.value.maxDpr])
@@ -494,6 +639,7 @@ function scrub(value: number) {
       :aria-label="`${books.length} books, scroll sideways`"
       @scroll.passive="onScroll"
       @scrollend="onScrollEnd"
+      @pointerdown.capture="onPointerDownCapture"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @touchstart.passive="onTouch"
@@ -543,8 +689,8 @@ function scrub(value: number) {
                 </TresCanvas>
               </ClientOnly>
               <div
-                v-show="!broken"
                 class="row-card__labels"
+                :class="{ 'row-card__labels--hidden': !datesShown || broken }"
                 aria-hidden="true"
               >
                 <div
@@ -798,6 +944,8 @@ function scrub(value: number) {
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   outline: none;
+  /* Sideways a finger drags the row itself (RowCard): its pointerup lets the scroll ticks vibrate. */
+  touch-action: pan-y;
 }
 
 .row-card__scroller::-webkit-scrollbar {
@@ -849,7 +997,7 @@ function scrub(value: number) {
 .row-card__labels .row-label__inner {
   bottom: 0;
   left: 0;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + var(--nudge, 0px)));
   font-size: var(--_regal-size-small);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -860,7 +1008,7 @@ function scrub(value: number) {
   content: '';
   position: absolute;
   top: calc(100% + 2px);
-  left: 50%;
+  left: calc(50% - var(--nudge, 0px));
   width: 1px;
   height: max(0px, calc(var(--leader, 0px) - 4px));
   background: var(--_regal-ink);
@@ -916,7 +1064,7 @@ function scrub(value: number) {
   text-overflow: ellipsis;
 }
 
-.row-focus__inner :deep(.title-stars__stars),
+.row-focus__inner :deep(.title-stars__rating),
 .row-focus__inner :deep(.title-stars__unrated) {
   flex-shrink: 0;
 }
@@ -926,11 +1074,21 @@ function scrub(value: number) {
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: opacity 0.3s;
+  /* Back in once the Book has landed (a host's motion tokens, else Libellus' standard). */
+  transition: opacity var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
-.row-card--picked .row-card__labels {
-  opacity: 0.15;
+/* Out as a Book comes out (the host's exit, else Libellus'); in place all the while. */
+.row-card__labels--hidden {
+  opacity: 0;
+  transition: opacity var(--duration-exit, 200ms) var(--ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-card__labels,
+  .row-card__labels--hidden {
+    transition: none;
+  }
 }
 
 .row-label {

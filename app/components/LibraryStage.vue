@@ -10,6 +10,7 @@ import { layoutStack } from '#layers/regal/app/utils/stack/layout'
 import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
 import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
+import { floorShadowStrength } from '#layers/regal/app/utils/theme/tokens'
 import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
 import { sheetMaxHeight, showsSheet } from '#layers/regal/app/utils/books/sheet'
 import { stageInsets } from '#layers/regal/app/utils/books/inspect'
@@ -55,6 +56,9 @@ const { view: stackView } = useStackView()
 const stackBooks = computed(() => applyStackView(books.value, stackView.value))
 // The decided look; Regal's dev server previews open options (components/dev/Choices.vue).
 const look = useLook()
+// The Books' floor shadow: Regal's in the light theme, none in the dark (--regal-floor-shadow), switching live.
+const ui = useRegalUi()
+const floorShadow = computed(() => floorShadowStrength(ui.tokens.value, ui.scheme.value))
 /** Date separators (year / month) between the Books when sorted by date read. */
 const stackGrouping = computed(() => resolveGrouping(stackView.value))
 const stack = computed(() => layoutStack(stackBooks.value, {
@@ -175,6 +179,7 @@ watch(books, (list) => {
           v-if="mode === 'bookcase'"
           :debug-slots="debugSlots"
           :bookcase-count="shelves.bookcaseCount"
+          :floor-shadow="floorShadow"
           @loaded="isReady = true"
         >
           <BooksMeshes
@@ -188,6 +193,7 @@ watch(books, (list) => {
           v-else
           :stack-height="stack.height"
           :fit-width="stackFitWidth"
+          :floor-shadow="floorShadow"
           @ready="isReady = true"
         >
           <StackSeparators

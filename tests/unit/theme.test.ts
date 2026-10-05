@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { hostThemeOf, nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme, ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
+import { FLOOR_SHADOW_MAX, floorShadowStrength, hostThemeOf, nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme, ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
 import { parseRgb } from '#layers/regal/app/utils/theme/color'
 
 const css = readFileSync(new URL('../../app/assets/css/regal-theme.css', import.meta.url), 'utf8')
@@ -74,16 +74,16 @@ describe('token contract', () => {
 
   it('the dark set only re-colours, each colour still overridable', () => {
     const dark = block('.regal[data-regal-theme="dark"]')
-    for (const name of ['surface', 'surface-raised', 'ink', 'ink-muted', 'ink-subtle', 'ink-faint', 'accent', 'accent-hover', 'hairline', 'border', 'shadow']) {
+    for (const name of ['surface', 'surface-raised', 'ink', 'ink-muted', 'ink-subtle', 'ink-faint', 'accent', 'accent-hover', 'hairline', 'border', 'shadow', 'floor-shadow']) {
       expect(dark, name).toContain(`--_regal-${name}: var(--regal-${name},`)
     }
     expect(dark).toContain('color-scheme: dark')
   })
 
-  it('unstyled unsets colours, frame and type but keeps spacing', () => {
+  it('unstyled unsets colours, frame and type but keeps spacing and the 3D\'s floor shadow', () => {
     const unstyled = block('.regal.regal--unstyled')
     for (const name of REGAL_TOKENS) {
-      if (['space', 'tooltip-padding', 'panel-padding'].includes(name)) expect(unstyled, name).not.toContain(`--_regal-${name}:`)
+      if (['space', 'tooltip-padding', 'panel-padding', 'floor-shadow'].includes(name)) expect(unstyled, name).not.toContain(`--_regal-${name}:`)
       else expect(unstyled, name).toContain(`--_regal-${name}:`)
     }
   })
@@ -98,6 +98,28 @@ describe('token contract', () => {
       expect(card, name).toContain(`var(--regal-${name},`)
       expect(readme, name).toContain(`| \`--regal-${name}\` |`)
     }
+  })
+})
+
+describe('floorShadowStrength (the Books\' shadow on the floor)', () => {
+  it('is Regal\'s in the light theme and none in the dark one by default', () => {
+    expect(block('.regal')).toContain('--_regal-floor-shadow: var(--regal-floor-shadow, 1);')
+    expect(block('.regal[data-regal-theme="dark"]')).toContain('--_regal-floor-shadow: var(--regal-floor-shadow, 0);')
+    expect(floorShadowStrength({ '--_regal-floor-shadow': '1' }, 'light')).toBe(1)
+    expect(floorShadowStrength({ '--_regal-floor-shadow': '0' }, 'dark')).toBe(0)
+  })
+
+  it('follows the scheme without tokens (no provider, Regal\'s own page)', () => {
+    expect(floorShadowStrength({}, 'light')).toBe(1)
+    expect(floorShadowStrength({}, 'dark')).toBe(0)
+  })
+
+  it('takes a host\'s value, clamped; garbage falls back to the scheme', () => {
+    expect(floorShadowStrength({ '--_regal-floor-shadow': ' 0.4 ' }, 'dark')).toBe(0.4)
+    expect(floorShadowStrength({ '--_regal-floor-shadow': '9' }, 'light')).toBe(FLOOR_SHADOW_MAX)
+    expect(floorShadowStrength({ '--_regal-floor-shadow': '-1' }, 'light')).toBe(0)
+    expect(floorShadowStrength({ '--_regal-floor-shadow': 'none' }, 'dark')).toBe(0)
+    expect(floorShadowStrength({ '--_regal-floor-shadow': 'none' }, 'light')).toBe(1)
   })
 })
 

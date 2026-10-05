@@ -107,7 +107,7 @@ const surface = useRegalSurface(() => true)
   text-overflow: ellipsis;
 }
 
-.label-morph__label :deep(.title-stars__stars),
+.label-morph__label :deep(.title-stars__rating),
 .label-morph__label :deep(.title-stars__unrated) {
   flex-shrink: 0;
 }
