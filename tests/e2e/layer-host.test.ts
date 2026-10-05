@@ -235,6 +235,69 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
+  it('shows every date whole and never lets two overlap, at any scroll position or card width', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/labels'), { waitUntil: 'networkidle' })
+    const rows = page.locator('section.row-card')
+    for (let index = 0; index < 3; index++) await rows.nth(index).locator('.row-focus').waitFor({ state: 'attached', timeout: 15_000 })
+    await page.waitForTimeout(1500)
+
+    /** The dates showing in a card (not stepped back, inside it), left to right, with their boxes relative to the card. */
+    const shownDates = (row: ReturnType<typeof rows.nth>) => row.evaluate((card) => {
+      const edge = card.getBoundingClientRect()
+      return [...card.querySelectorAll<HTMLElement>('.row-label')]
+        .filter(label => label.style.visibility === 'visible' && label.style.getPropertyValue('--shown') === '1')
+        .map((label) => {
+          const box = label.querySelector('.row-label__inner')!.getBoundingClientRect()
+          return { text: label.textContent!.trim(), from: box.left - edge.left, to: box.right - edge.left, top: box.top - edge.top, width: edge.width }
+        })
+        .filter(date => date.to > 0 && date.from < date.width)
+        .sort((a, b) => a.from - b.from)
+    })
+
+    const seen = new Set<string>()
+    let collapsed = 0
+    for (const [index, name] of ['phone', 'narrow', 'year'].entries()) {
+      const row = rows.nth(index)
+      const scroller = row.locator('.row-card__scroller')
+      const max = await scroller.evaluate(element => element.scrollWidth - element.clientWidth)
+      expect(max, name).toBeGreaterThan(200)
+      // The rest first, then every 14 px along the whole row.
+      const positions = [null, ...Array.from({ length: Math.ceil(max / 14) + 1 }, (_, step) => Math.min(max, step * 14))]
+      for (const at of positions) {
+        if (at !== null) {
+          await scroller.evaluate((element, left) => {
+            element.scrollLeft = left
+          }, at)
+        }
+        await page.waitForTimeout(40)
+        const dates = await shownDates(row)
+        for (const date of dates) {
+          seen.add(date.text)
+          // Whole: the month, year and count inside the card, never cut by its edge (the inset is 6 px; 2 px of slack for the frame).
+          expect(date.from, `${name} at ${at ?? 'rest'}: ${date.text} (left)`).toBeGreaterThanOrEqual(4)
+          expect(date.to, `${name} at ${at ?? 'rest'}: ${date.text} (right)`).toBeLessThanOrEqual(date.width - 4)
+        }
+        for (let pair = 1; pair < dates.length; pair++) {
+          // The gap is 12 px; 1 px of slack for the box's sub-pixel size.
+          expect(dates[pair]!.from - dates[pair - 1]!.to, `${name} at ${at ?? 'rest'}: ${dates[pair - 1]!.text} / ${dates[pair]!.text}`).toBeGreaterThanOrEqual(11)
+        }
+      }
+      collapsed += await row.locator('.row-label[data-shown="false"]').count()
+      // A crowded-out date keeps its leader line: the element is still there, with a length.
+      const bare = row.locator('.row-label[data-shown="false"]').first()
+      if (await bare.count()) expect(Number.parseFloat(await bare.evaluate(element => element.style.getPropertyValue('--leader')))).toBeGreaterThanOrEqual(0)
+    }
+    // Close months did get dates (not all collapsed), and some had to give way.
+    expect(seen.size).toBeGreaterThan(6)
+    expect(collapsed).toBeGreaterThan(0)
+
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
   it('leaves the host\'s global styles alone', async () => {
     const page = await createPage()
     await page.goto(url('/books'), { waitUntil: 'networkidle' })
