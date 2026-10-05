@@ -13,6 +13,7 @@ import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { glideStep, releaseSpeed, snapView, startGlide, touchFeel, trackTouch } from '#layers/regal/app/utils/stack/touchScroll'
 import type { Glide, TouchSample } from '#layers/regal/app/utils/stack/touchScroll'
+import { topAt, viewForTop } from '#layers/regal/app/utils/stack/camera'
 
 const props = defineProps<{
   stackHeight: number
@@ -74,13 +75,37 @@ const lowest = computed(() => {
   const down = Math.atan(rise / distance) + Math.atan(-BOTTOM_AT * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2))
   return Math.max(0.1, distance * Math.tan(down) - rise)
 })
-const bounds = computed<[number, number]>(() => [lowest.value, Math.max(lowest.value, props.stackHeight - 0.06)])
+/**
+ * The highest: the top of the pile shows at the start place for this view's
+ * shape (utils/stack/camera.ts), mid-view on wide stages, high on a phone.
+ */
+const highest = computed(() => {
+  const distance = CAMERA_DISTANCE * zoom.value
+  return viewForTop(props.stackHeight - 0.06, topAt(sizes.aspectRatio.value), distance, CAMERA_RISE * zoom.value, CAMERA_FOV)
+})
+const bounds = computed<[number, number]>(() => [lowest.value, Math.max(lowest.value, highest.value)])
 let placed = false
 
 /** The scroll for the Books' scroll highlight (utils/stack/scrollHighlight.ts), updated every frame. */
 const scroll: StackScroll = { focusY: view.y, speed: 0, targetY: view.y, halfView: CAMERA_DISTANCE * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) }
 let previousY = view.y
 provide(STACK_SCROLL, scroll)
+
+// The stage's shape (and the zoom) is only known once the canvas has a size, and
+// changes when a phone turns: a pile resting at its top stays there. A new pile
+// (other filters) keeps the position as before, just inside the new bounds.
+let heightSeen = props.stackHeight
+watch(bounds, ([low, high], [, wasHigh]) => {
+  const sameStack = props.stackHeight === heightSeen
+  heightSeen = props.stackHeight
+  if (!sameStack) return
+  if (view.target >= wasHigh - 1e-6) {
+    view.target = high
+    view.y = high
+    previousY = high
+  }
+  else view.target = MathUtils.clamp(view.target, low, high)
+})
 
 watch(() => props.stackHeight, (height) => {
   const top = bounds.value[1]

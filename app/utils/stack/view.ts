@@ -104,3 +104,12 @@ export function stackGroups(books: Pick<Book, 'id' | 'status' | 'dateRead'>[], g
   }
   return groups
 }
+
+/** The choices in one line for a closed filter bar: "Date read · Year · All years · All ratings". */
+export function viewSummary(view: StackView, hasYears: boolean): string {
+  const parts = [STACK_SORTS.find(option => option.value === view.sort)!.label]
+  if (view.sort === 'date') parts.push(STACK_GROUPINGS.find(option => option.value === view.group)!.label)
+  if (hasYears) parts.push(view.year ? String(view.year) : 'All years')
+  parts.push(view.minRating ? `★ ${view.minRating}+` : 'All ratings')
+  return parts.join(' · ')
+}

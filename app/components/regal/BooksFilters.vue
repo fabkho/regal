@@ -1,20 +1,14 @@
 <script setup lang="ts">
-// Embed (Regal as a Nuxt layer): the Stack's sort & filters on their own, for
-// a host that puts them above the 3D on a phone (RegalBooksSidebar then hides
-// its copy). Shares the Stack view with the sidebar and the stage.
-const props = withDefaults(defineProps<{
-  /** How the filters fit a narrow screen (prototype: pick one). */
-  variant?: 'scroll' | 'bar' | 'rows'
-}>(), { variant: 'scroll' })
-
+// Embed (Regal as a Nuxt layer): the Stack's sort & filter as one bar, for a host
+// that puts them above the 3D on a phone (RegalBooksSidebar's copy, class
+// `sidebar__filters`, is then hidden by the host). The bar is `--regal-filter-bar-height`
+// tall (2.8rem) so the host can size the pile below it; its panel opens over
+// the page. Shares the Stack view with the sidebar and the stage.
 useRegalLibrary()
 </script>
 
 <template>
-  <StackMobileFilters
-    class="regal-books-filters"
-    :variant="props.variant"
-  />
+  <StackFilterBar class="regal-books-filters" />
 </template>
 
 <style scoped>
