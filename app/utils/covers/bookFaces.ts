@@ -68,7 +68,8 @@ type Art = CanvasImageSource & { width: number, height: number }
 
 /** Average colour of a region of an image (fractions of its size). */
 export function averageColor(image: Art, x = 0, y = 0, w = 1, h = 1): RGB {
-  const { element, context } = canvas(8, 8)
+  // Read back on the CPU: a GPU-backed canvas stalls the GPU for every read (slow on phones).
+  const { element, context } = canvas(8, 8, { willReadFrequently: true })
   context.drawImage(image, image.width * x, image.height * y, image.width * w, image.height * h, 0, 0, 8, 8)
   const data = context.getImageData(0, 0, 8, 8).data
   const sum: RGB = [0, 0, 0]
@@ -90,11 +91,11 @@ function textHalo(context: CanvasRenderingContext2D, text: RGB, blur: number) {
 
 const rgba = ([r, g, b]: RGB, alpha = 1) => `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`
 
-function canvas(width: number, height: number) {
+function canvas(width: number, height: number, settings?: CanvasRenderingContext2DSettings) {
   const element = document.createElement('canvas')
   element.width = width
   element.height = height
-  return { element, context: element.getContext('2d')! }
+  return { element, context: element.getContext('2d', settings)! }
 }
 
 /** Largest font size (px) at which `text` fits `maxWidth`, clamped. */
