@@ -31,6 +31,10 @@ describe('mayPulse', () => {
 const buzz = (steps: readonly number[]) => steps.reduce((sum, step, index) => sum + (index % 2 === 0 ? step : 0), 0)
 
 describe('PULSES', () => {
+  it('are the owner\'s choice on a Pixel 8 Pro: a 1 ms tick, a 10·45·18 da-dum out, 10 ms back', () => {
+    expect(PULSES).toEqual({ out: [10, 45, 18], back: [10], tick: [1] })
+  })
+
   it('makes a scroll tick the faintest pulse there is: a single pulse of a few ms', () => {
     expect(PULSES.tick).toHaveLength(1)
     expect(PULSES.tick[0]).toBeGreaterThanOrEqual(1)

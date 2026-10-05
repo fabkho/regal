@@ -12,19 +12,19 @@
 export type Pulse = 'out' | 'back' | 'tick'
 
 /**
- * The pulses, as navigator.vibrate patterns (ms: vibrate, pause, vibrate…).
- * The web can't set how strong a vibration is, only how long, so the
- * difference is in length and rhythm. A scroll tick is the shortest pulse a
- * motor still makes: on the owner's Pixel 8 Pro 5 and 8 ms already felt
- * heavy while scrolling. Taking a Book out is an event: a soft "da-dum", two
- * pulses, the second firmer. Putting it back is one short pulse. Some phone
- * motors skip pulses this short; then the tick just isn't felt (no error,
- * nothing else changes); 4 ms is the next step up for it.
+ * The pulses, as navigator.vibrate patterns (ms: vibrate, pause, vibrate…),
+ * chosen by the owner on a Pixel 8 Pro in the dev choices drawer. The web
+ * can't set how strong a vibration is, only how long, so the difference is in
+ * length and rhythm: a scroll tick is the shortest pulse there is (1 ms;
+ * 5 and 8 ms felt heavy while scrolling), taking a Book out is an event, a
+ * soft "da-dum" (two pulses, the second firmer), putting it back one short
+ * pulse. Slower phone motors may skip a pulse this short; then the tick just
+ * isn't felt (no error, nothing else changes).
  */
 export const PULSES: Readonly<Record<Pulse, readonly number[]>> = Object.freeze({
   out: Object.freeze([10, 45, 18]),
-  back: Object.freeze([8]),
-  tick: Object.freeze([2]),
+  back: Object.freeze([10]),
+  tick: Object.freeze([1]),
 })
 
 /** Scroll ticks come at most this often (ms): about 16 a second, sparse on a fast flick. */

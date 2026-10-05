@@ -62,7 +62,7 @@ export default defineNuxtConfig({
 | Key | Default | Meaning |
 |---|---|---|
 | `librarySrc` | `''` | URL of the [Regal library file](docs/library-file.md) to show: absolute, or relative to the page (`/books/library.json` from the host's `public/`). Unset: the components show an error saying so. |
-| `haptics` | `true` | Short vibrations on phones that can (Android Chrome; iOS Safari has no Vibration API): a soft double pulse when a Book is taken out (10 ms, a 45 ms pause, 18 ms), one pulse when it is put back (8 ms), and a tiny tick (2 ms, at most ~16 a second) each time a new Book reaches the focus line while a finger scrolls the Stack. Only with the user's own taps and swipes, never with reduced motion. `false` turns them all off. |
+| `haptics` | `true` | Short vibrations on phones that can (Android Chrome; iOS Safari has no Vibration API): a soft double pulse when a Book is taken out (10 ms, a 45 ms pause, 18 ms), one pulse when it is put back (10 ms), and a tiny tick (1 ms, at most ~16 a second) each time a new Book reaches the focus line while a finger scrolls the Stack. Only with the user's own taps and swipes, never with reduced motion. `false` turns them all off. |
 
 Env override as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_REGAL_HAPTICS=false`.
 
