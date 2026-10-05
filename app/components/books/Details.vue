@@ -2,7 +2,9 @@
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
 // A card; on narrow stages (a phone) a bottom sheet (utils/books/sheet.ts),
-// placed by the stage on the viewport's bottom edge.
+// placed by the stage on the viewport's bottom edge. Its look is the host's
+// theme (the `--regal-*` tokens), its content can be the host's slots
+// (README: "Theming"); the frame, the swap, the sheet and the morph stay Regal's.
 
 const props = withDefaults(defineProps<{
   /** Show as a bottom sheet (narrow stages) instead of the card. */
@@ -15,6 +17,12 @@ const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
 
 const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
+
+// The host's theme and slots (#detail, #detail-header, #detail-meta,
+// #detail-about, #detail-actions; composables/useRegalUi.ts). The sheet lives
+// in <body>: the root's tokens come along.
+const ui = useRegalUi()
+const surface = useRegalSurface(() => props.sheet)
 
 // The card grows out of the Book's label and shrinks back into it
 // (composables/useLabelMorph.ts): then it skips its own fade and stays hidden
@@ -53,19 +61,25 @@ const more = ref<HTMLElement | null>(null)
 const moreMax = ref(0)
 /** The scrolling part never gets shorter than this (px): on a tiny screen the sheet grows instead. */
 const MORE_MIN = 48
+/** The host's own panel (#detail) in the sheet: its most height, px. */
+const contentMax = ref(0)
 function fitMore() {
   const card = root.value
   if (!props.sheet || !props.maxHeight || !card || !content.value) {
     moreMax.value = 0
+    contentMax.value = 0
     return
   }
   const style = getComputedStyle(card)
   const frame = (gripElement.value?.offsetHeight ?? 0) + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
     + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth)
+  // The host's own panel (#detail) scrolls as a whole.
+  contentMax.value = ui.hasSlot('detail') ? Math.max(MORE_MIN, Math.floor(props.maxHeight - frame)) : 0
   const rest = content.value.offsetHeight - (more.value?.offsetHeight ?? 0)
   moreMax.value = Math.max(MORE_MIN, Math.floor(props.maxHeight - frame - rest))
 }
 const moreStyle = computed(() => (props.sheet && moreMax.value ? { maxHeight: `${moreMax.value}px` } : undefined))
+const contentStyle = computed(() => (props.sheet && contentMax.value ? { maxHeight: `${contentMax.value}px` } : undefined))
 watch(() => [props.sheet, props.maxHeight], () => nextTick(fitMore))
 
 const { dragging, handlers: grip } = useSheetDrag({
@@ -165,6 +179,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
     <article
       v-if="book"
       ref="root"
+      v-bind="surface"
       class="details"
       :class="{
         'details--morphing': morph.cardHidden,
@@ -193,113 +208,154 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
           v-if="shown"
           ref="content"
           class="details__content"
+          :class="{ 'details__content--custom': ui.hasSlot('detail') }"
+          :style="contentStyle"
         >
-          <div class="details__head">
-            <p
-              v-if="shown.seriesTitle"
-              class="details__series"
-            >
-              {{ shown.seriesTitle }}
-            </p>
-            <h2 class="details__title">
-              {{ shown.title }}
-            </h2>
-            <p
-              v-if="shown.author"
-              class="details__author"
-            >
-              {{ shown.author }}
-            </p>
-
-            <p
-              v-if="shown.rating"
-              class="details__rating"
-              :aria-label="`Rated ${shown.rating} out of 5`"
-            >
-              <span
-                class="details__stars"
-                aria-hidden="true"
-              >★★★★★<span
-                class="details__stars-fill"
-                :style="{ width: `${shown.rating / 5 * 100}%` }"
-              >★★★★★</span></span>
-              <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
-            </p>
-
-            <p class="details__meta">
-              {{ meta.join(' · ') }}
-            </p>
-          </div>
-
-          <!-- The sheet keeps the head and the actions in view; this part scrolls. -->
-          <div
-            v-if="shown.review || description"
-            ref="more"
-            class="details__more"
-            :style="moreStyle"
-            @scroll.passive="checkBelow"
-          >
+          <!-- The host's whole panel (#detail); Regal keeps the frame, the sheet,
+               the swap and the morph around it. -->
+          <BooksHostSlot
+            v-if="ui.hasSlot('detail')"
+            name="detail"
+            :scope="{ book: shown, close: putAway, flip, face, sheet: props.sheet }"
+          />
+          <template v-else>
             <div
-              v-if="shown.review"
-              class="details__opinion"
+              class="details__head"
+              :class="{ 'details__head--custom': ui.hasSlot('detail-header') }"
             >
-              <button
-                v-if="shown.reviewHasSpoiler && !showSpoiler"
-                type="button"
-                class="details__spoiler"
-                @click="showSpoiler = true"
+              <BooksHostSlot
+                name="detail-header"
+                :scope="{ book: shown }"
               >
-                My review contains spoilers — show
-              </button>
-              <blockquote
-                v-else
-                class="details__review"
-              >
-                {{ shown.review }}
-              </blockquote>
+                <p
+                  v-if="shown.seriesTitle"
+                  class="details__series"
+                >
+                  {{ shown.seriesTitle }}
+                </p>
+                <h2 class="details__title">
+                  {{ shown.title }}
+                </h2>
+                <p
+                  v-if="shown.author"
+                  class="details__author"
+                >
+                  {{ shown.author }}
+                </p>
+
+                <p
+                  v-if="shown.rating"
+                  class="details__rating"
+                  :aria-label="`Rated ${shown.rating} out of 5`"
+                >
+                  <span
+                    class="details__stars"
+                    aria-hidden="true"
+                  >★★★★★<span
+                    class="details__stars-fill"
+                    :style="{ width: `${shown.rating / 5 * 100}%` }"
+                  >★★★★★</span></span>
+                  <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
+                </p>
+
+                <div
+                  v-if="ui.hasSlot('detail-meta')"
+                  class="details__meta-slot"
+                >
+                  <BooksHostSlot
+                    name="detail-meta"
+                    :scope="{ book: shown, meta }"
+                  />
+                </div>
+                <p
+                  v-else
+                  class="details__meta"
+                >
+                  {{ meta.join(' · ') }}
+                </p>
+              </BooksHostSlot>
             </div>
 
-            <section
-              v-if="description"
-              class="details__about"
+            <!-- The sheet keeps the head and the actions in view; this part scrolls. -->
+            <div
+              v-if="shown.review || description || ui.hasSlot('detail-about')"
+              ref="more"
+              class="details__more"
+              :style="moreStyle"
+              @scroll.passive="checkBelow"
             >
-              <h3 class="details__label">
-                About
-              </h3>
-              <p class="details__description">
-                {{ description }}
-              </p>
-            </section>
-          </div>
+              <div
+                v-if="shown.review"
+                class="details__opinion"
+              >
+                <button
+                  v-if="shown.reviewHasSpoiler && !showSpoiler"
+                  type="button"
+                  class="details__spoiler"
+                  @click="showSpoiler = true"
+                >
+                  My review contains spoilers — show
+                </button>
+                <blockquote
+                  v-else
+                  class="details__review"
+                >
+                  {{ shown.review }}
+                </blockquote>
+              </div>
 
-          <div class="details__actions">
-            <button
-              type="button"
-              class="btn details__button"
-              @click="flip"
+              <section
+                v-if="description || ui.hasSlot('detail-about')"
+                class="details__about"
+              >
+                <BooksHostSlot
+                  name="detail-about"
+                  :scope="{ book: shown, description }"
+                >
+                  <h3 class="details__label">
+                    About
+                  </h3>
+                  <p class="details__description">
+                    {{ description }}
+                  </p>
+                </BooksHostSlot>
+              </section>
+            </div>
+
+            <div class="details__actions">
+              <BooksHostSlot
+                name="detail-actions"
+                :scope="{ book: shown, close: putAway, flip, face }"
+              >
+                <button
+                  type="button"
+                  class="btn details__button"
+                  @click="flip"
+                >
+                  {{ face === 'front' ? 'Show back' : 'Show front' }}
+                </button>
+                <button
+                  type="button"
+                  class="btn details__button"
+                  @click="putAway"
+                >
+                  Put back
+                </button>
+                <a
+                  class="details__link"
+                  :href="goodreadsUrl(shown)"
+                  target="_blank"
+                  rel="noopener"
+                >Goodreads ↗</a>
+              </BooksHostSlot>
+            </div>
+            <p
+              v-if="!props.sheet"
+              class="details__hint"
             >
-              {{ face === 'front' ? 'Show back' : 'Show front' }}
-            </button>
-            <button
-              type="button"
-              class="btn details__button"
-              @click="putAway"
-            >
-              Put back
-            </button>
-            <a
-              class="details__link"
-              :href="goodreadsUrl(shown)"
-              target="_blank"
-              rel="noopener"
-            >Goodreads ↗</a>
-          </div>
-          <p
-            v-if="!props.sheet"
-            class="details__hint"
-          >
-            Drag to turn · click the book to flip · Esc to put back
-          </p>
+              Drag to turn · click the book to flip · Esc to put back
+            </p>
+          </template>
         </div>
       </div>
     </article>
@@ -309,9 +365,16 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 <style scoped>
 .details {
   box-sizing: border-box;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
+  padding: var(--_regal-panel-padding);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  background: var(--_regal-surface-raised);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-base);
+  line-height: 1.4;
 }
 
 /* Laid out (so the morph can measure it) but not shown until the box arrives. */
@@ -324,33 +387,37 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   transform-origin: 50% 0;
 }
 
+.details__meta-slot {
+  margin: 0;
+}
+
 .details__series,
 .details__meta,
 .details__hint {
   margin: 0;
-  color: var(--color-ink-muted, #6B6B69);
-  font-size: var(--text-2xs, 0.65rem);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--_regal-ink-muted);
+  font-size: var(--_regal-size-label);
+  text-transform: var(--_regal-label-case);
+  letter-spacing: var(--_regal-label-tracking);
 }
 
 .details__title {
-  margin: 0.2rem 0 0;
-  font-family: var(--font-serif, 'Times New Roman', Times, serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: var(--text-xl, 1.2rem);
+  margin: calc(var(--_regal-space) * 0.2) 0 0;
+  font-family: var(--_regal-font-title);
+  font-style: var(--_regal-style-title);
+  font-weight: var(--_regal-weight-title);
+  font-size: var(--_regal-size-title);
   line-height: 1.2;
 }
 
 .details__author {
-  margin: 0.15rem 0 0.5rem;
-  font-size: var(--text-sm, 0.75rem);
+  margin: calc(var(--_regal-space) * 0.15) 0 calc(var(--_regal-space) * 0.5);
+  font-size: var(--_regal-size-body);
 }
 
 .details__rating {
-  margin: 0 0 0.35rem;
-  color: var(--color-accent, #B93E2E);
+  margin: 0 0 calc(var(--_regal-space) * 0.35);
+  color: var(--_regal-accent);
   letter-spacing: 0.1em;
 }
 
@@ -358,7 +425,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 .details__stars {
   position: relative;
   display: inline-block;
-  color: var(--color-line, rgba(44, 44, 42, 0.14));
+  color: var(--_regal-hairline);
   white-space: nowrap;
 }
 
@@ -366,27 +433,37 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   position: absolute;
   inset: 0 auto 0 0;
   overflow: hidden;
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
+}
+
+/* Unstyled (no accent): the track a quarter of the text colour, the fill all of it. */
+.regal--unstyled .details__stars {
+  color: inherit;
+  -webkit-text-fill-color: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.regal--unstyled .details__stars-fill {
+  -webkit-text-fill-color: currentColor;
 }
 
 .details__rating-value {
   margin-left: 0.5em;
-  color: var(--color-ink-muted, #6B6B69);
-  font-size: var(--text-xs, 0.7rem);
+  color: var(--_regal-ink-muted);
+  font-size: var(--_regal-size-small);
   letter-spacing: 0;
 }
 
 .details__review {
-  margin: 0.6rem 0 0;
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
-  font-size: var(--text-sm, 0.75rem);
+  margin: calc(var(--_regal-space) * 0.6) 0 0;
+  padding-left: calc(var(--_regal-space) * 0.75);
+  border-left: 1px solid var(--_regal-hairline);
+  font-size: var(--_regal-size-body);
   max-height: 8rem;
   overflow: auto;
 }
 
 .details__about {
-  margin-top: 0.7rem;
+  margin-top: calc(var(--_regal-space) * 0.7);
   /* A blurb arriving after the content shows fades in while the card grows for it. */
   animation: details-about-in 0.25s ease-out;
 }
@@ -404,31 +481,31 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 }
 
 .details__label {
-  margin: 0 0 0.25rem;
-  color: var(--color-ink-muted, #6B6B69);
-  font-size: var(--text-2xs, 0.65rem);
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  margin: 0 0 calc(var(--_regal-space) * 0.25);
+  color: var(--_regal-ink-muted);
+  font-size: var(--_regal-size-label);
+  font-weight: var(--_regal-weight-label);
+  text-transform: var(--_regal-label-case);
+  letter-spacing: var(--_regal-label-tracking);
 }
 
 .details__description {
   margin: 0;
   max-height: 6.5rem;
   overflow: auto;
-  font-size: var(--text-xs, 0.7rem);
+  font-size: var(--_regal-size-small);
   line-height: 1.5;
   white-space: pre-line;
 }
 
 .details__spoiler {
-  margin-top: 0.6rem;
+  margin-top: calc(var(--_regal-space) * 0.6);
   padding: 0;
   border: 0;
   background: none;
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
   font: inherit;
-  font-size: var(--text-sm, 0.75rem);
+  font-size: var(--_regal-size-body);
   cursor: pointer;
   text-decoration: underline;
   text-transform: none;
@@ -437,43 +514,43 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 
 .details__spoiler:hover {
   background: none;
-  color: var(--color-accent-light, #E8665A);
+  color: var(--_regal-accent-hover);
 }
 
 .details__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin: 0.9rem 0 0.5rem;
+  gap: calc(var(--_regal-space) * 0.5) calc(var(--_regal-space) * 0.75);
+  margin: calc(var(--_regal-space) * 0.9) 0 calc(var(--_regal-space) * 0.5);
 }
 
 .details__link {
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
   text-decoration: none;
-  font-size: var(--text-xs, 0.7rem);
+  font-size: var(--_regal-size-small);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 /* Self-contained (the same as Regal's global .btn), so a host app needs no Regal CSS. */
 .details__button {
-  padding: 0.4rem 0.7rem;
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-xs, 0.7rem);
+  padding: calc(var(--_regal-space) * 0.4) calc(var(--_regal-space) * 0.7);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-small);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-ink-subtle, rgba(44, 44, 42, 0.72));
+  color: var(--_regal-ink-subtle);
   background: transparent;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  border-radius: 0;
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius-control);
   cursor: pointer;
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .details__button:hover {
-  color: var(--color-bg, #F5F2EB);
-  background: var(--color-ink, #2C2C2A);
+  color: var(--_regal-surface-raised);
+  background: var(--_regal-ink);
 }
 
 .details__link:hover {
@@ -497,11 +574,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
    viewport, so only the top hairline shows. Out of the stage it brings its
    own type (what RegalBooksStage gives its content). */
 .details--sheet {
-  padding: 0 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-base, 0.85rem);
-  line-height: 1.4;
+  padding: 0 calc(var(--_regal-space) * 1) calc(calc(var(--_regal-space) * 0.7) + env(safe-area-inset-bottom, 0px));
 }
 
 .details--sheet,
@@ -518,7 +591,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 .details__grip {
   position: relative;
   height: 1.6rem;
-  margin: 0 -1rem;
+  margin: 0 calc(var(--_regal-space) * -1);
   touch-action: none;
   cursor: grab;
 }
@@ -533,7 +606,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   left: 50%;
   width: 2.25rem;
   height: 2px;
-  background: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  background: var(--_regal-ink-faint);
   transform: translateX(-50%);
 }
 
@@ -541,14 +614,26 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 .details--sheet .details__head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 0.75rem;
+  column-gap: calc(var(--_regal-space) * 0.75);
   align-items: baseline;
 }
 
 .details--sheet .details__series,
 .details--sheet .details__title,
-.details--sheet .details__meta {
+.details--sheet .details__meta,
+.details--sheet .details__meta-slot {
   grid-column: 1 / -1;
+}
+
+/* The host's header (#detail-header) lays itself out. */
+.details--sheet .details__head--custom {
+  display: block;
+}
+
+/* The host's whole panel (#detail) scrolls inside the sheet's height. */
+.details--sheet .details__content--custom {
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .details--sheet .details__series,
@@ -561,26 +646,26 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 
 .details--sheet .details__title {
   margin: 0;
-  font-size: var(--text-lg, 1.05rem);
+  font-size: var(--_regal-size-title-sheet);
 }
 
 .details--sheet .details__author {
-  margin: 0.1rem 0 0.15rem;
+  margin: calc(var(--_regal-space) * 0.1) 0 calc(var(--_regal-space) * 0.15);
 }
 
 .details--sheet .details__rating {
   grid-column: 2;
   margin: 0;
-  font-size: var(--text-sm, 0.75rem);
+  font-size: var(--_regal-size-body);
 }
 
 .details--sheet .details__actions {
   flex-wrap: nowrap;
-  margin: 0.6rem 0 0;
+  margin: calc(var(--_regal-space) * 0.6) 0 0;
 }
 
 .details--sheet .details__button {
-  padding: 0.45rem 0.7rem;
+  padding: calc(var(--_regal-space) * 0.45) calc(var(--_regal-space) * 0.7);
   white-space: nowrap;
 }
 
@@ -610,7 +695,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   order: 2;
   display: flex;
   flex-direction: column;
-  margin-top: 0.75rem;
+  margin-top: calc(var(--_regal-space) * 0.75);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -643,3 +728,5 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   }
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>

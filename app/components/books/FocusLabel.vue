@@ -27,17 +27,25 @@ const style = computed(() => (beside.value
 const morph = useLabelMorph()
 const label = ref<HTMLElement | null>(null)
 useLabelMorphLabel('focus', () => (label.value && book.value ? { bookId: book.value.id, el: label.value } : null))
+// The tooltip for scrolling: the host's theme and #tooltip slot (composables/useRegalUi.ts).
+const surface = useRegalSurface()
 </script>
 
 <template>
   <p
     v-if="book && !pickedId"
     ref="label"
+    v-bind="surface"
     class="focus-label"
     :class="{ 'focus-label--caption': !beside, 'focus-label--held': morph.labelsHidden }"
     :style="style"
   >
-    <BooksTitleStars :book="book" />
+    <BooksHostSlot
+      name="tooltip"
+      :scope="{ book }"
+    >
+      <BooksTitleStars :book="book" />
+    </BooksHostSlot>
   </p>
 </template>
 
@@ -47,15 +55,18 @@ useLabelMorphLabel('focus', () => (label.value && book.value ? { bookId: book.va
   z-index: 1;
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
+  gap: calc(var(--_regal-space) * 0.6);
   max-width: calc(100% - 2rem);
   margin: 0;
-  padding: 0.3rem 0.55rem;
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-xs, 0.7rem);
-  background: var(--color-bg, #F5F2EB);
-  border: 1px solid var(--color-ink, #2C2C2A);
+  padding: var(--_regal-tooltip-padding);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-small);
+  background: var(--_regal-surface);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
   pointer-events: none;
   white-space: nowrap;
   transform: translateY(-50%);
@@ -82,3 +93,5 @@ useLabelMorphLabel('focus', () => (label.value && book.value ? { bookId: book.va
   transform: translateX(-50%);
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>
