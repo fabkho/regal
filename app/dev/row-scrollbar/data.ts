@@ -1,5 +1,5 @@
-// Design round (RegalBooksRow scroll indicator), dev only: which Books the
-// prototype page shows. Pure; not part of the layer's surface.
+// Dev only (/dev/row-scrollbar): which Books the page shows and the Libellus
+// colours it themes the row with. Pure; not part of the layer's surface.
 import type { Book } from '#layers/regal/shared/types/book'
 import type { BookAssetEntry } from '#layers/regal/app/utils/covers/bookAssets'
 import { sortForShelves } from '#layers/regal/app/utils/bookcase/layout'
@@ -71,29 +71,3 @@ export const LIBELLUS = {
     shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.04), 0 18px 40px rgb(0 0 0 / 0.5)',
   },
 } as const
-
-export type IndicatorVariant = 'bar' | 'dots' | 'months' | 'minimap' | 'years'
-
-/** The prototypes: key, name, and what it says in one line. `today` is the row's own hairline. */
-export const VARIANTS: { key: IndicatorVariant | 'today', name: string, blurb: string }[] = [
-  { key: 'today', name: 'Today', blurb: 'The row\'s own hairline, for comparison.' },
-  { key: 'bar', name: '1 · Refined bar', blurb: 'A rounded thumb as wide as what the card shows; quiet at rest, awake while moving; fades at the ends; drag it.' },
-  { key: 'dots', name: '2 · Dots', blurb: 'Instagram-style: at most 7 dots, the window slides, the edge dots shrink; one dot is a month (or a screen); tap to jump.' },
-  { key: 'months', name: '3 · Month ticks', blurb: 'A tick per month, taller at a new year, the card\'s window as a band, the month in the middle named; tap or drag to jump.' },
-  { key: 'minimap', name: '4 · Colour minimap', blurb: 'One sliver per Book in its Spine\'s colour, a frame for the card\'s window; press or drag to scrub.' },
-  { key: 'years', name: '5 · Years & count', blurb: 'Book 12 / 77 and the month, over story-style year bars filling as you go; tap a year, drag to scrub.' },
-]
-
-/**
- * Height (px) each variant takes under the row, inside the card: the row gives
- * it up (as a production layout would), so the indicator never covers the
- * focus label or the Books. `today`'s hairline sits over the row's bottom edge.
- */
-export const ZONE: Record<IndicatorVariant | 'today', number> = {
-  today: 0,
-  bar: 26,
-  dots: 28,
-  months: 50,
-  minimap: 42,
-  years: 50,
-}

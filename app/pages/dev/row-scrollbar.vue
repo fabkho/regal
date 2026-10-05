@@ -1,13 +1,11 @@
 <script setup lang="ts">
-// Dev only (/dev/row-scrollbar): design round for RegalBooksRow's scroll
-// indicator. Five variants drawn over the row's bottom from its scroll state,
-// each in Libellus-like cards (design D, dark and light) at 360 × 300 and
-// 412 wide, themed with `--regal-*` tokens. The published shelf (77 Books)
-// comes through the dev proxy (nuxt.config.ts); ?n= cuts or repeats it.
-// ?v=today|bar|dots|months|minimap|years  ?n=5|12|30|77|100  ?w=360|412
-// ?scheme=dark|light  ?unit=month|page (dots)  ?rm=1 (Reduce Motion)
-// ?bare=1 (cards only). Not in a build.
-import { COUNTS, PUBLISHED_SRC, VARIANTS, pickBooks } from '#layers/regal/app/dev/row-scrollbar/data'
+// Dev only (/dev/row-scrollbar): RegalBooksRow's scroll bar and ‹ › buttons in
+// Libellus-like cards (design D, dark and light) at 360 × 300 and 412 wide,
+// themed with `--regal-*` tokens. The published shelf (77 Books) comes
+// through the dev proxy (nuxt.config.ts); ?n= cuts or repeats it.
+// ?n=5|30|50|77|100  ?w=360|412  ?scheme=dark|light  ?bare=1 (cards only).
+// Not in a build.
+import { COUNTS, PUBLISHED_SRC, pickBooks } from '#layers/regal/app/dev/row-scrollbar/data'
 import { readLibraryFile } from '#layers/regal/app/utils/library/libraryFile'
 import type { LoadedLibrary } from '#layers/regal/app/utils/library/libraryFile'
 
@@ -19,19 +17,13 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const pick = <T extends string>(value: unknown, options: readonly T[], fallback: T): T =>
-  (options as readonly string[]).includes(String(value)) ? String(value) as T : fallback
-const variant = computed(() => pick(route.query.v, VARIANTS.map(v => v.key), 'bar'))
 const count = computed(() => {
   const n = Number(route.query.n)
   return (COUNTS as readonly number[]).includes(n) ? n : 77
 })
 const widths = computed(() => (route.query.w === '360' ? [360] : route.query.w === '412' ? [412] : [360, 412]))
 const schemes = computed<('dark' | 'light')[]>(() => (route.query.scheme === 'dark' ? ['dark'] : route.query.scheme === 'light' ? ['light'] : ['dark', 'light']))
-const unit = computed(() => pick(route.query.unit, ['month', 'page'] as const, 'month'))
-const reduced = computed(() => route.query.rm === '1')
 const bare = computed(() => route.query.bare === '1')
-const current = computed(() => VARIANTS.find(v => v.key === variant.value)!)
 const set = (patch: Record<string, string | number | undefined>) => router.replace({ query: { ...route.query, ...patch } })
 
 // The rows must not load the demo library themselves: this page owns the Library.
@@ -68,7 +60,7 @@ watch(count, () => {
   nextTick(show)
 })
 
-useHead({ title: () => `Row scroll indicator — ${current.value.name}` })
+useHead({ title: 'Row scroll bar — Regal dev' })
 </script>
 
 <template>
@@ -80,25 +72,11 @@ useHead({ title: () => `Row scroll indicator — ${current.value.name}` })
       v-if="!bare"
       class="rsp__head"
     >
-      <h1>Row scroll indicator</h1>
+      <h1>Row scroll bar</h1>
       <p class="rsp__lead">
-        {{ current.blurb }}
+        Rounded thumb sized to what the card shows, quiet at rest, awake while the row moves or the thumb is held, fades at the ends; drag it. Hover a card (mouse) for the ‹ › buttons.
       </p>
 
-      <nav
-        class="rsp__chips"
-        aria-label="Variant"
-      >
-        <button
-          v-for="item in VARIANTS"
-          :key="item.key"
-          type="button"
-          :aria-pressed="item.key === variant"
-          @click="set({ v: item.key === 'bar' ? undefined : item.key })"
-        >
-          {{ item.name }}
-        </button>
-      </nav>
       <nav
         class="rsp__chips"
         aria-label="Books"
@@ -123,32 +101,12 @@ useHead({ title: () => `Row scroll indicator — ${current.value.name}` })
         >
           {{ w }}
         </button>
-        <span>Reduce motion</span>
-        <button
-          type="button"
-          :aria-pressed="reduced"
-          @click="set({ rm: reduced ? undefined : '1' })"
-        >
-          {{ reduced ? 'on' : 'off' }}
-        </button>
-        <template v-if="variant === 'dots'">
-          <span>A dot is</span>
-          <button
-            v-for="u in ['month', 'page']"
-            :key="u"
-            type="button"
-            :aria-pressed="u === unit"
-            @click="set({ unit: u === 'month' ? undefined : u })"
-          >
-            {{ u }}
-          </button>
-        </template>
       </nav>
       <p
         v-if="count === 5"
         class="rsp__note"
       >
-        5 Books fit the card: the row doesn't scroll, so no indicator shows (by design).
+        5 Books fit the card: the row doesn't scroll, so no scroll bar or buttons show (by design).
       </p>
     </header>
 
@@ -177,9 +135,6 @@ useHead({ title: () => `Row scroll indicator — ${current.value.name}` })
             <DevRowScrollbarCard
               :scheme="scheme"
               :width="width"
-              :variant="variant"
-              :unit="unit"
-              :reduced="reduced"
             />
             <figcaption v-if="!bare">
               {{ width }} × 300
