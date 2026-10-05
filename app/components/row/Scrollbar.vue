@@ -131,7 +131,7 @@ function onKeydown(event: KeyboardEvent) {
   left: 0.9rem;
   right: 0.9rem;
   bottom: 0;
-  height: 1.6rem;
+  height: 1.4rem;
   pointer-events: auto;
   /* A press here scrubs; an up/down swipe still scrolls the page. */
   touch-action: pan-y;
