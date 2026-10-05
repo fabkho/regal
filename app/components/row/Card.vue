@@ -22,6 +22,13 @@
 //   offset), the Book comes to the middle of the screen with the details as
 //   a sheet (narrow) or a card (wide), and lands back in the row;
 // - 'auto': the viewport on narrow screens (≤ 560 px, a phone), the card elsewhere.
+//
+// Theming (RegalBooksRow's theme, unstyled and slots; README: "Theming"): the
+// card, its dates and buttons, the focus label (the tooltip) and the details
+// (the detail panel) read the `--_regal-*` tokens. What moves to <body> on
+// break-out (the canvas box with its labels, Back, the details) is a `.regal`
+// surface carrying the tokens resolved on RegalBooksRow's root, and the veil
+// takes the card's surface colour.
 import { ACESFilmicToneMapping, MathUtils, SRGBColorSpace, Vector3, VSMShadowMap } from 'three'
 import type { PerspectiveCamera } from 'three'
 import gsap from 'gsap'
@@ -32,6 +39,7 @@ import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowLabels } from '#layers/regal/app/utils/row/layout'
+import { backgroundOf } from '#layers/regal/app/utils/theme/color'
 
 const props = withDefaults(defineProps<{
   /** The Books, newest first (rowBooks). */
@@ -65,6 +73,7 @@ const ctx: RowContext = {
   zoom: { value: 1 },
   breakout: reactive({ active: false, rect: { left: 0, top: 0, width: 0, height: 0 } }),
   dim: { value: 0 },
+  veil: { color: '#F5F2EB' },
   onCamera: null,
   visible: ref(true),
 }
@@ -298,6 +307,8 @@ function landBack() {
 
 watch(pickedId, (id, previous) => {
   if (id && !previous) {
+    // A host may have changed its tokens since (a class on its page).
+    readTheme()
     if (inspectsInViewport.value) breakOut()
     else gsap.to(ctx.zoom, { value: CARD_ZOOM, duration: reducedMotion.value === 'reduce' ? 0 : OUT_SECONDS, ease: 'power2.inOut', overwrite: true })
   }
@@ -332,6 +343,43 @@ function putAway() {
   pick.value = SHELVED
 }
 
+// --- Theme ------------------------------------------------------------------------------
+
+const ui = useRegalUi()
+/**
+ * Public tokens the row reads as they are, with its own (smaller) defaults
+ * instead of the theme's: they are carried to <body> along with the resolved
+ * ones when set.
+ */
+const OWN_DEFAULTS = ['font-title', 'style-title', 'weight-title', 'tooltip-padding', 'panel-padding']
+const carried = shallowRef<Record<string, string>>({})
+function readCarried() {
+  if (!root.value) return
+  const style = getComputedStyle(root.value)
+  const next: Record<string, string> = {}
+  for (const name of OWN_DEFAULTS) {
+    const value = style.getPropertyValue(`--regal-${name}`).trim()
+    if (value) next[`--regal-${name}`] = value
+  }
+  if (JSON.stringify(next) !== JSON.stringify(carried.value)) carried.value = next
+}
+/** Broken out, the canvas box, Back and the details live in <body>: they carry the row's tokens. */
+const resolved = useRegalSurface(() => broken.value)
+const surface = computed(() => (broken.value
+  ? { ...resolved.value, style: { ...resolved.value.style, ...carried.value } }
+  : resolved.value))
+
+/** The veil is the card's surface; transparent (unstyled), what shows behind the card. */
+function readVeil() {
+  ctx.veil.color = backgroundOf(root.value, ui.scheme.value === 'dark' ? '#1F1E1B' : '#F5F2EB')
+}
+/** What the host set may have changed (a class on its page, the theme). */
+function readTheme() {
+  readVeil()
+  readCarried()
+}
+watch([ui.scheme, ui.unstyled, ui.tokens], readTheme, { flush: 'post' })
+
 function turn() {
   if (pick.value.bookId) pick.value = { bookId: pick.value.bookId, face: pick.value.face === 'front' ? 'back' : 'front' }
 }
@@ -341,6 +389,10 @@ const readDate = computed(() => {
   if (!value) return pickedBook.value?.status === 'currently-reading' ? 'Reading now' : ''
   return new Date(`${value}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 })
+/** The line under the title, for the host's #detail-meta. */
+const meta = computed(() => [pickedBook.value?.author, readDate.value].filter(Boolean) as string[])
+/** The blurb shows on a wide card and broken out. */
+const roomy = computed(() => broken.value || wide.value)
 
 // --- Visibility ------------------------------------------------------------------------
 
@@ -356,6 +408,7 @@ onMounted(() => {
   window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('popstate', onPopState)
   syncCamera()
+  readTheme()
 })
 
 onBeforeUnmount(() => {
@@ -413,6 +466,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
             :disabled="!broken"
           >
             <div
+              v-bind="surface"
               class="row-card__view"
               :class="{ 'row-card__view--out': broken }"
             >
@@ -463,7 +517,12 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
                   class="row-focus"
                 >
                   <span class="row-focus__inner">
-                    <BooksTitleStars :book="focusedBook" />
+                    <BooksHostSlot
+                      name="tooltip"
+                      :scope="{ book: focusedBook }"
+                    >
+                      <BooksTitleStars :book="focusedBook" />
+                    </BooksHostSlot>
                   </span>
                 </p>
               </div>
@@ -508,6 +567,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
     >
       <button
         v-if="pickedId"
+        v-bind="surface"
         type="button"
         class="row-card__back"
         :class="{ 'row-card__back--out': broken }"
@@ -520,6 +580,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
         <article
           v-if="pickedBook"
           ref="caption"
+          v-bind="surface"
           class="row-card__details"
           :class="{
             'row-card__details--side': !broken && wide,
@@ -528,42 +589,92 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
           }"
           :aria-label="`${pickedBook.title} details`"
         >
-          <p class="row-card__book-title">
-            {{ pickedBook.title }}
-          </p>
-          <p class="row-card__book-meta">
-            {{ pickedBook.author }}<template v-if="readDate">
-              · {{ readDate }}
-            </template>
-            <span
-              v-if="pickedBook.rating"
-              class="row-card__book-stars"
-            >
-              <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
-            </span>
-          </p>
-          <p
-            v-if="(broken || wide) && pickedBook.description"
-            class="row-card__book-review"
+          <!-- The host's whole details (#detail); Regal keeps placing, fading and Back. -->
+          <div
+            v-if="ui.hasSlot('detail')"
+            class="row-card__custom"
           >
-            {{ pickedBook.description }}
-          </p>
-          <p
-            v-if="(broken || wide) && pickedBook.review"
-            class="row-card__book-review row-card__book-review--own"
-          >
-            {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
-          </p>
-          <p class="row-card__book-hint">
-            <button
-              type="button"
-              class="row-card__link"
-              @click="turn"
+            <BooksHostSlot
+              name="detail"
+              :scope="{ book: pickedBook, close: putAway, flip: turn, face: pick.face, sheet }"
+            />
+          </div>
+          <template v-else>
+            <BooksHostSlot
+              name="detail-header"
+              :scope="{ book: pickedBook }"
             >
-              {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
-            </button>
-            · drag or flick to turn
-          </p>
+              <p class="row-card__book-title">
+                {{ pickedBook.title }}
+              </p>
+              <div
+                v-if="ui.hasSlot('detail-meta')"
+                class="row-card__meta-slot"
+              >
+                <BooksHostSlot
+                  name="detail-meta"
+                  :scope="{ book: pickedBook, meta }"
+                />
+              </div>
+              <p
+                v-else
+                class="row-card__book-meta"
+              >
+                {{ pickedBook.author }}<template v-if="readDate">
+                  · {{ readDate }}
+                </template>
+                <span
+                  v-if="pickedBook.rating"
+                  class="row-card__book-stars"
+                >
+                  <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
+                </span>
+              </p>
+            </BooksHostSlot>
+            <div
+              v-if="roomy && ui.hasSlot('detail-about')"
+              class="row-card__about-slot"
+            >
+              <BooksHostSlot
+                name="detail-about"
+                :scope="{ book: pickedBook, description: pickedBook.description }"
+              />
+            </div>
+            <p
+              v-else-if="roomy && pickedBook.description"
+              class="row-card__book-review"
+            >
+              {{ pickedBook.description }}
+            </p>
+            <p
+              v-if="roomy && pickedBook.review"
+              class="row-card__book-review row-card__book-review--own"
+            >
+              {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
+            </p>
+            <div
+              v-if="ui.hasSlot('detail-actions')"
+              class="row-card__actions-slot"
+            >
+              <BooksHostSlot
+                name="detail-actions"
+                :scope="{ book: pickedBook, close: putAway, flip: turn, face: pick.face }"
+              />
+            </div>
+            <p
+              v-else
+              class="row-card__book-hint"
+            >
+              <button
+                type="button"
+                class="row-card__link"
+                @click="turn"
+              >
+                {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
+              </button>
+              · drag or flick to turn
+            </p>
+          </template>
         </article>
       </Transition>
     </Teleport>
@@ -574,11 +685,12 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 .row-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-sm, 0.75rem);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  background: var(--_regal-surface);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-body);
   line-height: 1.35;
   isolation: isolate;
 }
@@ -604,7 +716,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 }
 
 .row-card__scroller:focus-visible {
-  outline: 2px solid var(--color-accent, #B93E2E);
+  outline: 2px solid var(--_regal-accent);
   outline-offset: -3px;
 }
 
@@ -626,6 +738,11 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 .row-card__view {
   position: absolute;
   inset: 0;
+  /* Broken out it lives in <body>: the row's type comes along (the same values in the card). */
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-body);
+  line-height: 1.35;
 }
 
 /* Broken out: over the whole viewport, above the host's page and its bars (--regal-row-z-index). */
@@ -644,10 +761,10 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   bottom: 0;
   left: 0;
   transform: translateX(-50%);
-  font-size: var(--text-xs, 0.7rem);
+  font-size: var(--_regal-size-small);
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: var(--color-ink, #2C2C2A);
+  color: var(--_regal-ink);
 }
 
 .row-card__labels .row-label__inner::after {
@@ -657,7 +774,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   left: 50%;
   width: 1px;
   height: max(0px, calc(var(--leader, 0px) - 4px));
-  background: var(--color-ink, #2C2C2A);
+  background: var(--_regal-ink);
 }
 
 .row-card__labels .row-label__small {
@@ -682,16 +799,21 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   will-change: transform;
 }
 
+/* The row's tooltip: the tooltip's tokens, its own (smaller) padding and size by default. */
 .row-focus__inner {
   display: flex;
   gap: 0.5rem;
   align-items: baseline;
   max-width: 15rem;
-  padding: 0.2rem 0.45rem;
+  padding: var(--regal-tooltip-padding, 0.2rem 0.45rem);
   overflow: hidden;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
-  font-size: var(--text-2xs, 0.65rem);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  background: var(--_regal-surface);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
+  color: var(--_regal-ink);
+  font-size: var(--_regal-size-label);
   white-space: nowrap;
   transform: translateX(-50%);
 }
@@ -727,13 +849,13 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   gap: 0.35em;
   align-items: baseline;
   white-space: nowrap;
-  font-size: var(--text-2xs, 0.65rem);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--_regal-size-label);
+  letter-spacing: var(--_regal-label-tracking);
+  text-transform: var(--_regal-label-case);
 }
 
 .row-label__count {
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
 }
 
 .row-card__progress {
@@ -742,7 +864,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   right: 0.7rem;
   bottom: 0.45rem;
   height: 1px;
-  background: var(--color-line, rgba(44, 44, 42, 0.14));
+  background: var(--_regal-hairline);
   pointer-events: none;
 }
 
@@ -750,7 +872,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   position: absolute;
   top: -1px;
   height: 3px;
-  background: var(--color-ink, #2C2C2A);
+  background: var(--_regal-ink);
 }
 
 .row-card__arrow {
@@ -760,9 +882,10 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   width: 1.8rem;
   height: 2.4rem;
   margin-top: -1.2rem;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
-  color: var(--color-ink, #2C2C2A);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius-control);
+  background: var(--_regal-surface);
+  color: var(--_regal-ink);
   font: inherit;
   font-size: 1.1rem;
   cursor: pointer;
@@ -775,7 +898,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 }
 
 .row-card__arrow:hover {
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
 }
 
 .row-card__arrow--left {
@@ -798,13 +921,14 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   left: 0.5rem;
   z-index: 3;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
-  color: var(--color-ink, #2C2C2A);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius-control);
+  background: var(--_regal-surface);
+  color: var(--_regal-ink);
   font: inherit;
-  font-size: var(--text-2xs, 0.65rem);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--_regal-size-label);
+  letter-spacing: var(--_regal-label-tracking);
+  text-transform: var(--_regal-label-case);
   cursor: pointer;
 }
 
@@ -816,14 +940,14 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
 }
 
 .row-card__back:hover {
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
 }
 
 .row-card__back,
 .row-card__details {
   box-sizing: border-box;
   /* Broken out they live in <body>, outside the row: its type comes along. */
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
+  font-family: var(--_regal-font-body);
   line-height: 1.35;
 }
 
@@ -834,8 +958,9 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   bottom: 0;
   z-index: 3;
   padding: 0.5rem 0.7rem 0.55rem;
-  border-top: 1px solid var(--color-ink, #2C2C2A);
-  background: var(--color-bg, #F5F2EB);
+  border-top: var(--_regal-border-width) solid var(--_regal-border);
+  background: var(--_regal-surface-raised);
+  color: var(--_regal-ink);
 }
 
 .row-card__details--side {
@@ -844,7 +969,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   width: 40%;
   padding: 0.8rem 0.9rem;
   border-top: 0;
-  border-left: 1px solid var(--color-ink, #2C2C2A);
+  border-left: var(--_regal-border-width) solid var(--_regal-border);
   overflow-y: auto;
 }
 
@@ -875,9 +1000,12 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   z-index: calc(var(--regal-row-z-index, 40) + 1);
   max-height: 34dvh;
   padding: 0.8rem 1rem 1rem;
-  border: 1px solid var(--color-ink, #2C2C2A);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius) var(--_regal-radius) 0 0;
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
   overflow-y: auto;
-  font-size: var(--text-sm, 0.75rem);
+  font-size: var(--_regal-size-body);
 }
 
 /* Broken out, wide: the Stack's details card, bottom right. */
@@ -890,10 +1018,13 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   z-index: calc(var(--regal-row-z-index, 40) + 1);
   width: min(22rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--color-ink, #2C2C2A);
+  padding: var(--regal-panel-padding, 0.9rem 1rem);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
   overflow-y: auto;
-  font-size: var(--text-sm, 0.75rem);
+  font-size: var(--_regal-size-body);
 }
 
 .row-card__book-stars {
@@ -908,20 +1039,37 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   margin: 0;
 }
 
+/* The title keeps the row's type unless the host sets the title tokens. */
 .row-card__book-title {
-  font-weight: 600;
-  font-size: var(--text-sm, 0.75rem);
+  font-family: var(--regal-font-title, inherit);
+  font-style: var(--regal-style-title, normal);
+  font-weight: var(--regal-weight-title, 600);
+  font-size: var(--_regal-size-body);
+}
+
+.regal--unstyled .row-card__book-title {
+  font-family: inherit;
+  font-style: inherit;
 }
 
 .row-card__book-meta,
 .row-card__book-hint {
-  color: var(--color-ink-muted, #6B6B69);
-  font-size: var(--text-2xs, 0.65rem);
+  color: var(--_regal-ink-muted);
+  font-size: var(--_regal-size-label);
+}
+
+.row-card__meta-slot,
+.row-card__actions-slot {
+  margin-top: 0.25rem;
+}
+
+.row-card__about-slot {
+  margin-top: 0.5rem;
 }
 
 .row-card__book-review {
   margin-top: 0.5rem !important;
-  font-size: var(--text-2xs, 0.65rem);
+  font-size: var(--_regal-size-label);
   display: -webkit-box;
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
@@ -936,8 +1084,10 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   padding: 0;
   border: 0;
   background: none;
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
   font: inherit;
   cursor: pointer;
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>

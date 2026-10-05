@@ -18,6 +18,8 @@ const position = reactive({ x: 0, y: 0, overCanvas: false })
 const morph = useLabelMorph()
 const label = ref<HTMLElement | null>(null)
 useLabelMorphLabel('hover', () => (label.value && book.value ? { bookId: book.value.id, el: label.value } : null))
+// The tooltip: the host's theme and #tooltip slot (composables/useRegalUi.ts). In <body>: the root's tokens come along.
+const surface = useRegalSurface(() => true)
 
 function onMove(event: PointerEvent) {
   position.x = event.clientX
@@ -34,11 +36,17 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
     <p
       v-if="book && position.overCanvas && !scrollLed"
       ref="label"
+      v-bind="surface"
       class="hover-label"
       :class="{ 'hover-label--held': morph.labelsHidden || pickedId }"
       :style="{ left: `${position.x + 14}px`, top: `${position.y + 14}px` }"
     >
-      <BooksTitleStars :book="book" />
+      <BooksHostSlot
+        name="tooltip"
+        :scope="{ book }"
+      >
+        <BooksTitleStars :book="book" />
+      </BooksHostSlot>
     </p>
   </Teleport>
 </template>
@@ -49,14 +57,17 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   z-index: 50;
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
+  gap: calc(var(--_regal-space) * 0.6);
   margin: 0;
-  padding: 0.3rem 0.55rem;
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-xs, 0.7rem);
-  background: var(--color-bg, #F5F2EB);
-  border: 1px solid var(--color-ink, #2C2C2A);
+  padding: var(--_regal-tooltip-padding);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-small);
+  background: var(--_regal-surface);
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -65,3 +76,5 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   visibility: hidden;
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>

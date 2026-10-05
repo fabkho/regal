@@ -1,7 +1,13 @@
 <script setup lang="ts">
 // Embed (Regal as a Nuxt layer): the text side of a host's Books page, for its
 // sidebar: count of read Books, the Stack's sort & filters and the Books as
-// records (hover lifts a Book in RegalBooksStage, click takes it out).
+// records (hover lifts a Book in RegalBooksStage, click takes it out). The
+// picked Book's detail panel in it takes `theme`, `unstyled` and the #detail
+// slots like RegalBooksStage's (README: "Theming").
+import type { Book } from '#layers/regal/shared/types/book'
+import type { Face } from '#layers/regal/app/utils/books/pick'
+import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
+
 const props = withDefaults(defineProps<{
   /** Header line, like the host's other sidebars; '' hides it. */
   heading?: string
@@ -11,13 +17,34 @@ const props = withDefaults(defineProps<{
   filters?: boolean
   /** The Books as records. */
   list?: boolean
-}>(), { heading: 'Bookshelf', countLabel: 'Books read', filters: true, list: true })
+  /** Colour scheme of the detail panel; default `runtimeConfig.public.regal.theme` ('light'). */
+  theme?: RegalTheme
+  /** The detail panel without Regal's colours, frame and type. */
+  unstyled?: boolean
+}>(), { heading: 'Bookshelf', countLabel: 'Books read', filters: true, list: true, theme: undefined, unstyled: false })
+
+defineSlots<{
+  'detail'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face, sheet: boolean }) => unknown
+  'detail-header'?: (scope: { book: Book }) => unknown
+  'detail-meta'?: (scope: { book: Book, meta: string[] }) => unknown
+  'detail-about'?: (scope: { book: Book, description: string | null }) => unknown
+  'detail-actions'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face }) => unknown
+}>()
 
 useRegalLibrary()
+
+const root = ref<{ $el: HTMLElement } | null>(null)
+provideRegalUi({
+  theme: () => props.theme,
+  unstyled: () => props.unstyled,
+  root: computed(() => root.value?.$el ?? null),
+  slots: useSlots(),
+})
 </script>
 
 <template>
   <LibrarySidebar
+    ref="root"
     class="regal-books-sidebar"
     :heading="props.heading"
     :count-label="props.countLabel"

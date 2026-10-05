@@ -1,0 +1,109 @@
+/*
+ * Regal's theme tokens (README: "Theming"). Only `.regal` elements get them:
+ * the root of RegalBooksStage / RegalBooksSidebar / RegalBooksRow and every
+ * surface of the tooltip and the Book detail panel (some live in <body>, see
+ * composables/useRegalUi.ts), so nothing leaks into the host's page.
+ *
+ * Hosts set the public `--regal-*` properties anywhere above Regal (`:root`,
+ * a wrapper, `.regal` itself); components read the private `--_regal-*` ones
+ * resolved here, so an unset public token falls back to the theme's default.
+ * The light defaults are Regal's look as it was: they read the paper-ink names
+ * (`--color-bg`, `--color-ink`, `--font-mono` …) a host may already define,
+ * then the paper-ink values.
+ */
+
+.regal {
+  color-scheme: light;
+
+  /* Colours */
+  --_regal-surface: var(--regal-surface, var(--color-bg, #F5F2EB));
+  --_regal-surface-raised: var(--regal-surface-raised, var(--regal-surface, var(--color-bg, #F5F2EB)));
+  --_regal-ink: var(--regal-ink, var(--color-ink, #2C2C2A));
+  --_regal-ink-muted: var(--regal-ink-muted, var(--color-ink-muted, #6B6B69));
+  --_regal-ink-subtle: var(--regal-ink-subtle, var(--color-ink-subtle, rgba(44, 44, 42, 0.72)));
+  --_regal-ink-faint: var(--regal-ink-faint, var(--color-ink-faint, rgba(44, 44, 42, 0.55)));
+  --_regal-accent: var(--regal-accent, var(--color-accent, #B93E2E));
+  --_regal-accent-hover: var(--regal-accent-hover, var(--color-accent-light, #E8665A));
+  --_regal-hairline: var(--regal-hairline, var(--color-line, rgba(44, 44, 42, 0.14)));
+  --_regal-border: var(--regal-border, var(--color-ink, #2C2C2A));
+
+  /* Frame */
+  --_regal-border-width: var(--regal-border-width, 1px);
+  --_regal-radius: var(--regal-radius, 0);
+  --_regal-radius-control: var(--regal-radius-control, 0);
+  --_regal-shadow: var(--regal-shadow, none);
+  --_regal-backdrop: var(--regal-backdrop, none);
+
+  /* Type */
+  --_regal-font-body: var(--regal-font-body, var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace));
+  --_regal-font-title: var(--regal-font-title, var(--font-serif, 'Times New Roman', Times, serif));
+  --_regal-size-base: var(--regal-size-base, var(--text-base, 0.85rem));
+  --_regal-size-title: var(--regal-size-title, var(--text-xl, 1.2rem));
+  --_regal-size-title-sheet: var(--regal-size-title-sheet, var(--text-lg, 1.05rem));
+  --_regal-size-body: var(--regal-size-body, var(--text-sm, 0.75rem));
+  --_regal-size-small: var(--regal-size-small, var(--text-xs, 0.7rem));
+  --_regal-size-label: var(--regal-size-label, var(--text-2xs, 0.65rem));
+  --_regal-weight-title: var(--regal-weight-title, 400);
+  --_regal-weight-label: var(--regal-weight-label, 400);
+  --_regal-style-title: var(--regal-style-title, italic);
+  --_regal-label-case: var(--regal-label-case, uppercase);
+  --_regal-label-tracking: var(--regal-label-tracking, 0.08em);
+
+  /* Spacing: margins and gaps are multiples of --regal-space */
+  --_regal-space: var(--regal-space, 1rem);
+  --_regal-tooltip-padding: var(--regal-tooltip-padding, 0.3rem 0.55rem);
+  --_regal-panel-padding: var(--regal-panel-padding, 1rem 1.1rem);
+}
+
+/* The dark set: warm ink-on-night, the same accent a step lighter. A host's
+   `--regal-*` still win over these. */
+.regal[data-regal-theme="dark"] {
+  color-scheme: dark;
+
+  --_regal-surface: var(--regal-surface, #1F1E1B);
+  --_regal-surface-raised: var(--regal-surface-raised, var(--regal-surface, #262420));
+  --_regal-ink: var(--regal-ink, #ECE8DF);
+  --_regal-ink-muted: var(--regal-ink-muted, #A8A399);
+  --_regal-ink-subtle: var(--regal-ink-subtle, rgba(236, 232, 223, 0.75));
+  --_regal-ink-faint: var(--regal-ink-faint, rgba(236, 232, 223, 0.5));
+  --_regal-accent: var(--regal-accent, #E0705F);
+  --_regal-accent-hover: var(--regal-accent-hover, #F0907F);
+  --_regal-hairline: var(--regal-hairline, rgba(236, 232, 223, 0.16));
+  --_regal-border: var(--regal-border, rgba(236, 232, 223, 0.28));
+  --_regal-shadow: var(--regal-shadow, 0 10px 30px rgba(0, 0, 0, 0.45));
+}
+
+/* `unstyled`: structure and layout only. Colours, frame and type are unset
+   (`initial` makes each var() invalid, so the property inherits from the host
+   or takes its initial value); spacing stays. Hairlines are a quarter of the
+   text colour; the stars draw their fill in the text colour (TitleStars, Details). */
+.regal.regal--unstyled {
+  --_regal-surface: initial;
+  --_regal-surface-raised: initial;
+  --_regal-ink: initial;
+  --_regal-ink-muted: initial;
+  --_regal-ink-subtle: initial;
+  --_regal-ink-faint: initial;
+  --_regal-accent: currentColor;
+  --_regal-accent-hover: currentColor;
+  --_regal-hairline: color-mix(in srgb, currentColor 25%, transparent);
+  --_regal-border: initial;
+  --_regal-border-width: initial;
+  --_regal-radius: initial;
+  --_regal-radius-control: initial;
+  --_regal-shadow: initial;
+  --_regal-backdrop: initial;
+  --_regal-font-body: initial;
+  --_regal-font-title: initial;
+  --_regal-size-base: initial;
+  --_regal-size-title: initial;
+  --_regal-size-title-sheet: initial;
+  --_regal-size-body: initial;
+  --_regal-size-small: initial;
+  --_regal-size-label: initial;
+  --_regal-weight-title: initial;
+  --_regal-weight-label: initial;
+  --_regal-style-title: initial;
+  --_regal-label-case: initial;
+  --_regal-label-tracking: initial;
+}

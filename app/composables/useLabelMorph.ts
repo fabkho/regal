@@ -122,6 +122,8 @@ function cloneCard(card: HTMLElement): HTMLElement {
     opacity: '1',
     borderColor: 'transparent',
     background: 'transparent',
+    boxShadow: 'none',
+    backdropFilter: 'none',
     transition: 'none',
     animation: 'none',
   })
@@ -176,6 +178,8 @@ export function useLabelMorphController(elements: {
     box.style.height = `${frame.rect.height}px`
     if (elements.labelLayer.value) elements.labelLayer.value.style.opacity = String(frame.label)
     if (elements.cardLayer.value) elements.cardLayer.value.style.opacity = String(frame.card)
+    // The box's surface follows: the tooltip's at the label, the panel's at the card.
+    box.style.setProperty('--_regal-morph-card', String(frame.card))
   }
 
   function setCardLayer(card: HTMLElement | null) {

@@ -31,6 +31,7 @@ const keyLight = shallowRef<DirectionalLight | null>(null)
 const floorMaterial = shallowRef<ShadowMaterial | null>(null)
 const veil = shallowRef<Mesh | null>(null)
 const veilForward = new Vector3()
+let veilColor = '#F5F2EB'
 
 const cam = computed(() => ROW_CAMERA)
 /** Camera distance to the target plane for the view height asked for. */
@@ -74,7 +75,7 @@ onBeforeRender(({ delta }) => {
   // The lights travel with the view so every part of the row is lit the same.
   if (rig.value) rig.value.position.x = x
   if (floorMaterial.value) floorMaterial.value.opacity = FLOOR_SHADOW.opacity * (1 - props.ctx.dim.value)
-  // A paper veil between the row and a picked Book: one transparent plane, no material changes.
+  // A veil between the row and a picked Book, the card's surface (paper by default): one transparent plane, no material changes.
   // The camera sees both layers (one pass) unless broken out (two, renderBrokenOut).
   if (!props.ctx.breakout.active) camera3.layers.enable(1)
   const veilMesh = veil.value
@@ -90,7 +91,13 @@ onBeforeRender(({ delta }) => {
       veilMesh.quaternion.copy(camera3.quaternion)
       const h = 2 * at * Math.tan(MathUtils.degToRad(camera3.fov) / 2) * 1.1
       veilMesh.scale.set(h * Math.max(camera3.aspect, sizes.aspectRatio.value || 1) * 2, h * 2, 1)
-      ;(veilMesh.material as MeshBasicMaterial).opacity = (props.ctx.inspectFull.value ? 0.9 : 0.72) * dim
+      const material = veilMesh.material as MeshBasicMaterial
+      material.opacity = (props.ctx.inspectFull.value ? 0.9 : 0.72) * dim
+      // The card's surface (the theme's or the host's), sRGB like the CSS it comes from.
+      if (veilColor !== props.ctx.veil.color) {
+        veilColor = props.ctx.veil.color
+        material.color.set(veilColor)
+      }
     }
   }
 })

@@ -86,6 +86,8 @@ export default defineNuxtConfig({
         librarySrc: '',
         /** Short vibrations when a Book is taken out or put back and while a finger scrolls the Stack, where the phone can (README). */
         haptics: true,
+        /** Colour scheme of the tooltip and the Book detail panel: 'light' (Regal's look), 'dark' or 'auto' (follows the host; README: "Theming"). */
+        theme: 'light',
       },
     },
   },

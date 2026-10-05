@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // The box that travels between a Book's label and its details card (see
-// composables/useLabelMorph.ts): the label's/card's hairline frame on paper,
-// with the label text and a still copy of the card inside, faded in and out
-// while it moves. Never scales its content. Place once, inside the stage.
+// composables/useLabelMorph.ts): the label's/card's frame on their surface
+// (the host's theme, composables/useRegalUi.ts), with the label text and a
+// still copy of the card inside, faded in and out while it moves. Never scales
+// its content. Place once, inside the stage.
 
 const props = defineProps<{
   /** The stage (a label put back lands inside it). */
@@ -17,12 +18,15 @@ const { books } = useLibrary()
 const book = computed(() => books.value.find(item => item.id === morph.value.labelBookId) ?? null)
 
 useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer })
+// In <body>: the root's tokens come along.
+const surface = useRegalSurface(() => true)
 </script>
 
 <template>
   <Teleport to="body">
     <div
       ref="box"
+      v-bind="surface"
       class="label-morph"
       aria-hidden="true"
       inert
@@ -31,10 +35,13 @@ useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer }
         ref="labelLayer"
         class="label-morph__label"
       >
-        <BooksTitleStars
+        <BooksHostSlot
           v-if="book"
-          :book="book"
-        />
+          name="tooltip"
+          :scope="{ book }"
+        >
+          <BooksTitleStars :book="book" />
+        </BooksHostSlot>
       </p>
       <div
         ref="cardLayer"
@@ -53,8 +60,12 @@ useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer }
   display: none;
   box-sizing: border-box;
   overflow: hidden;
-  background: var(--color-bg, #F5F2EB);
-  border: 1px solid var(--color-ink, #2C2C2A);
+  /* From the tooltip's surface to the panel's as the card fades in (--_regal-morph-card, 0…1). */
+  background: color-mix(in srgb, var(--_regal-surface-raised) calc(var(--_regal-morph-card, 0) * 100%), var(--_regal-surface));
+  border: var(--_regal-border-width) solid var(--_regal-border);
+  border-radius: var(--_regal-radius);
+  box-shadow: var(--_regal-shadow);
+  backdrop-filter: var(--_regal-backdrop);
   pointer-events: none;
   will-change: transform, width, height;
 }
@@ -79,14 +90,14 @@ useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer }
 .label-morph__label {
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
+  gap: calc(var(--_regal-space) * 0.6);
   width: max-content;
   margin: 0;
-  padding: 0.3rem 0.55rem;
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-xs, 0.7rem);
-  border: 1px solid transparent;
+  padding: var(--_regal-tooltip-padding);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-small);
+  border: var(--_regal-border-width) solid transparent;
   white-space: nowrap;
 }
 
@@ -101,3 +112,5 @@ useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer }
   flex-shrink: 0;
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>

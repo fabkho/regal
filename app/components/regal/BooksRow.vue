@@ -4,6 +4,16 @@
 // own Pick: it can share a page with RegalBooksStage or other rows. Give it a
 // size from the host (it fills its box; min-height 18rem). A library file
 // that can't be shown gets an error card instead of the 3D.
+//
+// Theming (README: "Theming"): the same as RegalBooksStage. The card, its
+// labels and buttons, the focus label (the tooltip) and the details (the
+// detail panel) read the `--regal-*` tokens, also where they move to <body>
+// on break-out; `theme` picks the light/dark set or follows the host,
+// `unstyled` leaves only structure and layout, and the slots below replace
+// the focus label's and the details' content.
+import type { Book } from '#layers/regal/shared/types/book'
+import type { Face } from '#layers/regal/app/utils/books/pick'
+import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 import { rowBooks } from '#layers/regal/app/utils/row/layout'
 
 const props = withDefaults(defineProps<{
@@ -15,16 +25,47 @@ const props = withDefaults(defineProps<{
   year?: number | null
   /** What the row is, for assistive technology. */
   label?: string
-}>(), { inspect: 'card', limit: null, year: null, label: '' })
+  /** Colour scheme of the card, its focus label and details; default `runtimeConfig.public.regal.theme` ('light'). */
+  theme?: RegalTheme
+  /** Structure and minimal layout CSS only: no colours, frame or type of Regal's. */
+  unstyled?: boolean
+}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false })
+
+defineSlots<{
+  /** The focus label's content (title and stars under the Book in focus). */
+  'tooltip'?: (scope: { book: Book }) => unknown
+  /** The whole details' content. */
+  'detail'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face, sheet: boolean }) => unknown
+  /** The details' head: title and the line under it. */
+  'detail-header'?: (scope: { book: Book }) => unknown
+  /** The line under the title (author, date read, stars). */
+  'detail-meta'?: (scope: { book: Book, meta: string[] }) => unknown
+  /** The blurb (wide cards and broken out); also shown for Books without one when passed. */
+  'detail-about'?: (scope: { book: Book, description: string | null }) => unknown
+  /** Turn over · drag or flick to turn. */
+  'detail-actions'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face }) => unknown
+}>()
 
 useRegalLibrary()
 const { books, source, error } = useLibrary()
 const shown = computed(() => rowBooks(books.value, { limit: props.limit, year: props.year }))
 const ariaLabel = computed(() => props.label || (props.year ? `Books read in ${props.year}` : 'Books read'))
+
+const root = ref<HTMLElement | null>(null)
+const { rootAttrs } = provideRegalUi({
+  theme: () => props.theme,
+  unstyled: () => props.unstyled,
+  root,
+  slots: useSlots(),
+})
 </script>
 
 <template>
-  <div class="regal-books-row">
+  <div
+    ref="root"
+    v-bind="rootAttrs"
+    class="regal-books-row"
+  >
     <LibraryFileError
       v-if="error"
       class="regal-books-row__error"
@@ -53,9 +94,9 @@ const ariaLabel = computed(() => props.label || (props.year ? `Books read in ${p
   position: relative;
   display: grid;
   min-height: 18rem;
-  color: var(--color-ink, #2C2C2A);
-  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
-  font-size: var(--text-base, 0.85rem);
+  color: var(--_regal-ink);
+  font-family: var(--_regal-font-body);
+  font-size: var(--_regal-size-base);
   line-height: 1.4;
 }
 
@@ -76,9 +117,11 @@ const ariaLabel = computed(() => props.label || (props.year ? `Books read in ${p
 .regal-books-row__status {
   place-self: center;
   margin: 0;
-  color: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
-  font-size: var(--text-sm, 0.75rem);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--_regal-ink-faint);
+  font-size: var(--_regal-size-body);
+  text-transform: var(--_regal-label-case);
+  letter-spacing: var(--_regal-label-tracking);
 }
 </style>
+
+<style src="../../assets/css/regal-theme.css"></style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A Book's title and its rating in quarter stars: the text of the hover label
-// and of the scroll focus label.
+// and of the scroll focus label. Inside a `.regal` surface (its tokens).
 import type { Book } from '#layers/regal/shared/types/book'
 
 defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
@@ -26,7 +26,7 @@ defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
 .title-stars__stars {
   position: relative;
   display: inline-block;
-  color: var(--color-line, rgba(44, 44, 42, 0.14));
+  color: var(--_regal-hairline);
   letter-spacing: 0.08em;
 }
 
@@ -34,10 +34,20 @@ defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
   position: absolute;
   inset: 0 auto 0 0;
   overflow: hidden;
-  color: var(--color-accent, #B93E2E);
+  color: var(--_regal-accent);
+}
+
+/* Unstyled (no accent): the track a quarter of the text colour, the fill all of it. */
+:where(.regal--unstyled) .title-stars__stars {
+  color: inherit;
+  -webkit-text-fill-color: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+:where(.regal--unstyled) .title-stars__fill {
+  -webkit-text-fill-color: currentColor;
 }
 
 .title-stars__unrated {
-  color: var(--color-ink-muted, #6B6B69);
+  color: var(--_regal-ink-muted);
 }
 </style>
