@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Book } from '../../shared/types/book'
-import { applyStackView, DEFAULT_STACK_VIEW, groupOf, parseGrouping, readYears, resolveGrouping, STACK_GROUPINGS, stackGroups } from '../../app/utils/stack/view'
+import { applyStackView, DEFAULT_STACK_VIEW, groupOf, parseGrouping, readYears, resolveGrouping, STACK_GROUPINGS, stackGroups, viewSummary } from '../../app/utils/stack/view'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
   id, title: id, seriesTitle: null, author: null, additionalAuthors: [], isbn10: null, isbn13: null, pages: 300, binding: null,
@@ -92,5 +92,17 @@ describe('date separators', () => {
   it('keeps keys unique when a hand-made order revisits a group', () => {
     const keys = stackGroups([history[1]!, history[4]!, history[2]!], 'year').map(group => group.key)
     expect(new Set(keys).size).toBe(3)
+  })
+})
+
+describe('viewSummary', () => {
+  it('names every choice, "All" for the open ones', () => {
+    expect(viewSummary(DEFAULT_STACK_VIEW, true)).toBe('Date read · Year · All years · All ratings')
+    expect(viewSummary({ sort: 'date', year: 2025, minRating: 4.5, group: 'month' }, true)).toBe('Date read · Month · 2025 · ★ 4.5+')
+  })
+
+  it('leaves the separators out unless sorted by date, and the year when there is only one', () => {
+    expect(viewSummary({ ...DEFAULT_STACK_VIEW, sort: 'rating' }, true)).toBe('Rating · All years · All ratings')
+    expect(viewSummary({ ...DEFAULT_STACK_VIEW, sort: 'title' }, false)).toBe('Title · All ratings')
   })
 })

@@ -41,7 +41,7 @@ const showDetails = computed(() => props.details && pickedId.value)
 
     <div
       v-if="props.filters"
-      class="sidebar__section"
+      class="sidebar__section sidebar__filters"
     >
       <StackControls variant="stacked" />
     </div>
