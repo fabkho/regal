@@ -1,6 +1,6 @@
 // The theming contract of Regal's DOM UI around the 3D: the tooltip (the hover
 // and scroll focus labels) and the Book detail panel (the card, the phone's
-// bottom sheet). Hosts set the public `--regal-*` custom properties; Regal's
+// bottom sheet), and RegalBooksRow's card around its 3D. Hosts set the public `--regal-*` custom properties; Regal's
 // components read the resolved `--_regal-*` ones, which `.regal` derives from
 // them (app/assets/css/regal-theme.css). README: "Theming".
 

@@ -47,6 +47,8 @@ export interface RowContext {
   breakout: RowBreakout
   /** How faded the row is behind a picked Book, 0..1 (RowBooks; the paper veil and the floor's shadow follow it). */
   dim: { value: number }
+  /** The veil's colour (`#rrggbb`): the card's surface (`--regal-surface`), so it is dark in the dark theme (RowCard). */
+  veil: { color: string }
   /** Each frame once the camera is placed: the card places its HTML labels in step with the 3D. */
   onCamera: ((camera: PerspectiveCamera, width: number, height: number) => void) | null
   /** Render only while the row shows (an IntersectionObserver in RowCard). */

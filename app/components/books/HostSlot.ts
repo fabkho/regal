@@ -2,7 +2,7 @@ import { Fragment, h } from 'vue'
 import type { VNode } from 'vue'
 
 // Renders one of the host's slots for the tooltip / detail panel (passed to
-// RegalBooksStage or RegalBooksSidebar, composables/useRegalUi.ts) with
+// RegalBooksStage, RegalBooksSidebar or RegalBooksRow, composables/useRegalUi.ts) with
 // `scope`, or this component's own default slot (Regal's markup) when the host
 // didn't pass it.
 export default defineComponent({

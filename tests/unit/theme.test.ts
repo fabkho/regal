@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { hostThemeOf, nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme } from '#layers/regal/app/utils/theme/tokens'
+import { parseRgb } from '#layers/regal/app/utils/theme/color'
 
 const css = readFileSync(new URL('../../app/assets/css/regal-theme.css', import.meta.url), 'utf8')
 const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')
@@ -89,5 +90,19 @@ describe('token contract', () => {
 
   it('the README documents every token', () => {
     for (const name of REGAL_TOKENS) expect(readme, name).toContain(`\`--regal-${name}\``)
+  })
+})
+
+describe('parseRgb (the veil takes the card\'s surface)', () => {
+  it('reads computed rgb()/rgba() in both syntaxes', () => {
+    expect(parseRgb('rgb(245, 242, 235)')).toEqual({ hex: '#f5f2eb', alpha: 1 })
+    expect(parseRgb('rgba(23, 27, 36, 0.82)')).toEqual({ hex: '#171b24', alpha: 0.82 })
+    expect(parseRgb('rgb(31 30 27 / 50%)')).toEqual({ hex: '#1f1e1b', alpha: 0.5 })
+    expect(parseRgb('rgba(0, 0, 0, 0)')).toEqual({ hex: '#000000', alpha: 0 })
+  })
+
+  it('leaves other syntaxes to the canvas', () => {
+    expect(parseRgb('oklch(0.3 0.02 80)')).toBeNull()
+    expect(parseRgb('transparent')).toBeNull()
   })
 })

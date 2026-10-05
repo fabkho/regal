@@ -4,14 +4,15 @@ import { nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme } from '#
 
 // The host's say over Regal's DOM UI around the 3D: theme, `unstyled` and the
 // slots for the tooltip and the Book detail panel (README: "Theming").
-// RegalBooksStage / RegalBooksSidebar provide it from their props and slots;
-// the surfaces (BooksHoverLabel, BooksFocusLabel, BooksLabelMorph,
-// BooksDetails) read it, however deep they sit, so any stage variant that
-// renders them is themed the same way. Without a provider (Regal's own page)
+// RegalBooksStage / RegalBooksSidebar / RegalBooksRow provide it from their
+// props and slots; the surfaces (BooksHoverLabel, BooksFocusLabel,
+// BooksLabelMorph, BooksDetails, RowCard's focus label and details) read it,
+// however deep they sit, so any stage variant that renders them is themed the
+// same way. Without a provider (Regal's own page)
 // they get the runtime config's theme and no slots.
 //
 // Some surfaces live in <body> (the hover label, the morph box, the phone's
-// sheet), out of reach of the tokens a host sets on its wrapper. The provider
+// sheet, a broken-out row), out of reach of the tokens a host sets on its wrapper. The provider
 // reads the resolved tokens off its root and hands them to those surfaces as
 // inline custom properties, so a teleported surface looks like one inside.
 
@@ -117,7 +118,7 @@ function useResolvedScheme(theme: Readonly<Ref<RegalTheme>>, root: Readonly<Ref<
 }
 
 /**
- * Called by the public components (RegalBooksStage, RegalBooksSidebar): theme,
+ * Called by the public components (RegalBooksStage, RegalBooksSidebar, RegalBooksRow): theme,
  * `unstyled` and the host's slots for every surface below. Returns the root's
  * attributes (`.regal` scope, resolved theme).
  */

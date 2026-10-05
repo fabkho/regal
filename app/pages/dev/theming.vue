@@ -1,8 +1,11 @@
 <script setup lang="ts">
-// Dev only (/dev/theming): RegalBooksStage the way a host themes it (README:
-// "Theming"). ?look=default|dark|auto|tokens|slots|parts|unstyled; the
-// switch keeps it in the URL. Hover a Book for the tooltip, click it for the
-// detail panel; a narrow window shows the sheet. Not in a build.
+// Dev only (/dev/theming): RegalBooksStage and RegalBooksRow the way a host
+// themes them (README: "Theming"), with the same props and slots.
+// ?look=default|dark|auto|tokens|slots|parts|unstyled, ?show=both|stage|row,
+// ?inspect=card|viewport (the row); the switches keep them in the URL. Hover
+// a Book for the tooltip, click it for the detail panel; a narrow window
+// shows the sheet. Not in a build.
+import { RegalBooksRow, RegalBooksStage } from '#components'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 
 definePageMeta({
@@ -20,6 +23,22 @@ const look = computed<Look>(() => (LOOKS as readonly string[]).includes(String(r
 function setLook(value: Look) {
   router.replace({ query: { ...route.query, look: value === 'default' ? undefined : value } })
 }
+
+const SHOWS = ['both', 'stage', 'row'] as const
+type Show = typeof SHOWS[number]
+const show = computed<Show>(() => (SHOWS as readonly string[]).includes(String(route.query.show)) ? route.query.show as Show : 'both')
+const INSPECTS = ['card', 'viewport'] as const
+type Inspect = typeof INSPECTS[number]
+const inspect = computed<Inspect>(() => route.query.inspect === 'viewport' ? 'viewport' : 'card')
+function setQuery(key: 'show' | 'inspect', value: string, fallback: string) {
+  router.replace({ query: { ...route.query, [key]: value === fallback ? undefined : value } })
+}
+
+/** The components shown, each with the same theme, unstyled and slots. */
+const parts = computed(() => [
+  { key: 'stage', is: RegalBooksStage, class: 'theming__stage', props: {} },
+  { key: 'row', is: RegalBooksRow, class: 'theming__row', props: { inspect: inspect.value } },
+].filter(part => show.value === 'both' || show.value === part.key))
 
 const theme = computed<RegalTheme | undefined>(() => {
   if (look.value === 'dark' || look.value === 'tokens' || look.value === 'slots' || look.value === 'parts') return 'dark'
@@ -40,7 +59,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
 <template>
   <div
     class="theming"
-    :class="`theming--${look}`"
+    :class="[`theming--${look}`, `theming--show-${show}`]"
     :data-host-theme="look === 'auto' ? hostTheme : undefined"
   >
     <nav
@@ -66,10 +85,36 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
       >
         html data-theme: {{ hostTheme }}
       </button>
+      <span class="theming__label theming__label--gap">Show</span>
+      <button
+        v-for="option in SHOWS"
+        :key="option"
+        type="button"
+        class="theming__option"
+        :aria-pressed="show === option"
+        @click="setQuery('show', option, 'both')"
+      >
+        {{ option }}
+      </button>
+      <span class="theming__label theming__label--gap">Row inspect</span>
+      <button
+        v-for="option in INSPECTS"
+        :key="option"
+        type="button"
+        class="theming__option"
+        :aria-pressed="inspect === option"
+        @click="setQuery('inspect', option, 'card')"
+      >
+        {{ option }}
+      </button>
     </nav>
 
-    <RegalBooksStage
-      class="theming__stage"
+    <component
+      :is="part.is"
+      v-for="part in parts"
+      :key="part.key"
+      :class="part.class"
+      v-bind="part.props"
       :theme="theme"
       :unstyled="look === 'unstyled'"
     >
@@ -149,15 +194,21 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
           {{ description ?? 'No blurb for this one.' }}
         </p>
       </template>
-    </RegalBooksStage>
+    </component>
   </div>
 </template>
 
 <style scoped>
 .theming {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-auto-rows: auto;
+  grid-template-rows: auto minmax(32rem, 1fr);
   min-height: 100dvh;
+}
+
+.theming--show-row {
+  grid-template-rows: auto auto;
+  align-content: start;
 }
 
 .theming__bar {
@@ -183,8 +234,19 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
   color: var(--color-bg);
 }
 
+.theming__label--gap {
+  margin-left: 1rem;
+}
+
 .theming__stage {
   min-height: 32rem;
+}
+
+/* The row as a card in the host's page. */
+.theming__row {
+  width: min(46rem, calc(100% - 2rem));
+  height: 20rem;
+  margin: 1.5rem 1rem 3rem;
 }
 
 /* The host's page behind the stage. */
@@ -200,7 +262,8 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
 }
 
 /* A host's own tokens, set on its wrapper (they reach the parts in <body> too). */
-.theming--tokens .theming__stage {
+.theming--tokens .theming__stage,
+.theming--tokens .theming__row {
   --regal-surface: rgba(23, 27, 36, 0.82);
   --regal-surface-raised: rgba(23, 27, 36, 0.9);
   --regal-ink: #E7E3D8;
@@ -223,16 +286,27 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
 }
 
 /* The unstyled panel, dressed by the host's own CSS only. */
-.theming--unstyled .theming__stage {
+.theming--unstyled .theming__stage,
+.theming--unstyled .theming__row {
   color: #1C2733;
   font-family: system-ui, sans-serif;
+}
+
+/* The unstyled row card, framed by the host. */
+.theming--unstyled .theming__row {
+  border: 1px solid #C8D1DB;
+  border-radius: 8px;
+  background: #FFF;
 }
 
 /* Global: the hover label and the phone's sheet live in <body>. */
 :global(.regal--unstyled.details),
 :global(.regal--unstyled.hover-label),
 :global(.regal--unstyled.focus-label),
-:global(.regal--unstyled.label-morph) {
+:global(.regal--unstyled.label-morph),
+:global(.regal--unstyled.row-card__details--sheet),
+:global(.regal--unstyled.row-card__details--card),
+:global(.regal--unstyled.row-card__back--out) {
   border-radius: 6px;
   background: #FFF;
   color: #1C2733;
