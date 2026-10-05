@@ -1,7 +1,7 @@
 // Design round (horizontal Stack): the prototype rows' pure layouts.
 import { describe, expect, it } from 'vitest'
 import type { Book } from '../../shared/types/book'
-import { inRowOrder, layoutFan, layoutPiles, layoutShelf } from '../../app/prototype/row/layout'
+import { inRowOrder, layoutFan, layoutPiles, layoutShelf, layoutStackRow, STACK_SHEET } from '../../app/prototype/row/layout'
 import { rowBooks } from '../../app/prototype/row/data'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
@@ -44,6 +44,19 @@ describe('prototype rows', () => {
     const step = (a: string, b: string) => poses.find(pose => pose.bookId === b)!.x - poses.find(pose => pose.bookId === a)!.x
     expect(step('m0', 'm1')).toBeCloseTo(step('m1', 'm2'))
     expect(step('m8', 'f')).toBeGreaterThan(step('m0', 'm1'))
+  })
+
+  it('turns the Stack: Books pressed together, a hairline sheet before each month', () => {
+    const chrono = inRowOrder(books, 'chrono')
+    const { poses, markers } = layoutStackRow(chrono)
+    expect(poses.map(pose => pose.bookId)).toEqual(chrono.map(item => item.id))
+    expect(markers.map(marker => marker.label)).toEqual(['JAN 2026', 'FEB 2026', 'MAR 2026'])
+    // No gap inside a month; one sheet's thickness between two months.
+    const edge = (index: number) => poses[index]!.x + poses[index]!.thickness / 2
+    const start = (index: number) => poses[index]!.x - poses[index]!.thickness / 2
+    expect(start(1)).toBeCloseTo(edge(0))
+    expect(start(2) - edge(1)).toBeCloseTo(STACK_SHEET)
+    expect(poses.every(pose => Math.abs(pose.y - pose.height / 2) < 1e-9)).toBe(true)
   })
 
   it('reads oldest first for a year from January', () => {

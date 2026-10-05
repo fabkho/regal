@@ -12,10 +12,19 @@
 // it. Month labels are HTML, placed each frame from the camera (in step with
 // the 3D, not with the compositor's scroll).
 //
-// A Book taken out comes forward inside the card: tap/click turns it, a drag
-// turns it freely, Back (the button, the browser's Back, Escape) or a tap
-// beside it puts it back. The row doesn't scroll while a Book is out.
+// A Book taken out comes forward: tap/click turns it, a drag turns it freely,
+// a flick turns it over, Back (the button, the browser's Back, Escape) or a
+// tap beside it puts it back. The row doesn't scroll while a Book is out.
+// Where it is inspected (props.inspect):
+// - 'card': inside the card; the camera steps back from the row so the Book
+//   can come towards it and grow, as in the Stack;
+// - 'viewport': the card breaks out: its canvas moves into a fixed box over
+//   the whole viewport (same pixels where the card is, RowScene's view
+//   offset), the Book flies to the middle of the screen with the details as
+//   a sheet (narrow) or a card (wide), and lands back in the card;
+// - 'auto': the viewport on narrow screens (a phone), the card elsewhere.
 import { ACESFilmicToneMapping, MathUtils, SRGBColorSpace, Vector3, VSMShadowMap } from 'three'
+import gsap from 'gsap'
 import type { PerspectiveCamera } from 'three'
 import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
 import type { Book } from '#layers/regal/shared/types/book'
@@ -35,7 +44,14 @@ const props = withDefaults(defineProps<{
   title?: string
   /** Dev HUD: frames, render time, draw calls, textures, heap. */
   hud?: boolean
-}>(), { order: 'newest', title: '', hud: false })
+  /** Where a picked Book is inspected: in the card, the whole viewport, or by screen width. */
+  inspect?: 'card' | 'viewport' | 'auto'
+  /** Horizontal Stack: the Stack's hover and riffle turned with the pile, or tipping out at the top. */
+  hoverLook?: 'stack' | 'tip'
+  riffleLook?: 'stack' | 'tip'
+  /** Where the row starts: its first Book, or its last (the Stack starts at what was read last). */
+  start?: 'first' | 'last'
+}>(), { order: 'newest', title: '', hud: false, inspect: 'card', hoverLook: 'stack', riffleLook: 'stack', start: 'first' })
 
 const variant = computed(() => ROW_VARIANTS[props.variant])
 const ordered = computed(() => inRowOrder(props.books, props.order))
@@ -54,8 +70,11 @@ const ctx: RowContext = {
   hovered: ref(null),
   focused: ref(null),
   view: createRowView(),
-  insets: { top: 0, bottom: 0 },
+  insets: { top: 0, bottom: 0, right: 0 },
   aside: ref(false),
+  inspectFull: ref(false),
+  zoom: { value: 1 },
+  breakout: reactive({ active: false, rect: { left: 0, top: 0, width: 0, height: 0 } }),
   stats: { frames: 0, renderMs: 0, calls: 0, triangles: 0, textures: 0, geometries: 0, loopMs: [] },
   dim: { value: 0 },
   onCamera: null,
@@ -86,6 +105,14 @@ const maxScroll = computed(() => Math.max(0, trackWidth.value - width.value))
 /** Scroll progress 0..1, for the hairline indicator. */
 const progress = ref(0)
 
+/** The row starts at its last Book once (the Stack starts at its top). */
+let started = false
+watch(maxScroll, (max) => {
+  if (started || !max || !scroller.value) return
+  started = true
+  if (props.start === 'last') scroller.value.scrollLeft = max
+}, { flush: 'post' })
+
 function syncCamera() {
   const element = scroller.value
   const left = element ? element.scrollLeft : 0
@@ -98,6 +125,11 @@ watch([cameraStart, maxScroll, pxPerMetre], () => nextTick(syncCamera), { immedi
 
 function onScroll() {
   syncCamera()
+  // The scroll leads: the riffle runs and hover waits until the mouse moves again (as in the Stack).
+  if (started) {
+    ctx.view.scrollLed = true
+    mouseTravel = 0
+  }
 }
 
 // A mouse drags the row too (touch and trackpads scroll it natively), and
@@ -144,10 +176,17 @@ function onPointerUp() {
   glideFrame = requestAnimationFrame(step)
 }
 
+/** Mouse travel since the last scroll; a little gives the lead back to hover. */
+let mouseTravel = 0
+
 /** Where a resting mouse or a finger is over the card (the fanned row focuses there). */
 function notePointer(event: PointerEvent) {
   if (event.pointerType !== 'mouse' || !root.value) return
   if (event.buttons) return
+  if (ctx.view.scrollLed) {
+    mouseTravel += Math.abs(event.movementX) + Math.abs(event.movementY)
+    if (mouseTravel > 8) ctx.view.scrollLed = false
+  }
   const rect = root.value.getBoundingClientRect()
   const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
   ctx.view.pointerPx = inside ? event.clientX - rect.left : null
@@ -161,6 +200,7 @@ function onTouch(event: TouchEvent) {
     return
   }
   ctx.view.touching = true
+  ctx.view.scrollLed = true
   ctx.view.pointerPx = touch.clientX - root.value.getBoundingClientRect().left
 }
 
@@ -190,7 +230,7 @@ function setLabel(key: string, element: unknown) {
 /** One year on the whole row: the labels say the month only. */
 const oneYear = computed(() => new Set(layout.value.markers.map(marker => /\d{4}$/.exec(marker.label)?.[0] ?? marker.label)).size === 1)
 /** Px per character of the label font (IBM Plex Mono at 0.65 / 0.7 rem). */
-const LABEL_CHAR = { tab: 6.4, leader: 6.4, floor: 6.9 }
+const LABEL_CHAR = { tab: 6.4, leader: 6.4, floor: 6.9, stack: 7 }
 
 /**
  * The labels that fit: the month, with its year where the year changes; a
@@ -205,28 +245,42 @@ const labels = computed(() => {
   const shown = []
   for (const marker of layout.value.markers) {
     const [, month, year] = /^(.*?)(?: (\d{4}))?$/.exec(marker.label) ?? [marker.label, marker.label, undefined]
-    const withYear = !!year && year !== lastYear && !oneYear.value
-    const text = withYear ? `${month} ${year}` : month!
+    // The horizontal Stack sets every month with its year small beside it, as the Stack's labels do.
+    const stackLook = look === 'stack'
+    const withYear = !!year && !oneYear.value && (stackLook || year !== lastYear)
+    const text = withYear && !stackLook ? `${month} ${year}` : month!
+    const small = withYear && stackLook ? year! : ''
     const left = marker.x * k
-    const width = (text.length + String(marker.count).length + 1) * LABEL_CHAR[look] + 16
-    if (left < lastRight + 6) continue
-    lastRight = left + width
+    const width = (text.length + small.length * 0.5 + String(marker.count).length + 1) * LABEL_CHAR[look] + 16
+    // Centred dates (the Stack's) reach half their width to the left.
+    const from = stackLook ? left - width / 2 : left
+    if (from < lastRight + 6) continue
+    lastRight = from + width
     if (year) lastYear = year
-    shown.push({ ...marker, text })
+    shown.push({ ...marker, text, small })
   }
   return shown
 })
 
 /** World anchor of a label per look. */
+/** The horizontal Stack's dates stand this high, above the tallest Books; their leader runs down to the row. */
+const STACK_LABEL_Y = 0.272
+
 function anchorOf(x: number, height: number | undefined, into: Vector3): Vector3 {
   const look = variant.value.labels
   if (look === 'tab') return into.set(x, height ?? 0.25, -0.006)
+  if (look === 'stack') return into.set(x, STACK_LABEL_Y, 0)
   if (look === 'leader') return into.set(x, 0, 0.09)
   return into.set(x, 0, 0.1)
 }
 
 const point = new Vector3()
+const posesById = computed(() => new Map(layout.value.poses.map(pose => [pose.bookId, pose])))
+const focusLabel = ref<HTMLElement | null>(null)
+
 ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
+  // Broken out, the labels stay in the card, under the veil: not placed.
+  if (ctx.breakout.active) return
   for (const marker of labels.value) {
     const element = labelElements.get(marker.key)
     if (!element) continue
@@ -235,7 +289,22 @@ ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
     const y = (1 - point.y) / 2 * h
     const off = x < -240 || x > w + 40
     element.style.visibility = off ? 'hidden' : 'visible'
-    if (!off) element.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`
+    if (off) continue
+    element.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`
+    if (variant.value.labels === 'stack') {
+      // The leader line runs down from the date to the top of the row.
+      point.set(marker.x, marker.height ?? 0.2, 0).project(camera)
+      element.style.setProperty('--leader', `${Math.max(0, (1 - point.y) / 2 * h - y).toFixed(1)}px`)
+    }
+  }
+  // The Stack's focus label: title and stars under the Book in focus (beside its end in the Stack).
+  const label = focusLabel.value
+  const pose = ctx.focused.value ? posesById.value.get(ctx.focused.value) : undefined
+  if (label && pose) {
+    point.set(pose.x, 0, pose.z + pose.depth / 2).project(camera)
+    const x = MathUtils.clamp((point.x + 1) / 2 * w, 12, w - 12)
+    const y = (1 - point.y) / 2 * h
+    label.style.transform = `translate3d(${x.toFixed(1)}px, ${(y + 10).toFixed(1)}px, 0)`
   }
 }
 
@@ -243,14 +312,75 @@ ctx.onCamera = (camera: PerspectiveCamera, w: number, h: number) => {
 
 /** Wide cards show the details beside the Book; narrow ones a caption under it. */
 const wide = computed(() => width.value / Math.max(1, height.value) > 1.8)
+const { width: viewportWidth, height: viewportHeight } = useWindowSize()
+/** Narrow screens (a phone): the details are a sheet on the viewport's bottom edge (as RegalBooksStage's). */
+const NARROW = 560
+const inspectsInViewport = computed(() => props.inspect === 'viewport' || (props.inspect === 'auto' && viewportWidth.value <= NARROW))
+/** The card has broken out: the canvas covers the viewport while a Book is out (and on its way back). */
+const broken = ref(false)
+const sheet = computed(() => broken.value && viewportWidth.value <= NARROW)
 watchEffect(() => {
-  ctx.aside.value = wide.value
+  ctx.aside.value = broken.value ? !sheet.value : wide.value
 })
-const { height: captionHeight } = useElementSize(caption, undefined, { box: 'border-box' })
+const { width: captionWidth, height: captionHeight } = useElementSize(caption, undefined, { box: 'border-box' })
 watchEffect(() => {
-  ctx.insets.top = pickedId.value ? 44 / Math.max(1, height.value) : 0
-  ctx.insets.bottom = pickedId.value && !wide.value ? captionHeight.value / Math.max(1, height.value) : 0
+  const full = broken.value
+  const h = Math.max(1, full ? viewportHeight.value : height.value)
+  const w = Math.max(1, full ? viewportWidth.value : width.value)
+  const out = !!pickedId.value
+  ctx.insets.top = out && full ? 56 / h : 0
+  if (full) {
+    ctx.insets.bottom = out && sheet.value ? captionHeight.value / h : 0
+    ctx.insets.right = out && !sheet.value ? (captionWidth.value + 32) / w : 0
+  }
+  else {
+    ctx.insets.bottom = out && !wide.value ? captionHeight.value / h : 0
+    ctx.insets.right = out && wide.value ? captionWidth.value / w : 0
+  }
 })
+
+/** In the card the camera steps back this far while a Book is out (the Book comes forward and grows). */
+const CARD_ZOOM = 1.55
+const OUT_SECONDS = 1.0
+const RETURN_SECONDS = 0.8
+let landing: ReturnType<typeof setTimeout> | undefined
+
+function breakOut() {
+  const box = stage.value?.getBoundingClientRect()
+  if (!box) return
+  clearTimeout(landing)
+  ctx.breakout.rect = { left: box.left, top: box.top, width: box.width, height: box.height }
+  ctx.inspectFull.value = true
+  broken.value = true
+  ctx.breakout.active = true
+  // The page stays put under the open Book (the card's place on screen is the camera's).
+  document.documentElement.style.overflow = 'hidden'
+}
+
+function landBack() {
+  clearTimeout(landing)
+  landing = setTimeout(() => {
+    if (pickedId.value) return
+    ctx.breakout.active = false
+    broken.value = false
+    ctx.inspectFull.value = false
+    document.documentElement.style.overflow = ''
+  }, reducedMotion.value === 'reduce' ? 0 : RETURN_SECONDS * 1000 + 80)
+}
+
+watch(pickedId, (id, previous) => {
+  if (id && !previous) {
+    if (inspectsInViewport.value) breakOut()
+    else gsap.to(ctx.zoom, { value: CARD_ZOOM, duration: reducedMotion.value === 'reduce' ? 0 : OUT_SECONDS, ease: 'power2.inOut', overwrite: true })
+  }
+  if (!id && previous) {
+    gsap.to(ctx.zoom, { value: 1, duration: reducedMotion.value === 'reduce' ? 0 : RETURN_SECONDS, ease: 'power2.inOut', overwrite: true })
+    if (broken.value) landBack()
+  }
+})
+
+/** Touch on the canvas: both rows and the page scroll natively; a picked Book turns sideways; broken out, it has the screen. */
+const touchAction = computed(() => (broken.value && pickedId.value ? 'none' : pickedId.value ? 'pan-y' : 'pan-x pan-y'))
 
 // Back (the browser's, Android's) puts the Book away: a history entry while it is out.
 let pushed = false
@@ -323,6 +453,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('popstate', onPopState)
   clearInterval(hudTimer)
+  clearTimeout(landing)
+  gsap.killTweensOf(ctx.zoom)
+  if (broken.value) document.documentElement.style.overflow = ''
   ctx.onCamera = null
 })
 
@@ -363,51 +496,78 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
           class="row-card__stage"
           :style="{ width: `${width}px` }"
         >
-          <ClientOnly>
-            <TresCanvas
-              class="row-card__canvas"
-              :style="{ touchAction: pickedId ? 'pan-y' : 'pan-x pan-y' }"
-              :alpha="true"
-              :clear-alpha="0"
-              shadows
-              :shadow-map-type="VSMShadowMap"
-              :tone-mapping="ACESFilmicToneMapping"
-              :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
-              :output-color-space="SRGBColorSpace"
-              :dpr="dpr"
-            >
-              <PrototypeRowScene
-                :variant="variant"
-                :layout="layout"
-                :books="ordered"
-                :ctx="ctx"
-              />
-            </TresCanvas>
-          </ClientOnly>
-          <div
-            class="row-card__labels"
-            :class="`row-card__labels--${variant.labels}`"
-            aria-hidden="true"
+          <Teleport
+            to="body"
+            :disabled="!broken"
           >
             <div
-              v-for="label in labels"
-              :key="label.key"
-              :ref="(element: unknown) => setLabel(label.key, element)"
-              class="row-label"
+              class="row-card__view"
+              :class="{ 'row-card__view--out': broken }"
             >
-              <span class="row-label__inner">
-                <span class="row-label__text">{{ label.text }}</span>
-                <span class="row-label__count">{{ label.count }}</span>
-              </span>
+              <ClientOnly>
+                <TresCanvas
+                  class="row-card__canvas"
+                  :style="{ touchAction }"
+                  :alpha="true"
+                  :clear-alpha="0"
+                  :premultiplied-alpha="true"
+                  shadows
+                  :shadow-map-type="VSMShadowMap"
+                  :tone-mapping="ACESFilmicToneMapping"
+                  :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
+                  :output-color-space="SRGBColorSpace"
+                  :dpr="dpr"
+                >
+                  <PrototypeRowScene
+                    :variant="variant"
+                    :layout="layout"
+                    :books="ordered"
+                    :ctx="ctx"
+                    :hover-look="hoverLook"
+                    :riffle-look="riffleLook"
+                  />
+                </TresCanvas>
+              </ClientOnly>
+              <div
+                v-show="!broken"
+                class="row-card__labels"
+                :class="`row-card__labels--${variant.labels}`"
+                aria-hidden="true"
+              >
+                <div
+                  v-for="label in labels"
+                  :key="label.key"
+                  :ref="(element: unknown) => setLabel(label.key, element)"
+                  class="row-label"
+                >
+                  <span class="row-label__inner">
+                    <span class="row-label__text">{{ label.text }}</span>
+                    <sup
+                      v-if="label.small"
+                      class="row-label__small"
+                    >{{ label.small }}</sup>
+                    <span class="row-label__count">{{ label.count }}</span>
+                  </span>
+                </div>
+                <p
+                  v-if="variant.labels === 'stack' && focusedBook && !pickedId"
+                  ref="focusLabel"
+                  class="row-focus"
+                >
+                  <span class="row-focus__inner">
+                    <BooksTitleStars :book="focusedBook" />
+                  </span>
+                </p>
+              </div>
             </div>
-          </div>
+          </Teleport>
         </div>
       </div>
     </div>
 
     <!-- Over the row: what is in focus, the way back, the details. -->
     <header
-      v-if="!pickedId"
+      v-if="!pickedId && variant.labels !== 'stack'"
       class="row-card__head"
     >
       <p
@@ -453,52 +613,68 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
       ›
     </button>
 
-    <button
-      v-if="pickedId"
-      type="button"
-      class="row-card__back"
-      @click="putAway"
+    <Teleport
+      to="body"
+      :disabled="!broken"
     >
-      ← Back
-    </button>
+      <button
+        v-if="pickedId"
+        type="button"
+        class="row-card__back"
+        :class="{ 'row-card__back--out': broken }"
+        @click="putAway"
+      >
+        ← Back
+      </button>
 
-    <div
-      v-if="pickedBook"
-      ref="caption"
-      class="row-card__details"
-      :class="{ 'row-card__details--side': wide }"
-    >
-      <p class="row-card__book-title">
-        {{ pickedBook.title }}
-      </p>
-      <p class="row-card__book-meta">
-        {{ pickedBook.author }}<template v-if="readDate">
-          · {{ readDate }}
-        </template>
-      </p>
-      <p
-        v-if="pickedBook.rating"
-        class="row-card__book-stars"
+      <div
+        v-if="pickedBook"
+        ref="caption"
+        class="row-card__details"
+        :class="{
+          'row-card__details--side': !broken && wide,
+          'row-card__details--sheet': sheet,
+          'row-card__details--card': broken && !sheet,
+        }"
       >
-        <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
-      </p>
-      <p
-        v-if="wide && pickedBook.review"
-        class="row-card__book-review"
-      >
-        {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
-      </p>
-      <p class="row-card__book-hint">
-        <button
-          type="button"
-          class="row-card__link"
-          @click="turn"
+        <p class="row-card__book-title">
+          {{ pickedBook.title }}
+        </p>
+        <p class="row-card__book-meta">
+          {{ pickedBook.author }}<template v-if="readDate">
+            · {{ readDate }}
+          </template>
+          <span
+            v-if="pickedBook.rating"
+            class="row-card__book-stars"
+          >
+            <BooksTitleStars :book="{ title: '', rating: pickedBook.rating }" />
+          </span>
+        </p>
+        <p
+          v-if="(broken || wide) && pickedBook.description"
+          class="row-card__book-review"
         >
-          {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
-        </button>
-        · drag to turn
-      </p>
-    </div>
+          {{ pickedBook.description }}
+        </p>
+        <p
+          v-if="(broken || wide) && pickedBook.review"
+          class="row-card__book-review row-card__book-review--own"
+        >
+          {{ pickedBook.reviewHasSpoiler ? 'Review hidden (spoilers).' : pickedBook.review }}
+        </p>
+        <p class="row-card__book-hint">
+          <button
+            type="button"
+            class="row-card__link"
+            @click="turn"
+          >
+            {{ pick.face === 'front' ? 'Turn over' : 'Front' }}
+          </button>
+          · drag or flick to turn
+        </p>
+      </div>
+    </Teleport>
 
     <p
       v-if="hud"
@@ -562,9 +738,82 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
   height: 100%;
 }
 
+.row-card__view {
+  position: absolute;
+  inset: 0;
+}
+
+/* Broken out: over the whole viewport, above the page, below the host's sticky bars' panels. */
+.row-card__view--out {
+  position: fixed;
+  z-index: var(--regal-row-z-index, 30);
+}
+
 .row-card__canvas {
   position: absolute !important;
   inset: 0;
+}
+
+/* The horizontal Stack's dates: the Stack's flat label with its leader line, above the row. */
+.row-card__labels--stack .row-label__inner {
+  bottom: 0;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: var(--text-xs, 0.7rem);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-ink, #2C2C2A);
+}
+
+.row-card__labels--stack .row-label__inner::after {
+  content: '';
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  width: 1px;
+  height: max(0px, calc(var(--leader, 0px) - 4px));
+  background: var(--color-ink, #2C2C2A);
+}
+
+.row-card__labels--stack .row-label__small {
+  margin-left: -0.25em;
+  font-size: 0.5em;
+  font-weight: 600;
+  vertical-align: 0.55em;
+  line-height: 0;
+}
+
+.row-card__labels--stack .row-label__count {
+  font-size: 0.6em;
+  font-weight: 500;
+}
+
+/* The Stack's focus label, under the Book in focus. */
+.row-focus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  will-change: transform;
+}
+
+.row-focus__inner {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  max-width: 15rem;
+  padding: 0.2rem 0.45rem;
+  overflow: hidden;
+  border: 1px solid var(--color-ink, #2C2C2A);
+  background: var(--color-bg, #F5F2EB);
+  font-size: var(--text-2xs, 0.65rem);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.row-focus__inner :deep(.title-stars__title) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row-card__labels {
@@ -742,6 +991,13 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
   cursor: pointer;
 }
 
+.row-card__back--out {
+  position: fixed;
+  top: 0.8rem;
+  left: 0.8rem;
+  z-index: calc(var(--regal-row-z-index, 30) + 1);
+}
+
 .row-card__back:hover {
   color: var(--color-accent, #B93E2E);
 }
@@ -765,6 +1021,44 @@ const clampDeg = (value: number) => MathUtils.clamp(value, 0, 1)
   border-top: 0;
   border-left: 1px solid var(--color-ink, #2C2C2A);
   overflow-y: auto;
+}
+
+/* Broken out, narrow: a sheet on the viewport's bottom edge (as RegalBooksStage's). */
+.row-card__details--sheet {
+  position: fixed;
+  right: -1px;
+  bottom: -1px;
+  left: -1px;
+  z-index: calc(var(--regal-row-z-index, 30) + 1);
+  max-height: 34dvh;
+  padding: 0.8rem 1rem 1rem;
+  border: 1px solid var(--color-ink, #2C2C2A);
+  overflow-y: auto;
+  font-size: var(--text-sm, 0.75rem);
+}
+
+/* Broken out, wide: the Stack's details card, bottom right. */
+.row-card__details--card {
+  position: fixed;
+  top: auto;
+  right: 1rem;
+  bottom: 1rem;
+  left: auto;
+  z-index: calc(var(--regal-row-z-index, 30) + 1);
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-ink, #2C2C2A);
+  overflow-y: auto;
+  font-size: var(--text-sm, 0.75rem);
+}
+
+.row-card__book-stars {
+  margin-left: 0.5em;
+}
+
+.row-card__book-review--own {
+  font-style: italic;
 }
 
 .row-card__details p {

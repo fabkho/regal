@@ -11,7 +11,7 @@ import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { RowContext } from '#layers/regal/app/prototype/row/context'
-import { PILE_SHEET } from '#layers/regal/app/prototype/row/layout'
+import { PILE_SHEET, STACK_SHEET } from '#layers/regal/app/prototype/row/layout'
 import type { RowLayout, RowPile, RowVariant } from '#layers/regal/app/prototype/row/layout'
 
 const props = defineProps<{
@@ -19,6 +19,8 @@ const props = defineProps<{
   layout: RowLayout
   books: Book[]
   ctx: RowContext
+  hoverLook?: 'stack' | 'tip'
+  riffleLook?: 'stack' | 'tip'
 }>()
 
 const { camera, scene, renderer, sizes } = useTres()
@@ -30,7 +32,6 @@ const rig = shallowRef<Group | null>(null)
 const keyLight = shallowRef<DirectionalLight | null>(null)
 const floorMaterial = shallowRef<ShadowMaterial | null>(null)
 const veil = shallowRef<Mesh | null>(null)
-const backdrop = shallowRef<Mesh | null>(null)
 const veilForward = new Vector3()
 
 const cam = computed(() => props.variant.camera)
@@ -52,8 +53,12 @@ onBeforeRender(({ delta }) => {
   const d = distance.value
   const x = view.cameraX
   view.distance = d
-  camera3.position.set(x, cam.value.targetY + d * Math.sin(tilt), cam.value.targetZ + d * Math.cos(tilt))
+  // A picked Book: the camera steps back from the row (in the card), so the
+  // Book can come towards it and grow, as in the Stack.
+  const z = d * props.ctx.zoom.value
+  camera3.position.set(x, cam.value.targetY + z * Math.sin(tilt), cam.value.targetZ + z * Math.cos(tilt))
   camera3.lookAt(x, cam.value.targetY, cam.value.targetZ)
+  project(camera3)
   // The load window along x: half the view's width at the row, the scroll's speed.
   view.focusY = x
   view.targetY = x
@@ -79,27 +84,107 @@ onBeforeRender(({ delta }) => {
   if (rig.value) rig.value.position.x = x
   if (floorMaterial.value) floorMaterial.value.opacity = FLOOR_SHADOW.opacity * (1 - props.ctx.dim.value)
   // A paper veil between the row and a picked Book: one transparent plane, no material changes.
+  // The camera sees both layers (one pass) unless broken out (two, renderBrokenOut).
+  if (!props.ctx.breakout.active) camera3.layers.enable(1)
   const veilMesh = veil.value
   if (veilMesh) {
+    veilMesh.layers.set(1)
     const dim = props.ctx.dim.value
     veilMesh.visible = dim > 0.001
     if (veilMesh.visible) {
-      const at = d * 0.72
+      // Between the row and the picked Book, wide enough for a broken-out view too.
+      const at = z * 0.8
       camera3.getWorldDirection(veilForward)
       veilMesh.position.copy(camera3.position).addScaledVector(veilForward, at)
       veilMesh.quaternion.copy(camera3.quaternion)
-      const h = 2 * at * Math.tan(MathUtils.degToRad(cam.value.fov) / 2) * 1.05
-      veilMesh.scale.set(h * (sizes.aspectRatio.value || 1), h, 1)
-      ;(veilMesh.material as MeshBasicMaterial).opacity = 0.84 * dim
+      const h = 2 * at * Math.tan(MathUtils.degToRad(camera3.fov) / 2) * 1.1
+      veilMesh.scale.set(h * Math.max(camera3.aspect, sizes.aspectRatio.value || 1) * 2, h * 2, 1)
+      ;(veilMesh.material as MeshBasicMaterial).opacity = (props.ctx.inspectFull.value ? 0.9 : 0.72) * dim
     }
   }
-  // The canvas is transparent, and a coloured veil only blends right over
-  // opaque pixels: paper behind everything while the veil is up.
-  if (backdrop.value) {
-    backdrop.value.visible = props.ctx.dim.value > 0.001
-    backdrop.value.position.set(x, cam.value.targetY, cam.value.targetZ - 3)
-  }
 })
+
+/**
+ * The projection. In the card: the variant's. Broken out (the canvas covers
+ * the viewport while a Book is out), the camera keeps the card's view, the
+ * same pixels where the card is, and its frustum widens to the rest of the
+ * viewport: a virtual view centred on the card at the card's focal length,
+ * of which the viewport is the window rendered (setViewOffset). The row
+ * doesn't move when the canvas leaves the card or comes back.
+ */
+function project(camera3: PerspectiveCamera, size?: { width: number, height: number }) {
+  const out = props.ctx.breakout
+  const fov = cam.value.fov
+  const canvas = renderer.domElement as HTMLCanvasElement
+  if (!out.active) {
+    if (camera3.view?.enabled || camera3.fov !== fov) {
+      camera3.clearViewOffset()
+      camera3.fov = fov
+      camera3.aspect = (size?.width ?? canvas.clientWidth) / Math.max(1, size?.height ?? canvas.clientHeight)
+      camera3.updateProjectionMatrix()
+    }
+    return
+  }
+  const width = size?.width ?? canvas.clientWidth
+  const height = size?.height ?? canvas.clientHeight
+  const { left, top, width: cardWidth, height: cardHeight } = out.rect
+  const focal = cardHeight / 2 / Math.tan(MathUtils.degToRad(fov) / 2)
+  const cx = left + cardWidth / 2
+  const cy = top + cardHeight / 2
+  const halfWidth = Math.max(cx, width - cx, 1)
+  const halfHeight = Math.max(cy, height - cy, 1)
+  camera3.fov = MathUtils.radToDeg(2 * Math.atan(halfHeight / focal))
+  camera3.aspect = halfWidth / halfHeight
+  camera3.setViewOffset(2 * halfWidth, 2 * halfHeight, halfWidth - cx, halfHeight - cy, width, height)
+  camera3.updateProjectionMatrix()
+}
+
+// Breaking out (and back in) moves the canvas into a fixed full-viewport box
+// (RowCard). Resize its drawing buffer and draw at once, in the same task, so
+// no frame shows the old buffer stretched (Tres resizes a moment later too).
+watch(() => props.ctx.breakout.active, () => {
+  lightBothLayers()
+  const canvas = renderer.domElement as HTMLCanvasElement
+  const box = canvas.parentElement?.getBoundingClientRect()
+  const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
+  if (!box || !camera3 || !box.width || !box.height) return
+  renderer.setSize(box.width, box.height, false)
+  // Forces project() to apply the projection again.
+  camera3.fov = -1
+  project(camera3, box)
+  if (props.ctx.breakout.active) renderBrokenOut(camera3)
+  else renderer.render(scene.value, camera3)
+}, { flush: 'post' })
+
+/**
+ * Broken out, the canvas covers the viewport but the row must stay inside the
+ * card: the scene is drawn clipped to the card's rectangle (layer 0), then the
+ * picked Book and the veil (layer 1, see RowBooks) over the whole viewport.
+ */
+function renderBrokenOut(camera3: PerspectiveCamera) {
+  const canvas = renderer.domElement as HTMLCanvasElement
+  const { left, top, width, height } = props.ctx.breakout.rect
+  const autoClear = renderer.autoClear
+  renderer.autoClear = false
+  renderer.setScissorTest(false)
+  renderer.clear()
+  renderer.setScissorTest(true)
+  renderer.setScissor(left, canvas.clientHeight - top - height, width, height)
+  camera3.layers.set(0)
+  renderer.render(scene.value, camera3)
+  renderer.setScissorTest(false)
+  camera3.layers.set(1)
+  renderer.render(scene.value, camera3)
+  camera3.layers.enable(0)
+  renderer.autoClear = autoClear
+}
+
+/** Lights light both passes. */
+function lightBothLayers() {
+  scene.value.traverse((object) => {
+    if ((object as { isLight?: boolean }).isLight) object.layers.enable(1)
+  })
+}
 
 // On demand: a frame only when what it would show changed (utils/stage/frameState.ts),
 // and none while the card is off screen.
@@ -118,7 +203,8 @@ render((notify) => {
     return
   }
   const started = performance.now()
-  renderer.render(scene.value, camera3)
+  if (props.ctx.breakout.active) renderBrokenOut(camera3)
+  else renderer.render(scene.value, camera3)
   stats.frames++
   stats.renderMs = performance.now() - started
   // The frame's main-thread work: the Books' per-frame pass and the render calls.
@@ -202,6 +288,11 @@ const markerBoxes = computed(() => {
     const piles = [...new Set(Object.values(props.layout.piles ?? {}))]
     return piles.map(pile => ({ key: `${pile.left}`, position: [(pile.left + pile.right) / 2, PILE_SHEET / 2, 0] as [number, number, number], scale: [pile.right - pile.left - 0.012, PILE_SHEET, 0.145] as [number, number, number], color: '#2C2C2A' }))
   }
+  if (props.variant.labels === 'stack') {
+    // The Stack's 'label' sheet: narrower than the Books (its top stays hidden),
+    // its front edge a hairline just in front of the Spines.
+    return props.layout.markers.map(marker => ({ key: marker.key, position: [marker.x, 0.084, 0.003 - 0.085] as [number, number, number], scale: [STACK_SHEET, 0.16, 0.17] as [number, number, number], color: '#2C2C2A' }))
+  }
   return []
 })
 </script>
@@ -264,19 +355,10 @@ const markerBoxes = computed(() => {
     :spine-scale="spineScale"
     :piles="layout.piles"
     :ends="ends"
+    :hover-look="hoverLook"
+    :riffle-look="riffleLook"
   />
 
-  <TresMesh
-    ref="backdrop"
-    name="backdrop"
-    :visible="false"
-  >
-    <TresPlaneGeometry :args="[40, 40]" />
-    <TresMeshBasicMaterial
-      color="#F5F2EB"
-      :tone-mapped="false"
-    />
-  </TresMesh>
   <TresMesh
     ref="veil"
     name="veil"

@@ -47,7 +47,7 @@ import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
 import { LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
 import type { Boost, FaceUse } from '#layers/regal/app/utils/covers/loadWindow'
-import { approach, focusLine, liftFor, RIFFLE as STACK_RIFFLE } from '#layers/regal/app/utils/stack/scrollHighlight'
+import { approach, focusLine, liftFor, RIFFLE as STACK_RIFFLE, targetAmount } from '#layers/regal/app/utils/stack/scrollHighlight'
 import type { Lift } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { createGlintSettle, GLINT_DELAY, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
@@ -73,6 +73,14 @@ const props = defineProps<{
   piles?: Record<string, RowPile>
   /** Where the focus line ends up at either end of the scroll (world x). */
   ends: [number, number]
+  /**
+   * The horizontal Stack ('stack' focus): how hover and the scroll riffle
+   * look. 'stack' is the vertical Stack's, turned 90° with the pile
+   * (riffle: the Book swings its bottom out about its top end); 'tip' is
+   * the Shelf's (the Book tips its top out about its bottom edge).
+   */
+  hoverLook?: 'stack' | 'tip'
+  riffleLook?: 'stack' | 'tip'
 }>()
 
 const ctx = props.ctx
@@ -103,6 +111,8 @@ const RETURN_SECONDS = 0.8
 const FLIP_SECONDS = 0.7
 const SPIN_PER_PX = 0.01
 
+/** The vertical Stack's hover (Meshes.vue): towards you and a little turned. */
+const STACK_HOVER = { out: 0.035, tilt: 0.045 }
 /** Focus looks. Tilt: how far the Book tips out (rad) and comes forward. */
 const TILT = { angle: 0.32, out: 0.012, lift: 0.004, rate: 10 }
 /** Riffle (the Stack's, utils/stack/scrollHighlight.ts): Books within this height of the pile's focus fan out. */
@@ -447,7 +457,7 @@ watch(() => props.poses, (poses) => {
 
 // --- Interaction -------------------------------------------------------------------
 
-const { camera, renderer } = useTres()
+const { camera, renderer, sizes } = useTres()
 const { onBeforeRender } = useLoop()
 const pickedId = computed(() => ctx.pick.value.bookId)
 const face = computed(() => ctx.pick.value.face)
@@ -460,10 +470,45 @@ let hoveredId: string | null = null
 const glintSettle = createGlintSettle()
 /** How faded the row is behind a picked Book (0..1): a paper veil in RowScene. */
 const dim = ctx.dim
-/** The picked Book comes this share of the way from the camera to the row, filling this share of the free band. */
-const INSPECT_NEAR = 0.5
-const INSPECT_FILL = 0.84
-let inspectScale = 1
+/**
+ * Inspect: the picked Book comes towards the camera until it shows this much
+ * larger than it stood in the row, like in the Stack (never smaller), or
+ * fills this share of the free band in a full viewport; never more than
+ * the band allows.
+ */
+const INSPECT_GROW = 1.12
+const INSPECT_VIEWPORT_FILL = 0.5
+const INSPECT_MAX_FILL = 0.9
+const rayPoint = new Vector3()
+const ndcPoint = new Vector3()
+
+/**
+ * Where the picked Book floats: on the ray through the middle of the band the
+ * card's (or the viewport's) details leave free, at the distance that gives
+ * it its size. Works with the camera's view offset (a broken-out card renders
+ * the whole viewport, its camera still aimed at the card).
+ */
+function inspectTarget(cam: PerspectiveCamera, pose: BookPose, into: Vector3): Vector3 {
+  const width = sizes.width.value || 1
+  const height = sizes.height.value || 1
+  // Focal length in CSS px of what the canvas shows (the same in and out of the card).
+  const focal = cam.projectionMatrix.elements[5]! * height / 2
+  const band = {
+    top: ctx.insets.top * height,
+    bottom: height - ctx.insets.bottom * height,
+    left: 0,
+    right: width - ctx.insets.right * width,
+  }
+  const bandHeight = Math.max(40, band.bottom - band.top)
+  const bandWidth = Math.max(40, band.right - band.left)
+  const rowPx = pose.height * focal / view.distance
+  const wanted = ctx.inspectFull.value ? Math.max(rowPx * INSPECT_GROW, INSPECT_VIEWPORT_FILL * bandHeight) : rowPx * INSPECT_GROW
+  const px = Math.min(wanted, INSPECT_MAX_FILL * bandHeight, 0.8 * bandWidth * pose.height / pose.depth)
+  const distance = pose.height * focal / px
+  ndcPoint.set(((band.left + band.right) / 2) / width * 2 - 1, 1 - ((band.top + band.bottom) / 2) / height * 2, 0.5)
+  rayPoint.copy(ndcPoint).unproject(cam).sub(cam.position).normalize()
+  return into.copy(cam.position).addScaledVector(rayPoint, distance)
+}
 
 function putAway() {
   ctx.pick.value = SHELVED
@@ -807,9 +852,7 @@ const basePosition = new Vector3()
 const targetQuaternion = new Quaternion()
 const pulledPosition = new Vector3()
 const inspectPosition = new Vector3()
-const forward = new Vector3()
 const up = new Vector3()
-const right = new Vector3()
 const glintOffset = new Vector3()
 const baseQuaternion = new Quaternion()
 const inspectQuaternion = new Quaternion()
@@ -818,6 +861,7 @@ const tiltQuaternion = new Quaternion()
 const pivot = new Vector3()
 const euler = new Euler()
 const lookDummy = new Object3D()
+const lookAhead = new Vector3()
 const X_AXIS = new Vector3(1, 0, 0)
 const Y_AXIS = new Vector3(0, 1, 0)
 
@@ -862,9 +906,14 @@ onBeforeRender(({ delta }) => {
   const cam = camera.value as PerspectiveCamera | undefined
   const ease = 1 - Math.exp(-seconds * 12)
   const blocked = !!pickedId.value
+  const stackMode = props.focus === 'stack'
   // A resting mouse leads over the scroll focus (until it leaves the Book).
   const hoverPose = hoveredId ? props.poses.find(pose => pose.bookId === hoveredId) : undefined
-  const target = hoverPose && props.focusAt === 'centre' ? hoverPose.x : focusTarget()
+  // The horizontal Stack, as the vertical one (useScrollHighlight): the riffle
+  // runs while the scroll leads; a resting mouse takes over with hover.
+  const pointerId = stackMode && view.scrollLed ? null : hoveredId
+  const riffleOn = stackMode && !blocked && !(hoveredId && !view.scrollLed)
+  const target = hoverPose && props.focusAt === 'centre' && !stackMode ? hoverPose.x : focusTarget()
   if (Number.isNaN(flowX) || reduced.value) flowX = target
   else flowX += (target - flowX) * (1 - Math.exp(-seconds * FLOW.rate))
   focusIndex = blocked ? -1 : nearestIndex(props.focus === 'flow' ? flowX : target)
@@ -896,8 +945,11 @@ onBeforeRender(({ delta }) => {
       }
     }
   }
+  if (stackMode && !riffleOn) focusIndex = -1
   const focusId = focusIndex >= 0 ? props.poses[focusIndex]!.bookId : null
-  if (ctx.focused.value !== focusId && !blocked) ctx.focused.value = focusId
+  // The label shows the Book in focus, or the one under the mouse.
+  const labelled = stackMode ? (riffleOn ? focusId : (blocked ? null : pointerId)) : focusId
+  if (ctx.focused.value !== labelled && !blocked) ctx.focused.value = labelled
   const settled = settledGlint(glintSettle, { focusedId: focusId, speed: view.speed, gap: 0, blocked }, seconds, GLINT_DELAY)
   if (settled && !reduced.value && !hoverPose) glint(settled)
 
@@ -914,6 +966,7 @@ onBeforeRender(({ delta }) => {
     if (!blocked && !frozen) {
       if (props.focus === 'tilt') focusAim = pose.bookId === focusId ? 1 : 0
       else if (props.focus === 'riffle') focusAim = pile && props.piles?.[pose.bookId] === pile ? bell(pose.y - pileY, RIFFLE.radius) : 0
+      else if (stackMode && riffleOn) focusAim = targetAmount(pose.x - target)
     }
     const rate = props.focus === 'tilt' ? TILT.rate : RIFFLE.rate
     if (props.focus !== 'flow') motion.focus = reduced.value ? focusAim : approach(motion.focus, focusAim, rate, seconds)
@@ -942,6 +995,24 @@ onBeforeRender(({ delta }) => {
       baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.yaw))
       baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.tilt))
     }
+    else if (stackMode && motion.focus > 0) {
+      // The Stack's riffle turned 90° with the pile: Books passing the middle
+      // fan out like pages flipped through, turned about their top end so the
+      // bottom swings out (as the Stack turns them about their left end).
+      // 'tip': about the bottom edge instead, the top swinging out.
+      const lift = liftFor(motion.focus, still, riffleLift)
+      const swing = pose.height / 2
+      basePosition.z += lift.out + swing * Math.sin(lift.yaw)
+      if (props.riffleLook === 'tip') {
+        basePosition.y -= swing * (1 - Math.cos(lift.yaw))
+        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, lift.yaw))
+      }
+      else {
+        basePosition.y += swing * (1 - Math.cos(lift.yaw))
+        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(X_AXIS, -lift.yaw))
+      }
+      baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -lift.tilt))
+    }
     else if (props.focus === 'flow') {
       // Turns to face you near the focus; the others part to make room.
       const d = pose.x - flowX
@@ -959,12 +1030,31 @@ onBeforeRender(({ delta }) => {
     }
 
     // Hover on the riffle/flow rows is the focus itself; on any row a hovered Book shines.
-    const hovered = hoveredId === pose.bookId && !frozen ? 1 : 0
+    const hovered = (stackMode ? pointerId : hoveredId) === pose.bookId && !frozen ? 1 : 0
     motion.hover += (hovered - motion.hover) * ease
+    if (Math.abs(motion.hover - hovered) < 0.001) motion.hover = hovered
     shine = Math.max(shine, motion.hover)
+    if (stackMode && motion.hover > 0 && !still) {
+      if (props.hoverLook === 'tip') {
+        // Tips out at the top about its bottom front edge.
+        const a = motion.hover
+        pivot.set(basePosition.x, 0, pose.z + pose.depth / 2)
+        tiltQuaternion.setFromAxisAngle(X_AXIS, TILT.angle * a)
+        basePosition.sub(pivot).applyQuaternion(tiltQuaternion).add(pivot)
+        basePosition.z += TILT.out * a
+        baseQuaternion.premultiply(tiltQuaternion)
+      }
+      else {
+        // The Stack's hover turned with the pile: towards you, a little turned.
+        basePosition.z += STACK_HOVER.out * motion.hover
+        baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -STACK_HOVER.tilt * motion.hover))
+      }
+    }
 
     const pick = motion.pick.value
-    let scale = 1
+    // On its way out, in or back, the picked Book is drawn over a broken-out viewport too (RowScene).
+    if (pick > 0) mesh.layers.enable(1)
+    else mesh.layers.disable(1)
     if (pick <= 0 || !cam) {
       mesh.position.copy(basePosition)
       mesh.quaternion.copy(baseQuaternion)
@@ -972,43 +1062,28 @@ onBeforeRender(({ delta }) => {
     else {
       pulledPosition.copy(basePosition)
       pulledPosition.z += PULL_OUT
-      pulledPosition.y += 0.02
       if (pick <= PULL_PHASE) {
         mesh.position.lerpVectors(basePosition, pulledPosition, smooth(pick / PULL_PHASE))
         mesh.quaternion.copy(baseQuaternion)
       }
       else {
-        cam.getWorldDirection(forward)
         up.copy(cam.up).applyQuaternion(cam.quaternion)
-        right.crossVectors(forward, up).normalize()
-        // In a card the row already fills the view, so the picked Book comes
-        // to a fixed share of the way to the row and is scaled to fit the band
-        // the card's caption leaves free (a smaller Book, nearer: the same picture).
-        const tan = Math.tan(MathUtils.degToRad(cam.fov ?? 30) / 2)
-        const aspect = cam.aspect ?? 1
-        const band = Math.max(0.3, 1 - ctx.insets.top - ctx.insets.bottom)
-        const distance = view.distance * INSPECT_NEAR
-        const half = distance * tan
-        const fitWidth = (ctx.aside.value ? 0.5 : 0.8) * 2 * half * aspect
-        inspectScale = Math.min(INSPECT_FILL * band * 2 * half / pose.height, fitWidth / pose.depth)
-        inspectPosition.copy(cam.position)
-          .addScaledVector(forward, distance)
-          .addScaledVector(up, (ctx.insets.bottom - ctx.insets.top) * half)
-          .addScaledVector(right, ctx.aside.value ? -half * aspect * 0.32 : 0)
+        inspectTarget(cam, pose, inspectPosition)
+        // Parallel to the picture, not turned to the camera: off the camera's
+        // axis (a broken-out card) it would show keystoned.
+        cam.getWorldDirection(lookAhead)
         lookDummy.position.copy(inspectPosition)
         lookDummy.up.copy(up)
-        lookDummy.lookAt(cam.position)
+        lookDummy.lookAt(lookAhead.multiplyScalar(-1).add(inspectPosition))
         inspectQuaternion.copy(lookDummy.quaternion)
           .multiply(partial.setFromAxisAngle(X_AXIS, motion.spin.y))
           .multiply(partial.setFromAxisAngle(Y_AXIS, motion.spin.x + motion.flip.value - Math.PI / 2))
         const t = smooth((pick - PULL_PHASE) / (1 - PULL_PHASE))
-        scale = MathUtils.lerp(1, inspectScale, t)
         mesh.position.lerpVectors(pulledPosition, inspectPosition, t)
         mesh.quaternion.slerpQuaternions(baseQuaternion, inspectQuaternion, t)
       }
     }
 
-    mesh.scale.set(pose.thickness * scale, pose.height * scale, pose.depth * scale)
     shine = Math.max(shine, pick * 0.6)
     const entry = materialsByBook.get(pose.bookId)
     if (entry) {

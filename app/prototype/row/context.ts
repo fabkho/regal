@@ -22,8 +22,16 @@ export interface RowView extends LoadView {
   pointerX: number | null
   /** A finger is on the card. */
   touching: boolean
-  /** Camera distance to the row (RowScene). */
+  /** Camera distance to the row (RowScene), before any zoom-out for a picked Book. */
   distance: number
+  /** The scroll leads (wheel, drag, touch since the mouse last moved): the riffle runs, hover waits. */
+  scrollLed: boolean
+}
+
+/** Where a broken-out card was on screen (viewport px) when its Book came out. */
+export interface RowBreakout {
+  active: boolean
+  rect: { left: number, top: number, width: number, height: number }
 }
 
 export interface RowContext {
@@ -33,8 +41,14 @@ export interface RowContext {
   /** The Book in focus (middle of the view or under the finger), for the caption. */
   focused: Ref<string | null>
   view: RowView
-  /** Shares of the canvas height covered at the top and bottom (the card's own caption). */
-  insets: { top: number, bottom: number }
+  /** Shares of the canvas covered at the top, bottom (height) and right (width): the details. */
+  insets: { top: number, bottom: number, right: number }
+  /** The picked Book is inspected in the whole viewport (the card broke out). */
+  inspectFull: Ref<boolean>
+  /** Camera distance factor: the camera steps back from the row while a Book is out (in the card). */
+  zoom: { value: number }
+  /** The canvas covers the viewport while a Book is out (RowCard's break-out); the camera keeps the card's view. */
+  breakout: RowBreakout
   /** Inspect left of centre (a details panel on the right). */
   aside: Ref<boolean>
   /** Frames rendered, render time and the renderer's counts (RowScene), for the dev HUD. */
@@ -48,5 +62,5 @@ export interface RowContext {
 }
 
 export function createRowView(): RowView {
-  return { cameraX: 0, focusY: 0, targetY: 0, halfView: 0.3, speed: 0, bounds: [0, 0], pointerPx: null, pointerX: null, touching: false, distance: 1 }
+  return { cameraX: 0, focusY: 0, targetY: 0, halfView: 0.3, speed: 0, bounds: [0, 0], pointerPx: null, pointerX: null, touching: false, distance: 1, scrollLed: false }
 }

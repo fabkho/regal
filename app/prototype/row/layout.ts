@@ -8,9 +8,10 @@ import type { Book } from '#layers/regal/shared/types/book'
 import type { BookPose } from '#layers/regal/app/utils/books/pose'
 import { bookDimensions, CLOTH_COLORS, hashString, random01 } from '#layers/regal/app/utils/bookcase/layout'
 import { stackGroups } from '#layers/regal/app/utils/stack/view'
+import { SEPARATOR_THICKNESS } from '#layers/regal/app/utils/stack/separators'
 import type { RowOrder } from './data'
 
-export type RowVariantKey = 'a' | 'b' | 'c'
+export type RowVariantKey = 'a' | 'b' | 'c' | 's'
 
 /** A month (or status) group along the row, where its label goes. */
 export interface RowMarker {
@@ -49,7 +50,7 @@ export interface RowCamera {
   viewHeight: number
 }
 
-export type RowFocus = 'tilt' | 'riffle' | 'flow'
+export type RowFocus = 'tilt' | 'riffle' | 'flow' | 'stack'
 
 export interface RowVariant {
   key: RowVariantKey
@@ -61,7 +62,7 @@ export interface RowVariant {
   /** Where the focus is: the middle of the view (scroll), or under the pointer / finger. */
   focusAt: 'centre' | 'pointer'
   /** How the month labels look (RowCard). */
-  labels: 'tab' | 'leader' | 'floor'
+  labels: 'tab' | 'leader' | 'floor' | 'stack'
   layout: (books: Book[]) => RowLayout
 }
 
@@ -255,9 +256,72 @@ export function layoutFan(books: Book[]): RowLayout {
   return finish(poses, markers, 0.03)
 }
 
+// --- The horizontal Stack: today's Stack turned 90° --------------------------------
+
+/** The Stack's separator ('label'): a hairline ink sheet in the pile. */
+export const STACK_SHEET = SEPARATOR_THICKNESS.label
+/** The Stack's hand-stacked offsets and twists (utils/stack/layout.ts), turned with the pile. */
+const STACK_OFFSET_Z = 0.008
+const STACK_TWIST = 0.07
+
+/**
+ * The vertical Stack turned 90° clockwise, so its bottom is at the left and
+ * its top (what was read last) at the right: Books pressed together without
+ * a gap, Spines to the viewer, each month after a hairline ink sheet (under
+ * each group in the Stack, before it here) with its date above the row.
+ * Turned for a row: the Books stand on one line (gravity) instead of the
+ * Stack's sideways offsets; its front/back offsets and twists stay.
+ * `books` comes oldest first (inRowOrder 'chrono').
+ */
+export function layoutStackRow(books: Book[]): RowLayout {
+  const byId = new Map(books.map(book => [book.id, book]))
+  const poses: BookPose[] = []
+  const markers: RowMarker[] = []
+  let x = 0
+  for (const group of groups(books)) {
+    const marker: RowMarker = { key: group.key, label: group.label, count: group.bookIds.length, x: x + STACK_SHEET / 2, start: 0, end: 0 }
+    x += STACK_SHEET
+    marker.start = x
+    for (const id of group.bookIds) {
+      const book = byId.get(id)!
+      const dims = bookDimensions(book, FREE, FREE)
+      poses.push({
+        bookId: id,
+        ...dims,
+        x: x + dims.thickness / 2,
+        y: dims.height / 2,
+        z: -dims.depth / 2 + (random01(id, 'stack-z') - 0.5) * 2 * STACK_OFFSET_Z,
+        // The Stack twists a Book about the pile's axis: about x, turned.
+        rotation: [(random01(id, 'stack-twist') - 0.5) * 2 * STACK_TWIST, 0, 0],
+        color: color(id),
+        section: book.status,
+      })
+      x += dims.thickness
+    }
+    marker.end = x
+    markers.push(marker)
+  }
+  // The leader line runs down to the taller of the sheet's neighbours.
+  for (const marker of markers) {
+    const near = poses.filter(pose => Math.abs(pose.x - marker.x) < 0.04)
+    marker.height = Math.max(0.15, ...near.map(pose => pose.height))
+  }
+  return finish(poses, markers, 0.008)
+}
+
 // --- Variants ------------------------------------------------------------------------
 
 export const ROW_VARIANTS: Record<RowVariantKey, RowVariant> = {
+  s: {
+    key: 's',
+    name: 'Horizontal Stack',
+    blurb: 'Today\'s Stack turned 90°: Books pressed together without a gap, a hairline sheet before each month with its date above, the Stack\'s hover and its riffle while you scroll, the last read on the right.',
+    camera: { fov: 30, tilt: 14, targetY: 0.13, targetZ: 0, viewHeight: 0.38 },
+    focus: 'stack',
+    focusAt: 'centre',
+    labels: 'stack',
+    layout: layoutStackRow,
+  },
   a: {
     key: 'a',
     name: 'Standing row',

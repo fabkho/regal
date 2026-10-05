@@ -12,7 +12,7 @@ export interface RowFinding {
   bad: string[]
 }
 
-export const ROW_FINDINGS: Record<RowVariantKey, RowFinding> = {
+export const ROW_FINDINGS: Record<Exclude<RowVariantKey, 's'>, RowFinding> = {
   a: {
     facts: [
       { label: 'In a 360 card', value: '≈ 13 Books' },

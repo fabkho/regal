@@ -9,7 +9,10 @@ import type { RowVariantKey } from '#layers/regal/app/prototype/row/layout'
 import { useRowLibrary } from '#layers/regal/app/prototype/row/useRowLibrary'
 
 const route = useRoute()
-const key = computed<RowVariantKey>(() => (['a', 'b', 'c'].includes(String(route.params.variant)) ? String(route.params.variant) as RowVariantKey : 'a'))
+const key = computed<RowVariantKey>(() => (['a', 'b', 'c', 's'].includes(String(route.params.variant)) ? String(route.params.variant) as RowVariantKey : 'a'))
+/** The horizontal Stack (s) reads oldest to newest and starts at the newest, as the Stack does. */
+const rowOrder = computed(() => (key.value === 's' ? 'chrono' : order.value))
+const start = computed(() => (key.value === 's' && !year.value ? 'last' : 'first'))
 const variant = computed(() => ROW_VARIANTS[key.value])
 const { books, error, loading, source, count, year, order } = useRowLibrary()
 const only = computed(() => String(route.query.only ?? ''))
@@ -102,7 +105,8 @@ const query = (patch: Record<string, string | number | undefined>) => ({ query: 
           class="proto__card proto__card--small"
           :variant="key"
           :books="books"
-          :order="order"
+          :order="rowOrder"
+          :start="start"
           :title="title"
           :hud="hud"
         />
@@ -120,7 +124,8 @@ const query = (patch: Record<string, string | number | undefined>) => ({ query: 
           class="proto__card proto__card--wide"
           :variant="key"
           :books="books"
-          :order="order"
+          :order="rowOrder"
+          :start="start"
           :title="title"
           :hud="hud"
         />
@@ -135,7 +140,8 @@ const query = (patch: Record<string, string | number | undefined>) => ({ query: 
           class="proto__card proto__card--full"
           :variant="key"
           :books="books"
-          :order="order"
+          :order="rowOrder"
+          :start="start"
           :title="title"
           :hud="hud"
         />

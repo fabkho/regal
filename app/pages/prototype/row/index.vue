@@ -9,7 +9,7 @@ import { useRowLibrary } from '#layers/regal/app/prototype/row/useRowLibrary'
 
 const route = useRoute()
 const { books, error, loading, count, year, source, order } = useRowLibrary()
-const keys: RowVariantKey[] = ['a', 'b', 'c']
+const keys: Exclude<RowVariantKey, 's'>[] = ['a', 'b', 'c']
 const title = computed(() => (year.value ? `Read in ${year.value}` : `${books.value.length} books read`))
 const query = (patch: Record<string, string | number | undefined>) => ({ query: { ...route.query, ...patch } })
 
@@ -23,6 +23,9 @@ useHead({ title: 'Horizontal Stack: three prototypes — Regal' })
         Regal · design round · dev only
       </p>
       <h1>The Stack, sideways</h1>
+      <p class="compare__next">
+        Round 2, from (a): <NuxtLink to="/prototype/row/stack">the horizontal Stack →</NuxtLink>
+      </p>
       <p>
         Three ways to show the Books side by side, left to right, inline in a card (Libellus: the year in review, the Profile).
         Each card below is live: swipe or drag sideways (a vertical swipe scrolls this page), tap a Book to take it out, tap it
