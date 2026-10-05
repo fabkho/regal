@@ -174,3 +174,33 @@ describe('RegalBooksRow slots', () => {
     expect(header.find('.row-card__book-hint').exists()).toBe(true)
   })
 })
+
+describe('RegalBooksRow Back', () => {
+  it('shows Regal\'s Back by default; :back-button="false" hides it, the browser\'s Back still puts the Book back', async () => {
+    const shown = await mountRow()
+    await pickBook(shown)
+    expect(shown.find('.row-card__back').exists()).toBe(true)
+
+    const hidden = await mountRow({ props: { backButton: false } })
+    const card = await pickBook(hidden)
+    expect(hidden.find('.row-card__back').exists()).toBe(false)
+    expect(hidden.find('.row-card__details').exists()).toBe(true)
+    // A history entry while the Book is out (Escape and a tap beside it go through the stubbed 3D).
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await nextTick()
+    expect(card.pick.bookId).toBeNull()
+  })
+
+  it('#back replaces it where it goes; close puts the Book back', async () => {
+    const wrapper = await mountRow({
+      slots: { back: ({ book, close, broken }: { book: Book, close: () => void, broken: boolean }) => h('button', { class: 'host-back', onClick: close }, `${book.title} ${broken}`) },
+    })
+    const card = await pickBook(wrapper)
+    expect(wrapper.find('.row-card__back').exists()).toBe(false)
+    const slot = wrapper.find('.row-card__back-slot')
+    expect(slot.classes()).toContain('regal')
+    expect(slot.find('.host-back').text()).toBe(`${BOOK.title} false`)
+    await slot.find('.host-back').trigger('click')
+    expect(card.pick.bookId).toBeNull()
+  })
+})

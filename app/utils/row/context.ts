@@ -5,6 +5,7 @@ import type { Ref } from 'vue'
 import type { PerspectiveCamera } from 'three'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import type { LoadView } from '#layers/regal/app/utils/covers/loadWindow'
+import type { SpinMode } from '#layers/regal/app/utils/books/spin'
 
 /**
  * Where the camera is along the row, per frame. A LoadView along x: `focusY`
@@ -53,6 +54,8 @@ export interface RowContext {
   onCamera: ((camera: PerspectiveCamera, width: number, height: number) => void) | null
   /** Render only while the row shows (an IntersectionObserver in RowCard). */
   visible: Ref<boolean>
+  /** How a drag turns a Book taken out (RegalBooksRow's `rotate`, utils/books/spin.ts). */
+  rotate: Readonly<Ref<SpinMode>>
 }
 
 export function createRowView(): RowView {

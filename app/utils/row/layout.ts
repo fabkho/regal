@@ -139,3 +139,51 @@ export function rowLabels(markers: RowMarker[], pxPerMetre: number): RowLabel[] 
   }
   return shown
 }
+
+/** Where the row's native scroll puts the camera (RowCard). */
+export interface RowScroll {
+  /** World x the camera looks at with scrollLeft 0: the first (oldest) Book's centre. */
+  cameraStart: number
+  /** The scroll's range, px: from the first Book in the card's middle to the last. */
+  maxScroll: number
+  /** Width of the scrolled track, px: the card's width plus maxScroll. */
+  trackWidth: number
+}
+
+/**
+ * The row's scroll for a card `width` px wide at `pxPerMetre`. The focus line
+ * is the card's middle everywhere: the track has room before the first Book
+ * and after the last (half the card less half an end Book's Spine), so either
+ * end Book can stand in the middle as well, and the Book in focus never sits
+ * off-centre. Scrolled to its end, the newest Book is in the middle.
+ */
+export function rowScroll(layout: Pick<RowLayout, 'poses'>, width: number, pxPerMetre: number): RowScroll {
+  const first = layout.poses[0]?.x ?? 0
+  const last = layout.poses.at(-1)?.x ?? first
+  const span = Math.max(0, last - first) * pxPerMetre
+  // Whole px: scrollLeft only reaches whole (device) px at its end.
+  const maxScroll = span > 0.5 ? Math.ceil(span) : 0
+  return { cameraStart: first, maxScroll, trackWidth: Math.max(0, width) + maxScroll }
+}
+
+/** Px between the row's front bottom edge and the top of its focus label. */
+export const ROW_FOCUS_GAP = 10
+
+/**
+ * Where the focus label (title and stars of the Book in focus) sits, px from
+ * the card's top in a card `height` px tall: just under the row, where the
+ * camera sees the Books' front bottom edge (the floor at z = 0) in the
+ * middle. Fixed: the same for every Book in focus and every card width, so
+ * the label doesn't wander; it is centred across the card (RowCard).
+ */
+export function rowFocusLabelTop(height: number): number {
+  const fov = ROW_CAMERA.fov * Math.PI / 180
+  const tilt = ROW_CAMERA.tilt * Math.PI / 180
+  const distance = ROW_CAMERA.viewHeight / (2 * Math.tan(fov / 2))
+  // The floor's front edge under the camera's target, in the camera's frame:
+  // how far below the view's axis, over how far ahead.
+  const below = ROW_CAMERA.targetY * Math.cos(tilt) - ROW_CAMERA.targetZ * Math.sin(tilt)
+  const ahead = distance + ROW_CAMERA.targetY * Math.sin(tilt) + ROW_CAMERA.targetZ * Math.cos(tilt)
+  const ndc = below / ahead / Math.tan(fov / 2)
+  return height / 2 * (1 + ndc) + ROW_FOCUS_GAP
+}

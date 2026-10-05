@@ -29,7 +29,19 @@ const props = withDefaults(defineProps<{
   theme?: RegalTheme
   /** Structure and minimal layout CSS only: no colours, frame or type of Regal's. */
   unstyled?: boolean
-}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false })
+  /**
+   * Regal's Back button while a Book is out. `false` hides it: Escape, the
+   * browser's Back, a tap beside the Book and the details' `close` still put
+   * it back (a host with its own close in `#detail`). `#back` replaces it.
+   */
+  backButton?: boolean
+  /**
+   * Turning a Book taken out: `'free'` spins it about both axes like a
+   * trackball (drag up/down tips it, left/right turns it); `'turntable'` turns
+   * it left/right and tips it a little (the Stage's).
+   */
+  rotate?: 'free' | 'turntable'
+}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free' })
 
 defineSlots<{
   /** The focus label's content (title and stars under the Book in focus). */
@@ -44,6 +56,8 @@ defineSlots<{
   'detail-about'?: (scope: { book: Book, description: string | null }) => unknown
   /** Turn over · drag or flick to turn. */
   'detail-actions'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face }) => unknown
+  /** Instead of Regal's Back button while a Book is out (top left of the card, or of the screen broken out). */
+  'back'?: (scope: { book: Book, close: () => void, broken: boolean }) => unknown
 }>()
 
 useRegalLibrary()
@@ -79,6 +93,8 @@ const { rootAttrs } = provideRegalUi({
       :inspect="props.inspect"
       :start="props.year ? 'oldest' : 'newest'"
       :label="ariaLabel"
+      :back-button="props.backButton"
+      :rotate="props.rotate"
     />
     <p
       v-else-if="source"

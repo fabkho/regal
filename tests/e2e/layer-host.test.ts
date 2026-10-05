@@ -5,6 +5,28 @@ import { describe, expect, it } from 'vitest'
 // Regal as a Nuxt layer: tests/fixtures/layer-host extends the repo root and
 // puts RegalBooksStage + RegalBooksSidebar on /books and two RegalBooksRow
 // cards on /profile, fed a synthetic Regal library file (public/books/library.json).
+/** Share of a card's middle band that is dark (the Spines), from a screenshot. */
+async function inkShare(page: Awaited<ReturnType<typeof createPage>>, card: ReturnType<Awaited<ReturnType<typeof createPage>>['locator']>) {
+  const png = await card.screenshot({ type: 'png' })
+  return page.evaluate(async (data) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${data}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')!
+    context.drawImage(image, 0, 0)
+    const top = Math.round(image.height * 0.35)
+    const pixels = context.getImageData(0, top, image.width, Math.round(image.height * 0.35)).data
+    let dark = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (0.3 * pixels[index]! + 0.59 * pixels[index + 1]! + 0.11 * pixels[index + 2]! < 160) dark++
+    }
+    return dark / (pixels.length / 4)
+  }, png.toString('base64'))
+}
+
 describe('Regal as a Nuxt layer', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('../fixtures/layer-host', import.meta.url)),
@@ -102,9 +124,17 @@ describe('Regal as a Nuxt layer', async () => {
     await page.keyboard.press('Escape')
     await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
 
-    // Breaking out: the canvas covers the viewport, the page is held, Escape lands it back.
+    // The focus label stays in one place: centred across the card, under the row.
     const second = rows.nth(1)
     await second.locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    for (const row of [first, second]) {
+      const card = (await row.boundingBox())!
+      const label = (await row.locator('.row-focus__inner').boundingBox())!
+      expect(Math.abs(label.x + label.width / 2 - (card.x + card.width / 2))).toBeLessThan(2)
+      expect(label.y - card.y).toBeGreaterThan(card.height * 0.75)
+    }
+
+    // Breaking out: the canvas covers the viewport, the page is held, Escape lands it back.
     await second.locator('.row-card__scroller').focus()
     await page.keyboard.press('Enter')
     await expect.poll(() => second.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
@@ -115,6 +145,10 @@ describe('Regal as a Nuxt layer', async () => {
     await expect.poll(() => page.locator('.row-card__view--out').count(), { timeout: 5_000 }).toBe(0)
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
     expect(await second.locator('canvas').count()).toBe(1)
+    // Landed back, the Spines are drawn (not only the HTML dates and label): the
+    // canvas was resized on the way in, which clears it (utils/stage/frameGate.ts).
+    await page.waitForTimeout(1200)
+    expect(await inkShare(page, second)).toBeGreaterThan(0.05)
 
     expect(errors).toEqual([])
     await page.close()

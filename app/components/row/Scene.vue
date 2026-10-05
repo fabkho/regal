@@ -10,6 +10,7 @@ import { useLoop, useTres } from '@tresjs/core'
 import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
+import { createFrameGate } from '#layers/regal/app/utils/stage/frameGate'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { ROW_CAMERA, ROW_SHEET, ROW_SHEET_HEIGHT } from '#layers/regal/app/utils/row/layout'
@@ -185,22 +186,25 @@ function lightBothLayers() {
 }
 
 // On demand: a frame only when what it would show changed (utils/stage/frameState.ts),
-// and none while the card is off screen.
-let drawnMotion: number | null = null
-let drawnLooks: number | null = null
+// and none while the card is off screen. Every resize of the drawing buffer
+// (Tres', the break-out's, landing back in the card) clears it, so the gate
+// then draws again even when nothing moved (utils/stage/frameGate.ts).
+const gate = createFrameGate(renderer)
 render((notify) => {
   const camera3 = camera.value
   if (!camera3 || !props.ctx.visible.value) return
   const canvas = renderer.domElement as HTMLCanvasElement
-  const motion = motionKey(scene.value, camera3, canvas.width, canvas.height)
-  const looks = motion === drawnMotion ? looksKey(scene.value) : null
-  if (motion === drawnMotion && looks === drawnLooks) return
+  if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value))) return
   if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
   else renderer.render(scene.value, camera3)
   notify()
-  drawnMotion = motion
-  drawnLooks = looks
+  gate.drawn()
 })
+// Off screen nothing is drawn; back on screen, what shows may be stale.
+watch(props.ctx.visible, (visible) => {
+  if (visible) gate.invalidate()
+})
+onBeforeUnmount(() => gate.dispose())
 
 watch(keyLight, (light) => {
   if (!light) return

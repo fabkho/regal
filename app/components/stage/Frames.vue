@@ -7,6 +7,7 @@
 // Renders nothing.
 import { useLoop, useTres } from '@tresjs/core'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
+import { createFrameGate } from '#layers/regal/app/utils/stage/frameGate'
 import { createPacing, paceFrame } from '#layers/regal/app/utils/stage/quality'
 
 /** The first moments (ms) are busy loading the pile: frame pacing starts after them. */
@@ -19,11 +20,10 @@ const { render } = useLoop()
 
 /**
  * What the last rendered frame showed (utils/stage/frameState.ts): where
- * things were, and how they looked (null: not read since; while things move
- * every frame is drawn, so the looks are only read once they rest).
+ * things were, and how they looked (utils/stage/frameGate.ts).
  */
-let drawnMotion: number | null = null
-let drawnLooks: number | null = null
+const gate = createFrameGate(renderer)
+onBeforeUnmount(() => gate.dispose())
 const pacing = createPacing()
 let lastRender = 0
 const startedAt = performance.now()
@@ -34,14 +34,13 @@ render((notify) => {
   const cam = camera.value
   if (!cam) return
   const canvas = renderer.domElement as HTMLCanvasElement
-  // A resized drawing buffer is blank: it needs a frame even when nothing moved.
-  const motion = motionKey(scene.value, cam, canvas.width, canvas.height)
-  const looks = motion === drawnMotion ? looksKey(scene.value) : null
-  if (quality.value.onDemand && motion === drawnMotion && looks === drawnLooks) return
+  // A resized drawing buffer is blank: it needs a frame even when nothing
+  // moved (the gate forgets the last frame on every setSize, the same size too).
+  const due = gate.due(motionKey(scene.value, cam, canvas.width, canvas.height), () => looksKey(scene.value))
+  if (quality.value.onDemand && !due) return
   renderer.render(scene.value, cam)
   notify()
-  drawnMotion = motion
-  drawnLooks = looks
+  gate.drawn()
 
   const now = performance.now()
   const { minDpr } = quality.value

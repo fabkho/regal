@@ -19,7 +19,13 @@ const props = withDefaults(defineProps<{
   theme?: RegalTheme
   /** Structure and minimal layout CSS only: no colours, frame or type of Regal's. */
   unstyled?: boolean
-}>(), { controls: false, theme: undefined, unstyled: false })
+  /**
+   * Turning a picked Book with a drag: `'turntable'` (default, as always)
+   * turns it left/right and tips it a little; `'free'` spins it about both
+   * axes like a trackball, gliding on after a release (RegalBooksRow's default).
+   */
+  rotate?: 'free' | 'turntable'
+}>(), { controls: false, theme: undefined, unstyled: false, rotate: 'turntable' })
 
 defineSlots<{
   /** The tooltip's content (hover and scroll focus label). */
@@ -58,6 +64,7 @@ const { rootAttrs } = provideRegalUi({
       stack-only
       show-details
       :show-controls="props.controls"
+      :rotate="props.rotate"
     />
   </div>
 </template>

@@ -53,6 +53,8 @@ import { createGlintSettle, GLINT_DELAY, glintDelay, settledGlint } from '#layer
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
+import { createSpin, dragSpin, glideSpin, resetSpin, spinQuaternion, startSettle, stopGlide } from '#layers/regal/app/utils/books/spin'
+import type { Spin, SpinMode } from '#layers/regal/app/utils/books/spin'
 
 const props = withDefaults(defineProps<{
   poses: BookPose[]
@@ -63,7 +65,9 @@ const props = withDefaults(defineProps<{
   shuffle?: 'animate' | 'instant'
   /** ?debug=loads: logs every change to a face the pile shows, and whether it was on screen (window.__regalLoads). */
   debugLoads?: boolean
-}>(), { aside: true, shuffle: 'instant', debugLoads: false })
+  /** How a drag turns the picked Book: the turntable (left/right, a little tip) or freely (utils/books/spin.ts). */
+  rotate?: SpinMode
+}>(), { aside: true, shuffle: 'instant', debugLoads: false, rotate: 'turntable' })
 
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
 const hoveredBook = useState<string | null>('books:hovered', () => null)
@@ -105,7 +109,6 @@ const PULL_PHASE = 0.3
 const OUT_SECONDS = 1.2
 const RETURN_SECONDS = 0.9
 const FLIP_SECONDS = 0.7
-const SPIN_PER_PX = 0.01
 
 const geometry = new BoxGeometry(1, 1, 1)
 
@@ -151,7 +154,8 @@ interface Motion {
   hover: number
   pick: { value: number }
   flip: { value: number }
-  spin: { x: number, y: number }
+  /** The drag's turn (utils/books/spin.ts; props.rotate). */
+  spin: Spin
   glint: { value: number }
 }
 
@@ -322,7 +326,7 @@ function materialsFor(pose: BookPose): Material[] {
 function motionFor(bookId: string): Motion {
   let motion = motionByBook.get(bookId)
   if (!motion) {
-    motion = { shown: { position: new Vector3(), quaternion: new Quaternion(), ready: false }, hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: { x: 0, y: 0 }, glint: { value: 1 } }
+    motion = { shown: { position: new Vector3(), quaternion: new Quaternion(), ready: false }, hover: 0, pick: { value: 0 }, flip: { value: 0 }, spin: createSpin(), glint: { value: 1 } }
     motionByBook.set(bookId, motion)
   }
   return motion
@@ -671,12 +675,12 @@ watch(pickedId, (id, previous) => {
     const motion = motionFor(previous)
     tween(motion.pick, 0, RETURN_SECONDS)
     tween(motion.flip, 0, RETURN_SECONDS)
-    gsap.to(motion.spin, { x: 0, y: 0, duration: reduced.value ? 0 : RETURN_SECONDS, ease: 'power2.inOut' })
+    settleSpin(motion.spin, RETURN_SECONDS)
   }
   if (id) {
     const motion = motionFor(id)
-    motion.spin.x = 0
-    motion.spin.y = 0
+    gsap.killTweensOf(motion.spin)
+    resetSpin(motion.spin)
     motion.flip.value = 0
     tween(motion.pick, 1, OUT_SECONDS)
   }
@@ -893,19 +897,30 @@ watch(face, (value) => {
   const motion = motionFor(pickedId.value)
   tween(motion.flip, value === 'back' ? Math.PI : 0, FLIP_SECONDS)
   // Flipping squares the Book up again, so front and back come round cleanly.
-  gsap.to(motion.spin, { x: 0, y: 0, duration: reduced.value ? 0 : FLIP_SECONDS, ease: 'power2.inOut' })
+  settleSpin(motion.spin, FLIP_SECONDS)
 })
 
-// Drag to spin the picked Book.
+/** The spin eases back square (a turn over, the way back). */
+function settleSpin(spin: Spin, seconds: number) {
+  gsap.to(spin, { ...startSettle(spin), duration: reduced.value ? 0 : seconds, ease: 'power2.inOut', overwrite: true })
+}
+
+// Drag to spin the picked Book (utils/books/spin.ts): the turntable, or
+// freely about both axes with a glide after the release (props.rotate).
 let dragging = false
 let lastX = 0
 let lastY = 0
+let lastMoveAt = 0
 
 function onPointerDown(event: PointerEvent) {
   if (!pickedId.value) return
+  const spin = motionFor(pickedId.value).spin
+  gsap.killTweensOf(spin)
+  stopGlide(spin)
   dragging = true
   lastX = event.clientX
   lastY = event.clientY
+  lastMoveAt = event.timeStamp
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -915,15 +930,17 @@ function onPointerMove(event: PointerEvent) {
   if (!dragging || !pickedId.value) return
   const dx = event.clientX - lastX
   const dy = event.clientY - lastY
+  const ms = Math.max(1, event.timeStamp - lastMoveAt)
   lastX = event.clientX
   lastY = event.clientY
-  const spin = motionFor(pickedId.value).spin
-  spin.x += dx * SPIN_PER_PX
-  spin.y = MathUtils.clamp(spin.y + dy * SPIN_PER_PX, -1.3, 1.3)
+  lastMoveAt = event.timeStamp
+  dragSpin(motionFor(pickedId.value).spin, dx, dy, props.rotate, { ms })
   setCursor('grabbing')
 }
 
-function onPointerUp() {
+function onPointerUp(event: PointerEvent) {
+  // Held still before letting go: no glide.
+  if (dragging && pickedId.value && event.timeStamp - lastMoveAt >= 80) stopGlide(motionFor(pickedId.value).spin)
   dragging = false
   if (pickedId.value) setCursor('grab')
 }
@@ -1235,10 +1252,11 @@ onBeforeRender(({ delta }) => {
         lookDummy.position.copy(inspectPosition)
         lookDummy.up.copy(up)
         lookDummy.lookAt(cam.position)
-        // Face the camera with the front Cover (+x), then flip and spin.
+        // Face the camera with the front Cover (+x), then the drag's turn, then the turn over.
+        if (pickedId.value === pose.bookId && !dragging) glideSpin(motion.spin, (delta ?? 0.016) * 1000, props.rotate)
         inspectQuaternion.copy(lookDummy.quaternion)
-          .multiply(partial.setFromAxisAngle(X_AXIS, motion.spin.y))
-          .multiply(partial.setFromAxisAngle(Y_AXIS, motion.spin.x + motion.flip.value - Math.PI / 2))
+          .multiply(spinQuaternion(motion.spin, props.rotate, partial))
+          .multiply(partial.setFromAxisAngle(Y_AXIS, motion.flip.value - Math.PI / 2))
         const t = smooth((pick - PULL_PHASE) / (1 - PULL_PHASE))
         mesh.position.lerpVectors(pulledPosition, inspectPosition, t)
         mesh.quaternion.slerpQuaternions(baseQuaternion, inspectQuaternion, t)

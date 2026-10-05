@@ -21,7 +21,9 @@ const props = withDefaults(defineProps<{
   showDetails?: boolean
   /** Hide the Bookcase/Stack switch (a page that only shows the Stack). */
   stackOnly?: boolean
-}>(), { showControls: true, showDetails: true, stackOnly: false })
+  /** How a drag turns a picked Book (utils/books/spin.ts). */
+  rotate?: 'free' | 'turntable'
+}>(), { showControls: true, showDetails: true, stackOnly: false, rotate: 'turntable' })
 
 const route = useRoute()
 const router = useRouter()
@@ -179,6 +181,7 @@ watch(books, (list) => {
             :poses="poses"
             :books="books"
             :aside="props.showDetails"
+            :rotate="props.rotate"
           />
         </BookcaseScene>
         <StackScene
@@ -196,6 +199,7 @@ watch(books, (list) => {
             :poses="poses"
             :books="books"
             :aside="props.showDetails"
+            :rotate="props.rotate"
             shuffle="animate"
             :debug-loads="debugLoads"
           />
