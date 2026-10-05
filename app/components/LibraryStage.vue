@@ -11,7 +11,8 @@ import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/
 import { SEPARATOR_THICKNESS, SIDE_LABEL_FIT_WIDTH, SIDE_STYLES } from '#layers/regal/app/utils/stack/separators'
 import type { ViewMode } from '#layers/regal/app/composables/useBookPick'
 import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
-import { showsSheet } from '#layers/regal/app/utils/books/sheet'
+import { sheetMaxHeight, showsSheet } from '#layers/regal/app/utils/books/sheet'
+import { stageInsets } from '#layers/regal/app/utils/books/inspect'
 
 const props = withDefaults(defineProps<{
   /** Sort & filter controls over the 3D (off when a sidebar shows them). */
@@ -95,16 +96,35 @@ const showStackControls = computed(() => props.showControls && mode.value === 's
 const hasTop = computed(() => !props.stackOnly || showStackControls.value)
 
 // Narrow stages (a phone) show the details as a bottom sheet instead of the
-// card, which would cover the picked Book there (utils/books/sheet.ts).
+// card, which would cover the picked Book there (utils/books/sheet.ts). The
+// sheet sits on the viewport's bottom edge, over whatever the host has under
+// the stage, so it lives in <body> (the stage clips what it holds).
 const { width: stageWidth, height: stageHeight } = useElementSize(stageElement)
 const sheet = computed(() => props.showDetails && showsSheet(stageWidth.value))
-// The picked Book floats below the top band too (utils/books/inspect.ts).
+const { top: stageTop, bottom: stageBottom } = useElementBounding(stageElement)
+const { height: viewportHeight } = useWindowSize()
+const sheetHeight = computed(() => sheetMaxHeight({ stageHeight: stageHeight.value, stageBottom: stageBottom.value, viewportHeight: viewportHeight.value }))
+// The picked Book floats between what covers the stage (utils/books/inspect.ts):
+// its own band at the top, the sheet at the bottom, and the viewport's edges.
 const { height: topHeight } = useElementSize(topElement, undefined, { box: 'border-box' })
 const insets = useInspectInsets()
 /** The band's fade below it (.stage__top--band::after). */
 const TOP_FADE = 24
 watchEffect(() => {
-  insets.value.top = sheet.value && hasTop.value ? topHeight.value + (mode.value === 'stack' ? TOP_FADE : 0) : 0
+  if (!sheet.value) {
+    insets.value.top = 0
+    insets.value.bottom = 0
+    return
+  }
+  const covered = stageInsets({
+    stageTop: stageTop.value,
+    stageBottom: stageBottom.value,
+    viewportHeight: viewportHeight.value,
+    sheetTop: insets.value.sheetTop,
+    band: hasTop.value ? topHeight.value + (mode.value === 'stack' ? TOP_FADE : 0) : 0,
+  })
+  insets.value.top = covered.top
+  insets.value.bottom = covered.bottom
 })
 
 function setMode(value: ViewMode) {
@@ -255,13 +275,18 @@ watch(books, (list) => {
       Scroll to browse · click a book to take it out
     </p>
 
-    <BooksDetails
-      v-if="props.showDetails"
-      class="stage__details"
-      :class="{ 'stage__details--sheet': sheet }"
-      :sheet="sheet"
-      :stage-height="stageHeight"
-    />
+    <Teleport
+      to="body"
+      :disabled="!sheet"
+    >
+      <BooksDetails
+        v-if="props.showDetails"
+        class="stage__details"
+        :class="{ 'stage__details--sheet': sheet }"
+        :sheet="sheet"
+        :max-height="sheetHeight"
+      />
+    </Teleport>
 
     <p
       v-show="!isReady && !error"
@@ -417,12 +442,16 @@ watch(books, (list) => {
   width: min(22rem, calc(100% - 2rem));
 }
 
-/* The sheet: full width on the bottom edge, its side and bottom borders just outside. */
+/* The sheet (in <body>): full width on the viewport's bottom edge, its side
+   and bottom borders just outside. Above the host's page content, below its
+   sticky bars and their panels (z-index 20 and up); a host can move it with
+   --regal-sheet-z-index. */
 .stage__details--sheet {
+  position: fixed;
   right: -1px;
   bottom: -1px;
   left: -1px;
-  z-index: 4;
+  z-index: var(--regal-sheet-z-index, 15);
   width: auto;
 }
 </style>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { INSPECT_ASIDE, INSPECT_FILL, INSPECT_LIFT, inspectFrame } from '../../app/utils/books/inspect'
-import { dragOffset, RUBBER, settleDrag, SHEET_MAX_WIDTH, showsSheet } from '../../app/utils/books/sheet'
+import { INSPECT_ASIDE, INSPECT_FILL, INSPECT_LIFT, inspectFrame, LIFT_FADE, stageInsets } from '../../app/utils/books/inspect'
+import { dragOffset, RUBBER, settleDrag, SHEET_MAX_WIDTH, SHEET_SHARE, sheetMaxHeight, showsSheet } from '../../app/utils/books/sheet'
 
 const FOV = 38 * Math.PI / 180
 const tan = Math.tan(FOV / 2)
@@ -37,6 +37,26 @@ describe('inspectFrame', () => {
     }
   })
 
+  it('sits centred in the band between a bar and a sheet', () => {
+    const book = { fov: FOV, aspect: 0.62, height: 0.2, depth: 0.13 }
+    for (const [top, bottom] of [[0, 0.33], [0.1, 0.3], [0.05, 0.4]] as const) {
+      const edge = edges({ ...book, top, bottom })
+      expect((edge.top + edge.bottom) / 2).toBeCloseTo(top + (1 - top - bottom) / 2, 6)
+    }
+  })
+
+  it('lets the lift go gradually as the view gets covered, so the Book never jumps', () => {
+    const book = { fov: FOV, aspect: 0.62, height: 0.2, depth: 0.13 }
+    const centreShift = (bottom: number) => {
+      const edge = edges({ ...book, bottom })
+      return (1 - bottom) / 2 - (edge.top + edge.bottom) / 2
+    }
+    expect(centreShift(0)).toBeGreaterThan(0)
+    expect(centreShift(LIFT_FADE / 2)).toBeGreaterThan(0)
+    expect(centreShift(LIFT_FADE / 2)).toBeLessThan(centreShift(0))
+    expect(centreShift(LIFT_FADE)).toBeCloseTo(0, 9)
+  })
+
   it('keeps clear of a top band too', () => {
     const { top, bottom } = edges({ fov: FOV, aspect: 0.62, height: 0.2, depth: 0.13, top: 0.12, bottom: 0.3 })
     expect(top).toBeGreaterThan(0.12)
@@ -53,6 +73,35 @@ describe('inspectFrame', () => {
     const frame = inspectFrame({ fov: FOV, aspect: 0.4, height: 0.2, depth: 0.2 })
     const width = 0.2 / (2 * frame.distance * tan * 0.4)
     expect(width).toBeLessThanOrEqual(0.8 + 1e-9)
+  })
+})
+
+describe('stageInsets', () => {
+  const stage = { stageTop: 91, stageBottom: 851, viewportHeight: 915, band: 0 }
+
+  it('covers the stage from the sheet\'s top edge down, the sheet being on the viewport\'s bottom edge', () => {
+    expect(stageInsets({ ...stage, sheetTop: 540 })).toEqual({ top: 0, bottom: 311 })
+  })
+
+  it('counts what the viewport cuts off: the stage above its top, below its bottom', () => {
+    expect(stageInsets({ ...stage, stageTop: -40, stageBottom: 720, sheetTop: null })).toEqual({ top: 40, bottom: 0 })
+    expect(stageInsets({ ...stage, stageBottom: 1000, sheetTop: null })).toEqual({ top: 0, bottom: 85 })
+  })
+
+  it('takes the stage\'s own top band where it is lower than the viewport\'s edge', () => {
+    expect(stageInsets({ ...stage, band: 60, sheetTop: 600 })).toEqual({ top: 60, bottom: 251 })
+  })
+
+  it('never covers more than the stage', () => {
+    expect(stageInsets({ ...stage, sheetTop: 0 })).toEqual({ top: 0, bottom: 760 })
+    expect(stageInsets({ ...stage, stageBottom: stage.stageTop, sheetTop: 500 })).toEqual({ top: 0, bottom: 0 })
+  })
+})
+
+describe('sheetMaxHeight', () => {
+  it('reaches SHEET_SHARE up the stage, plus what lies between the stage and the viewport\'s bottom', () => {
+    expect(sheetMaxHeight({ stageHeight: 700, stageBottom: 800, viewportHeight: 900 })).toBe(Math.round(700 * SHEET_SHARE + 100))
+    expect(sheetMaxHeight({ stageHeight: 700, stageBottom: 950, viewportHeight: 900 })).toBe(Math.round(700 * SHEET_SHARE))
   })
 })
 
