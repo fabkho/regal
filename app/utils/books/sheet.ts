@@ -1,12 +1,22 @@
 // The details as a bottom sheet on narrow stages (a phone), where the card
-// at the bottom right would cover the picked Book. Docked to the stage's
-// bottom edge, full width, at most SHEET_SHARE of the stage tall; what
+// at the bottom right would cover the picked Book. On the viewport's bottom
+// edge, full width, over whatever the host has under the stage; its top edge
+// no higher than SHEET_SHARE of the stage up from the stage's bottom. What
 // doesn't fit scrolls inside. Dragging its grip down puts the Book back.
 
 /** Stages this wide or narrower show the sheet instead of the card. */
 export const SHEET_MAX_WIDTH = 560
-/** The sheet's most height, as a share of the stage. */
+/** How far up the stage the sheet reaches at most, as a share of the stage. */
 export const SHEET_SHARE = 0.4
+
+/**
+ * The sheet's most height (px): SHEET_SHARE of the stage, plus the room
+ * between the stage's bottom and the viewport's (the host's content there,
+ * which the sheet covers while it is open).
+ */
+export function sheetMaxHeight(input: { stageHeight: number, stageBottom: number, viewportHeight: number }): number {
+  return Math.round(input.stageHeight * SHEET_SHARE + Math.max(0, input.viewportHeight - input.stageBottom))
+}
 
 /** A stage `width` px wide shows the sheet (0: not measured yet, the card as before). */
 export function showsSheet(width: number): boolean {

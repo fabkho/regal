@@ -1,15 +1,15 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
-// A card; on narrow stages (a phone) a bottom sheet (utils/books/sheet.ts).
-import { SHEET_SHARE } from '#layers/regal/app/utils/books/sheet'
+// A card; on narrow stages (a phone) a bottom sheet (utils/books/sheet.ts),
+// placed by the stage on the viewport's bottom edge.
 
 const props = withDefaults(defineProps<{
   /** Show as a bottom sheet (narrow stages) instead of the card. */
   sheet?: boolean
-  /** The stage's height (px), for the sheet's most height. */
-  stageHeight?: number
-}>(), { sheet: false, stageHeight: 0 })
+  /** The sheet's most height, px (utils/books/sheet.ts sheetMaxHeight). */
+  maxHeight?: number
+}>(), { sheet: false, maxHeight: 0 })
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
@@ -44,13 +44,13 @@ watch(() => shown.value?.id, () => {
 
 // --- Bottom sheet (narrow stages) -------------------------------------------
 
-// At most SHEET_SHARE of the stage; what doesn't fit scrolls inside. The cap
-// is on the body, not the sheet: the sheet's height animates (useCardSwap)
-// and must not squeeze what it measures. Less the grip and the bottom
-// padding, so the whole sheet stays within its share.
+// At most maxHeight; what doesn't fit scrolls inside. The cap is on the
+// body, not the sheet: the sheet's height animates (useCardSwap) and must
+// not squeeze what it measures. Less the grip and the bottom padding, so the
+// whole sheet stays within it.
 const bodyStyle = computed(() => {
-  if (!props.sheet || !props.stageHeight) return undefined
-  return { maxHeight: `calc(${Math.round(props.stageHeight * SHEET_SHARE)}px - 2.3rem - env(safe-area-inset-bottom, 0px))` }
+  if (!props.sheet || !props.maxHeight) return undefined
+  return { maxHeight: `calc(${props.maxHeight}px - 2.3rem - env(safe-area-inset-bottom, 0px))` }
 })
 
 const { dragging, handlers: grip } = useSheetDrag({
@@ -76,21 +76,30 @@ watch(() => shown.value?.id, () => {
 })
 
 // The picked Book floats above the sheet (utils/books/inspect.ts): it tells
-// the 3D how tall it is. Dragged, it covers the Book for a moment instead of
-// pushing it around.
+// the stage where its top edge rests. Dragged or sliding in, it covers the
+// Book for a moment instead of pushing it around. Put away, the last place
+// stays, so a Book on its way back doesn't change course.
 const insets = useInspectInsets()
-function reportHeight() {
-  if (!props.sheet || !root.value || dragging.value) return
-  insets.value.bottom = root.value.offsetHeight
+const entering = ref(false)
+function reportTop() {
+  if (!props.sheet || !root.value || dragging.value || entering.value) return
+  insets.value.sheetTop = root.value.getBoundingClientRect().top
 }
-useResizeObserver(root, reportHeight)
+useResizeObserver(root, reportTop)
+// The sheet sits on the viewport's bottom edge: a viewport resize (the
+// browser's toolbar coming and going) moves it without resizing it.
+useEventListener('resize', reportTop, { passive: true })
 watch(() => props.sheet, (sheet, previous) => {
-  if (sheet) nextTick(reportHeight)
-  else if (previous) insets.value.bottom = 0
+  if (sheet) nextTick(reportTop)
+  else if (previous) insets.value.sheetTop = null
 })
 onBeforeUnmount(() => {
-  if (props.sheet) insets.value.bottom = 0
+  if (props.sheet) insets.value.sheetTop = null
 })
+function onEntered() {
+  entering.value = false
+  reportTop()
+}
 
 const STATUS_LABELS: Record<string, string> = {
   'read': 'Read',
@@ -131,6 +140,9 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   <Transition
     name="details"
     :css="morph.cardFade"
+    @before-enter="entering = morph.cardFade"
+    @after-enter="onEntered"
+    @enter-cancelled="onEntered"
   >
     <article
       v-if="book"
@@ -451,10 +463,23 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 }
 
 /* --- Bottom sheet (narrow stages; utils/books/sheet.ts) ---------------------
-   Docked to the stage's bottom edge, full width; its side and bottom borders
-   sit just outside the stage (LibraryStage), so only the top hairline shows. */
+   On the viewport's bottom edge, full width, out of the stage (LibraryStage
+   teleports it to <body>); its side and bottom borders sit just outside the
+   viewport, so only the top hairline shows. Out of the stage it brings its
+   own type (what RegalBooksStage gives its content). */
 .details--sheet {
   padding: 0 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  color: var(--color-ink, #2C2C2A);
+  font-family: var(--font-mono, 'IBM Plex Mono', 'Courier New', Courier, monospace);
+  font-size: var(--text-base, 0.85rem);
+  line-height: 1.4;
+}
+
+.details--sheet,
+.details--sheet *,
+.details--sheet *::before,
+.details--sheet *::after {
+  box-sizing: border-box;
 }
 
 .details--dragging {
