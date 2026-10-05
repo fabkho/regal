@@ -29,7 +29,7 @@
 // break-out (the canvas box with its labels, Back, the details) is a `.regal`
 // surface carrying the tokens resolved on RegalBooksRow's root, and the veil
 // takes the card's surface colour.
-import { ACESFilmicToneMapping, MathUtils, SRGBColorSpace, Vector3, VSMShadowMap } from 'three'
+import { ACESFilmicToneMapping, SRGBColorSpace, Vector3, VSMShadowMap } from 'three'
 import type { PerspectiveCamera } from 'three'
 import gsap from 'gsap'
 import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
@@ -108,8 +108,12 @@ const cameraStart = computed(() => scroll.value.cameraStart)
 const maxScroll = computed(() => scroll.value.maxScroll)
 const scrolls = computed(() => maxScroll.value > 0)
 
-/** Scroll progress 0..1, for the hairline indicator. */
+/** Scroll progress 0..1, for the scroll bar. */
 const progress = ref(0)
+/** True while the row moves and a moment after: the scroll bar wakes. */
+const scrolling = ref(false)
+let scrollingTimer: ReturnType<typeof setTimeout> | undefined
+const scrollerId = useId()
 
 /**
  * The row starts at its last Book (the Stack starts at its top) once the card
@@ -145,6 +149,9 @@ let mouseTravel = 0
 
 function onScroll() {
   syncCamera()
+  scrolling.value = true
+  clearTimeout(scrollingTimer)
+  scrollingTimer = setTimeout(() => (scrolling.value = false), 900)
   // The scroll leads: the riffle runs, hover waits until the mouse moves again.
   if (started) {
     ctx.view.scrollLed = true
@@ -454,7 +461,20 @@ onBeforeUnmount(() => {
 })
 
 const dpr = computed<[number, number]>(() => [1, quality.value.maxDpr])
-const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.value) * 100))
+/** The share of the row the card shows, 0..1: the scroll bar's thumb. */
+const share = computed(() => Math.min(1, width.value / Math.max(1, trackWidth.value)))
+/** "Book 12 of 77": the Book in focus, for the scroll bar's value text. */
+const barText = computed(() => {
+  const index = oldestFirst.value.findIndex(book => book.id === ctx.focused.value)
+  return index < 0 ? `${oldestFirst.value.length} books` : `Book ${index + 1} of ${oldestFirst.value.length}`
+})
+/** The reader moves the thumb: the row follows at once. */
+function scrub(value: number) {
+  const element = scroller.value
+  if (!element) return
+  noteReader()
+  element.scrollLeft = value * maxScroll.value
+}
 </script>
 
 <template>
@@ -467,6 +487,7 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
     :aria-label="label"
   >
     <div
+      :id="scrollerId"
       ref="scroller"
       class="row-card__scroller"
       tabindex="0"
@@ -562,13 +583,15 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
       </div>
     </div>
 
-    <div
+    <RowScrollbar
       v-if="scrolls && !pickedId"
-      class="row-card__progress"
-      aria-hidden="true"
-    >
-      <span :style="{ left: `${MathUtils.clamp(progress, 0, 1) * (100 - share)}%`, width: `${share}%` }" />
-    </div>
+      :progress="progress"
+      :share="share"
+      :scrolling="scrolling"
+      :controls="scrollerId"
+      :text="barText"
+      @scrub="scrub"
+    />
 
     <button
       v-if="scrolls && !pickedId && progress > 0.001"
@@ -578,7 +601,12 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
       tabindex="-1"
       @click="scrollStep(-1)"
     >
-      ‹
+      <svg
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <path d="M10.25 3.5 5.75 8l4.5 4.5" />
+      </svg>
     </button>
     <button
       v-if="scrolls && !pickedId && progress < 0.999"
@@ -588,7 +616,12 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
       tabindex="-1"
       @click="scrollStep(1)"
     >
-      ›
+      <svg
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <path d="M5.75 3.5 10.25 8l-4.5 4.5" />
+      </svg>
     </button>
 
     <Teleport
@@ -923,60 +956,68 @@ const share = computed(() => Math.min(100, width.value / Math.max(1, trackWidth.
   color: var(--_regal-accent);
 }
 
-.row-card__progress {
-  position: absolute;
-  left: 0.7rem;
-  right: 0.7rem;
-  bottom: 0.45rem;
-  height: 1px;
-  background: var(--_regal-hairline);
-  pointer-events: none;
-}
-
-.row-card__progress span {
-  position: absolute;
-  top: -1px;
-  height: 3px;
-  background: var(--_regal-ink);
-}
-
 .row-card__arrow {
   position: absolute;
   top: 50%;
   z-index: 2;
-  width: 1.8rem;
-  height: 2.4rem;
-  margin-top: -1.2rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin: -1rem 0 0;
+  padding: 0;
   border: var(--_regal-border-width) solid var(--_regal-border);
   border-radius: var(--_regal-radius-control);
   background: var(--_regal-surface);
   color: var(--_regal-ink);
-  font: inherit;
-  font-size: 1.1rem;
+  line-height: 0;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, color 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.row-card__arrow svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .row-card:hover .row-card__arrow {
   opacity: 0.85;
 }
 
-.row-card__arrow:hover {
+.row-card:hover .row-card__arrow:hover {
   color: var(--_regal-accent);
+  opacity: 1;
+}
+
+.row-card__arrow:active {
+  transform: scale(0.94);
 }
 
 .row-card__arrow--left {
-  left: 0.4rem;
+  left: 0.5rem;
 }
 
 .row-card__arrow--right {
-  right: 0.4rem;
+  right: 0.5rem;
 }
 
 @media (pointer: coarse) {
   .row-card__arrow {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-card__arrow {
+    transition: none;
   }
 }
 

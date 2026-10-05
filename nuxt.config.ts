@@ -58,6 +58,14 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
   nuxt.options.nitro.publicAssets.push({ dir: join(regalDir, 'demo'), baseURL: '/', maxAge: 0 })
   const regalConfig = nuxt.options.runtimeConfig.public.regal as { librarySrc: string }
   regalConfig.librarySrc ||= DEMO_LIBRARY_SRC
+
+  // Dev only (design-round prototype pages, /dev/row-scrollbar): the published
+  // shelf through this origin, as books.fabkho.dev allows CORS for a few origins
+  // only (not a phone on the LAN). Nothing is copied into the repo; never in a build.
+  if (nuxt.options.dev) {
+    nuxt.options.nitro.devProxy ??= {}
+    nuxt.options.nitro.devProxy['/_published/v2'] = { target: 'https://books.fabkho.dev/v2', changeOrigin: true }
+  }
 }
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
