@@ -1,6 +1,15 @@
 <script setup lang="ts">
 // Details of the Book that's out of the Shelf/Stack: what you'd want to
 // remember about it, plus Flip / Put back for people who don't click the 3D.
+// A card; on narrow stages (a phone) a bottom sheet (utils/books/sheet.ts).
+import { SHEET_SHARE } from '#layers/regal/app/utils/books/sheet'
+
+const props = withDefaults(defineProps<{
+  /** Show as a bottom sheet (narrow stages) instead of the card. */
+  sheet?: boolean
+  /** The stage's height (px), for the sheet's most height. */
+  stageHeight?: number
+}>(), { sheet: false, stageHeight: 0 })
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
@@ -31,6 +40,56 @@ const description = computed(() => shown.value?.description?.trim() || null)
 const showSpoiler = ref(false)
 watch(() => shown.value?.id, () => {
   showSpoiler.value = false
+})
+
+// --- Bottom sheet (narrow stages) -------------------------------------------
+
+// At most SHEET_SHARE of the stage; what doesn't fit scrolls inside. The cap
+// is on the body, not the sheet: the sheet's height animates (useCardSwap)
+// and must not squeeze what it measures. Less the grip and the bottom
+// padding, so the whole sheet stays within its share.
+const bodyStyle = computed(() => {
+  if (!props.sheet || !props.stageHeight) return undefined
+  return { maxHeight: `calc(${Math.round(props.stageHeight * SHEET_SHARE)}px - 2.3rem - env(safe-area-inset-bottom, 0px))` }
+})
+
+const { dragging, handlers: grip } = useSheetDrag({
+  sheet: root,
+  enabled: () => props.sheet && !morph.value.cardHidden,
+  onSettle: (settle) => {
+    if (settle === 'dismiss') putAway()
+  },
+})
+
+/** More of the sheet below its lower edge: it fades out there. */
+const moreBelow = ref(false)
+function checkBelow() {
+  const element = body.value
+  moreBelow.value = props.sheet && !!element && element.scrollTop + element.clientHeight < element.scrollHeight - 1
+}
+useResizeObserver([body, content], checkBelow)
+
+// A new Book starts at the top of the sheet.
+watch(() => shown.value?.id, () => {
+  body.value?.scrollTo({ top: 0 })
+  checkBelow()
+})
+
+// The picked Book floats above the sheet (utils/books/inspect.ts): it tells
+// the 3D how tall it is. Dragged, it covers the Book for a moment instead of
+// pushing it around.
+const insets = useInspectInsets()
+function reportHeight() {
+  if (!props.sheet || !root.value || dragging.value) return
+  insets.value.bottom = root.value.offsetHeight
+}
+useResizeObserver(root, reportHeight)
+watch(() => props.sheet, (sheet, previous) => {
+  if (sheet) nextTick(reportHeight)
+  else if (previous) insets.value.bottom = 0
+})
+onBeforeUnmount(() => {
+  if (props.sheet) insets.value.bottom = 0
 })
 
 const STATUS_LABELS: Record<string, string> = {
@@ -77,55 +136,76 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
       v-if="book"
       ref="root"
       class="details"
-      :class="{ 'details--morphing': morph.cardHidden }"
+      :class="{
+        'details--morphing': morph.cardHidden,
+        'details--sheet': props.sheet,
+        'details--dragging': dragging,
+        'details--more-below': moreBelow,
+      }"
       aria-live="polite"
       :aria-label="`${book.title} details`"
     >
+      <!-- The sheet's grip: drag it down to put the Book back. -->
+      <div
+        v-if="props.sheet"
+        class="details__grip"
+        aria-hidden="true"
+        v-on="grip"
+      >
+        <span class="details__grip-bar" />
+      </div>
       <div
         ref="body"
         class="details__body"
+        :style="bodyStyle"
+        @scroll.passive="checkBelow"
       >
         <div
           v-if="shown"
           ref="content"
           class="details__content"
         >
-          <p
-            v-if="shown.seriesTitle"
-            class="details__series"
-          >
-            {{ shown.seriesTitle }}
-          </p>
-          <h2 class="details__title">
-            {{ shown.title }}
-          </h2>
-          <p
-            v-if="shown.author"
-            class="details__author"
-          >
-            {{ shown.author }}
-          </p>
+          <div class="details__head">
+            <p
+              v-if="shown.seriesTitle"
+              class="details__series"
+            >
+              {{ shown.seriesTitle }}
+            </p>
+            <h2 class="details__title">
+              {{ shown.title }}
+            </h2>
+            <p
+              v-if="shown.author"
+              class="details__author"
+            >
+              {{ shown.author }}
+            </p>
 
-          <p
-            v-if="shown.rating"
-            class="details__rating"
-            :aria-label="`Rated ${shown.rating} out of 5`"
+            <p
+              v-if="shown.rating"
+              class="details__rating"
+              :aria-label="`Rated ${shown.rating} out of 5`"
+            >
+              <span
+                class="details__stars"
+                aria-hidden="true"
+              >★★★★★<span
+                class="details__stars-fill"
+                :style="{ width: `${shown.rating / 5 * 100}%` }"
+              >★★★★★</span></span>
+              <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
+            </p>
+
+            <p class="details__meta">
+              {{ meta.join(' · ') }}
+            </p>
+          </div>
+
+          <div
+            v-if="shown.review"
+            class="details__opinion"
           >
-            <span
-              class="details__stars"
-              aria-hidden="true"
-            >★★★★★<span
-              class="details__stars-fill"
-              :style="{ width: `${shown.rating / 5 * 100}%` }"
-            >★★★★★</span></span>
-            <span class="details__rating-value">{{ shown.rating.toFixed(shown.rating % 1 ? 2 : 0).replace(/0$/, '') }}</span>
-          </p>
-
-          <p class="details__meta">
-            {{ meta.join(' · ') }}
-          </p>
-
-          <template v-if="shown.review">
             <button
               v-if="shown.reviewHasSpoiler && !showSpoiler"
               type="button"
@@ -140,7 +220,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
             >
               {{ shown.review }}
             </blockquote>
-          </template>
+          </div>
 
           <section
             v-if="description"
@@ -177,7 +257,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
             >Goodreads ↗</a>
           </div>
           <p class="details__hint">
-            Drag to turn · click the book to flip · Esc to put back
+            {{ props.sheet ? 'Drag to turn · tap the book to flip' : 'Drag to turn · click the book to flip · Esc to put back' }}
           </p>
         </div>
       </div>
@@ -368,5 +448,146 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 .details-leave-to {
   opacity: 0;
   transform: translateY(0.5rem);
+}
+
+/* --- Bottom sheet (narrow stages; utils/books/sheet.ts) ---------------------
+   Docked to the stage's bottom edge, full width; its side and bottom borders
+   sit just outside the stage (LibraryStage), so only the top hairline shows. */
+.details--sheet {
+  padding: 0 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+}
+
+.details--dragging {
+  user-select: none;
+}
+
+.details__grip {
+  position: relative;
+  height: 1.6rem;
+  margin: 0 -1rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.details--dragging .details__grip {
+  cursor: grabbing;
+}
+
+.details__grip-bar {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  width: 2.25rem;
+  height: 2px;
+  background: var(--color-ink-faint, rgba(44, 44, 42, 0.55));
+  transform: translateX(-50%);
+}
+
+.details--sheet .details__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Title on its own line, author and stars side by side, then the meta. */
+.details--sheet .details__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  align-items: baseline;
+}
+
+.details--sheet .details__series,
+.details--sheet .details__title,
+.details--sheet .details__meta {
+  grid-column: 1 / -1;
+}
+
+.details--sheet .details__series,
+.details--sheet .details__title,
+.details--sheet .details__author {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.details--sheet .details__title {
+  margin: 0;
+  font-size: var(--text-lg, 1.05rem);
+}
+
+.details--sheet .details__author {
+  margin: 0.1rem 0 0.15rem;
+}
+
+.details--sheet .details__rating {
+  grid-column: 2;
+  margin: 0;
+  font-size: var(--text-sm, 0.75rem);
+}
+
+.details--sheet .details__actions {
+  flex-wrap: nowrap;
+  margin: 0.6rem 0 0;
+}
+
+.details--sheet .details__button {
+  padding: 0.45rem 0.7rem;
+  white-space: nowrap;
+}
+
+.details--sheet .details__link {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.details--sheet .details__description,
+.details--sheet .details__review {
+  max-height: none;
+  overflow: visible;
+}
+
+.details--sheet .details__hint {
+  margin-top: 0.75rem;
+}
+
+/* The actions right under the title, so they stay in reach; the blurb and the review below. */
+.details--sheet .details__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.details--sheet .details__actions {
+  order: 1;
+}
+
+.details--sheet .details__about {
+  order: 2;
+}
+
+.details--sheet .details__opinion {
+  order: 3;
+}
+
+.details--sheet .details__hint {
+  order: 4;
+}
+
+/* What is still below fades out at the sheet's lower edge. */
+.details--more-below .details__body {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+}
+
+/* Without the morph (reduced motion, a pick from the list) the sheet slides in and out. */
+.details--sheet.details-enter-from,
+.details--sheet.details-leave-to {
+  opacity: 1;
+  transform: translateY(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .details--sheet.details-enter-active,
+  .details--sheet.details-leave-active {
+    transition: none;
+  }
 }
 </style>
