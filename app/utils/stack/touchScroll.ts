@@ -1,11 +1,16 @@
 // Touch scrolling in the Stack: how far the pile moves under a finger, and
-// how a flick glides on. The first touch feel moved the pile twice as far as
-// the finger and carried a flick on at its full speed, so on a phone the pile
-// raced past and the riffle (utils/stack/scrollHighlight.ts) never showed.
-// Three feels to compare on a phone (?touch=a|b|c, dev only); the wheel and
-// the mouse keep theirs. Pure, so it's unit-testable; Scene.vue applies it.
-
-export type TouchFeelName = 'a' | 'b' | 'c'
+// how a flick glides on. The wheel, a mouse drag and the keys keep their own
+// (Scene.vue's WHEEL_SPEED, DRAG_SPEED, KEY_STEP); this is fingers (and pens).
+//
+// The first touch feel moved the pile 2.2 mm per finger pixel (about 1.3× the
+// finger on a phone), eased after it, and carried a flick on for 0.3 s at its
+// full release speed, uncapped: on a phone the pile raced past and the riffle
+// (utils/stack/scrollHighlight.ts) never showed. The owner compared four
+// coherent feels on a Pixel 8 Pro, from 1:1 with a long glide down to half
+// the finger with almost none, and chose the third. Its numbers are below;
+// with them a slow drag moves the pile about two thirds of the finger and a
+// hard flick carries a handful of Books, slowly enough to riffle.
+// Pure, so it's unit-testable; Scene.vue applies it.
 
 export interface TouchFeel {
   /** Pile travel per finger travel: 1 keeps the Book under the finger under it. */
@@ -14,25 +19,64 @@ export interface TouchFeel {
   direct: boolean
   /** A glide slows as e^(-t/τ): τ in seconds; it covers its start speed × τ. */
   glideTau: number
-  /** Fastest glide (m/s), so the riffle can keep up. */
+  /** Fastest glide (m/s); with τ it bounds how far a flick carries (maxSpeed × τ). */
   maxSpeed: number
-  /** The glide comes to rest with a Book centred on the focus line. */
-  snap: boolean
 }
 
-export const TOUCH_FEELS: Readonly<Record<TouchFeelName, Readonly<TouchFeel>>> = Object.freeze({
-  // a: the pile sticks to the finger; a flick glides on gently.
-  a: Object.freeze({ gain: 1, direct: true, glideTau: 0.35, maxSpeed: 1.2, snap: false }),
-  // b: slower than the finger, eased; a short, damped glide with a low speed cap.
-  b: Object.freeze({ gain: 0.6, direct: false, glideTau: 0.25, maxSpeed: 0.5, snap: false }),
-  // c: sticks to the finger; a flick riffles through at a readable speed and
-  // lands on a Book, its label beside it, like leafing to a page.
-  c: Object.freeze({ gain: 1, direct: true, glideTau: 0.4, maxSpeed: 0.7, snap: true }),
+/** Pile travel per finger travel: two thirds of the finger, so the riffle reads while dragging. */
+export const TOUCH_GAIN = 0.65
+/** The pile follows the finger directly: slowed by the gain, it needs no easing to feel calm. */
+export const TOUCH_DIRECT = true
+/** How quickly a flick slows down (τ, s): short, most of a glide (86 %) is over within half a second. */
+export const GLIDE_TAU = 0.25
+/** The fastest a flick glides (m/s): the riffle keeps up, and a flick carries at most 0.14 m (~4–5 Books). */
+export const GLIDE_MAX_SPEED = 0.55
+
+/** The touch feel (owner's choice on a Pixel 8 Pro; see the comment at the top). */
+export const TOUCH_FEEL: Readonly<TouchFeel> = Object.freeze({
+  gain: TOUCH_GAIN,
+  direct: TOUCH_DIRECT,
+  glideTau: GLIDE_TAU,
+  maxSpeed: GLIDE_MAX_SPEED,
 })
 
-/** The feel for a `?touch=` value; null keeps the first one. */
-export function touchFeel(value: unknown): Readonly<TouchFeel> | null {
-  return typeof value === 'string' && value in TOUCH_FEELS ? TOUCH_FEELS[value as TouchFeelName] : null
+/** The farthest a flick carries the pile after the finger lets go (m): the capped speed × τ. */
+export function longestGlide(feel: Readonly<TouchFeel>): number {
+  return feel.maxSpeed * feel.glideTau
+}
+
+// --- Tuning (dev server only) -------------------------------------------------
+
+/** What the tuning parameters may be set to: past these a feel stops being a feel. */
+export const TOUCH_LIMITS = {
+  gain: [0.2, 2],
+  glide: [0.05, 1.5],
+  cap: [0.1, 3],
+} as const
+
+function number(value: unknown, [low, high]: readonly [number, number]): number | null {
+  const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
+  return Number.isFinite(parsed) ? Math.min(high, Math.max(low, parsed)) : null
+}
+
+/**
+ * TOUCH_FEEL with single parameters tuned from a route query, to try a
+ * change on a phone before it goes into the constants: `gain`, `glide` (τ,
+ * s), `cap` (m/s) and `follow=direct|eased`, clamped to TOUCH_LIMITS. Scene.vue
+ * only calls it on the dev server; production builds leave it out.
+ */
+export function tunedFeel(query: Readonly<Record<string, unknown>>): Readonly<TouchFeel> {
+  const gain = number(query.gain, TOUCH_LIMITS.gain)
+  const glide = number(query.glide, TOUCH_LIMITS.glide)
+  const cap = number(query.cap, TOUCH_LIMITS.cap)
+  const follow = query.follow === 'direct' || query.follow === 'eased' ? query.follow : null
+  if (gain === null && glide === null && cap === null && follow === null) return TOUCH_FEEL
+  return {
+    gain: gain ?? TOUCH_FEEL.gain,
+    glideTau: glide ?? TOUCH_FEEL.glideTau,
+    maxSpeed: cap ?? TOUCH_FEEL.maxSpeed,
+    direct: follow ? follow === 'direct' : TOUCH_FEEL.direct,
+  }
 }
 
 // --- Release speed ---------------------------------------------------------------
@@ -76,32 +120,16 @@ export const STOP_SPEED = 0.003
 export interface Glide {
   /** Speed (m/s, up is positive). */
   speed: number
-  /** Where a snapping glide comes to rest (m), or null. */
-  rest: number | null
 }
 
 export function clampSpeed(speed: number, max: number): number {
   return Math.max(-max, Math.min(max, speed))
 }
 
-/**
- * The glide a release starts. `from`: where the view is (m); `speed`: the
- * pile's speed at release (m/s); `bounds`: the view's range; `snapTo`: maps a
- * resting view to the nearest view with a Book centred (snapping feels only).
- */
-export function startGlide(
-  feel: Readonly<TouchFeel>,
-  from: number,
-  speed: number,
-  bounds: readonly [number, number],
-  snapTo?: (view: number) => number,
-): Glide {
+/** The glide a release starts: the pile's speed at release (m/s), capped; none when it barely moved. */
+export function startGlide(feel: Readonly<TouchFeel>, speed: number): Glide {
   const capped = clampSpeed(speed, feel.maxSpeed)
-  if (!feel.snap || !snapTo) return { speed: Math.abs(capped) < STOP_SPEED ? 0 : capped, rest: null }
-  const free = Math.min(bounds[1], Math.max(bounds[0], from + capped * feel.glideTau))
-  const rest = Math.min(bounds[1], Math.max(bounds[0], snapTo(free)))
-  // The speed that comes to rest exactly there.
-  return { speed: (rest - from) / feel.glideTau, rest }
+  return { speed: Math.abs(capped) < STOP_SPEED ? 0 : capped }
 }
 
 /**
@@ -115,34 +143,4 @@ export function glideStep(glide: Glide, tau: number, seconds: number): number {
   glide.speed *= decay
   if (Math.abs(glide.speed) < STOP_SPEED) glide.speed = 0
   return distance
-}
-
-// --- Snapping -------------------------------------------------------------------
-
-/**
- * The view (m) whose focus line is nearest a Book centre, for a view resting
- * at `view`. `focusOf` maps a view to its focus line (rising, continuous);
- * `centres` are the Books' centre heights, in any order.
- */
-export function snapView(view: number, centres: readonly number[], focusOf: (view: number) => number, bounds: readonly [number, number]): number {
-  if (centres.length === 0) return view
-  const focus = focusOf(view)
-  let nearest = centres[0]!
-  for (const centre of centres) {
-    if (Math.abs(centre - focus) < Math.abs(nearest - focus)) nearest = centre
-  }
-  return viewFor(nearest, focusOf, bounds)
-}
-
-/** The view (m) whose focus line is at `focus`, by bisection within `bounds` (the nearest end beyond them). */
-export function viewFor(focus: number, focusOf: (view: number) => number, bounds: readonly [number, number]): number {
-  let [low, high] = bounds
-  if (focus <= focusOf(low)) return low
-  if (focus >= focusOf(high)) return high
-  for (let step = 0; step < 40; step++) {
-    const middle = (low + high) / 2
-    if (focusOf(middle) < focus) low = middle
-    else high = middle
-  }
-  return (low + high) / 2
 }

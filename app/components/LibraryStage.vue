@@ -61,8 +61,6 @@ const stack = computed(() => layoutStack(stackBooks.value, {
 /** Looks with the date beside the pile need a wider view on narrow stages. */
 const stackFitWidth = computed(() => (stack.value.separators.length && SIDE_STYLES.has(look.value.separatorStyle) ? SIDE_LABEL_FIT_WIDTH : undefined))
 const poses = computed(() => (mode.value === 'stack' ? stack.value.poses : shelves.value.placements))
-/** The Stack's Book centres, for a touch glide that lands on a Book. */
-const stackBookHeights = computed(() => stack.value.poses.map(pose => pose.y))
 
 // Open the connection to the image host early when the library file's images
 // live on another origin (they load with CORS, no credentials).
@@ -185,7 +183,6 @@ watch(books, (list) => {
           v-else
           :stack-height="stack.height"
           :fit-width="stackFitWidth"
-          :book-heights="stackBookHeights"
           @ready="isReady = true"
         >
           <StackSeparators

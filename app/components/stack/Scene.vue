@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // The Stack view: the whole Library as one pile of Books, no Bookcase. The
 // camera looks slightly down at the pile; the wheel, dragging and the arrow
-// keys scroll smoothly up and down it (a flicked finger glides on). Scrolling
-// pauses while a Book is out. The scroll goes to the Books' scroll highlight.
-// Touch feels to compare on a phone: ?touch=a|b|c (utils/stack/touchScroll.ts).
+// keys scroll smoothly up and down it (a flicked finger glides on, its feel in
+// utils/stack/touchScroll.ts). Scrolling pauses while a Book is out. The
+// scroll goes to the Books' scroll highlight.
 import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
@@ -11,16 +11,14 @@ import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 import { focusLine, STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
-import { glideStep, releaseSpeed, snapView, startGlide, touchFeel, trackTouch } from '#layers/regal/app/utils/stack/touchScroll'
-import type { Glide, TouchSample } from '#layers/regal/app/utils/stack/touchScroll'
+import { glideStep, releaseSpeed, startGlide, TOUCH_FEEL, trackTouch, tunedFeel } from '#layers/regal/app/utils/stack/touchScroll'
+import type { Glide, TouchFeel, TouchSample } from '#layers/regal/app/utils/stack/touchScroll'
 import { topAt, viewForTop } from '#layers/regal/app/utils/stack/camera'
 
 const props = defineProps<{
   stackHeight: number
   /** Width (metres) the view must fit; wider when dates stand beside the pile. */
   fitWidth?: number
-  /** Centre heights of the Books, for a touch glide that lands on one. */
-  bookHeights?: number[]
 }>()
 const emit = defineEmits<{ ready: [] }>()
 
@@ -30,14 +28,10 @@ const CAMERA_RISE = 0.22
 const CAMERA_FOV = 34
 /** Width the pile needs on screen: the longest Books plus their offsets, bookmarks and a margin. */
 const FIT_WIDTH = 0.42
-/** Metres scrolled per wheel pixel / per dragged pixel. */
+/** Metres scrolled per wheel pixel / per pixel dragged with a mouse (touch: utils/stack/touchScroll.ts). */
 const WHEEL_SPEED = 0.0011
 const DRAG_SPEED = 0.0022
 const KEY_STEP = 0.12
-/** A flicked touch drag carries on this long (s) at its last speed. */
-const FLING_SECONDS = 0.3
-/** A touch lifted longer than this (ms) after its last move was held still: no fling. */
-const FLING_WINDOW = 80
 /** The focus line meets the Spines about this far in front of the pile's axis (half a Book's depth). */
 const FOCUS_Z = 0.07
 /** Where the bottom of the pile sits at the end of scrolling: 0 = centre, -1 = lower edge of the view. */
@@ -51,9 +45,11 @@ const { pickedId } = useBookPick()
 const { scrolled } = useScrollLead()
 const reducedMotion = usePreferredReducedMotion()
 const quality = useRenderQuality()
-const route = useRoute()
-/** A touch feel to try (dev only); null keeps the first one (DRAG_SPEED, FLING_SECONDS). */
-const feel = computed(() => (import.meta.dev ? touchFeel(route.query.touch) : null))
+// The touch feel; on the dev server single parameters can be tuned from the
+// URL (?gain=, ?glide=, ?cap=, ?follow=, see tunedFeel). Production builds
+// drop the branch and its import: they always use TOUCH_FEEL.
+const route = import.meta.dev ? useRoute() : null
+const feel = (): Readonly<TouchFeel> => (import.meta.dev ? tunedFeel(route!.query) : TOUCH_FEEL)
 
 const cameraRef = shallowRef<PerspectiveCamera | null>(null)
 const rig = shallowRef<Group | null>(null)
@@ -136,30 +132,20 @@ function onWheel(event: WheelEvent) {
 
 let dragging = false
 let lastY = 0
-/** Speed (m/s) of a touch drag and when it last moved, for the fling. */
-let dragSpeed = 0
-let lastMoveAt = 0
 
-// Touch feels (?touch=a|b|c): the finger's recent positions and travel, and the glide after it.
+// Touch: the finger's recent positions and travel, and the glide after it.
 const touches: TouchSample[] = []
 let touchTravel = 0
 let touching = false
-const glide: Glide = { speed: 0, rest: null }
-/** The view sits where the finger and glide put it, without easing (feels with `direct`). */
+const glide: Glide = { speed: 0 }
+/** The view sits where the finger and glide put it, without easing (a feel with `direct`). */
 let following = false
-/** Metres the Spines move on screen per CSS pixel, and the focus line's offset from the view; kept by the frame loop. */
+/** Metres the Spines move on screen per CSS pixel; kept by the frame loop. */
 let pixelMetres = DRAG_SPEED / 2
-let lineOffset = 0
 
 function stopTouchScroll() {
   glide.speed = 0
-  glide.rest = null
   following = false
-}
-
-/** The Books' focus line for the view at `centre` (as the frame loop sets it). */
-function focusOf(centre: number) {
-  return focusLine(centre, bounds.value, focusEnds()) + lineOffset
 }
 
 function focusEnds(): [number, number] {
@@ -172,16 +158,11 @@ function onPointerDown(event: PointerEvent) {
   if (event.pointerType !== 'mouse') scrolled()
   dragging = true
   lastY = event.clientY
-  dragSpeed = 0
-  lastMoveAt = event.timeStamp
-  touching = event.pointerType !== 'mouse' && !!feel.value
-  if (!touching) {
-    stopTouchScroll()
-    return
-  }
+  touching = event.pointerType !== 'mouse'
   // A finger on a gliding pile stops it where it shows.
   stopTouchScroll()
-  following = feel.value!.direct
+  if (!touching) return
+  following = feel().direct
   view.target = view.y
   touches.length = 0
   touchTravel = 0
@@ -195,34 +176,24 @@ function onPointerMove(event: PointerEvent) {
   const dy = event.clientY - lastY
   lastY = event.clientY
   if (dy === 0) return
-  if (touching && feel.value) {
+  if (touching) {
     touchTravel += Math.abs(dy)
     trackTouch(touches, event.timeStamp, event.clientY)
-    scrollBy(dy * feel.value.gain * pixelMetres)
+    scrollBy(dy * feel().gain * pixelMetres)
     return
   }
-  const seconds = (event.timeStamp - lastMoveAt) / 1000
-  if (seconds > 0) dragSpeed += (dy * DRAG_SPEED / seconds - dragSpeed) * 0.6
-  lastMoveAt = event.timeStamp
   scrollBy(dy * DRAG_SPEED)
 }
 
 function onPointerUp(event: PointerEvent) {
-  if (touching) {
-    touching = false
-    dragging = false
-    const current = feel.value
-    if (!current || pickedId.value || touchTravel < TAP_TRAVEL) return
-    const speed = event.type === 'pointerup' ? releaseSpeed(touches, event.timeStamp) * current.gain * pixelMetres : 0
-    const centres = props.bookHeights ?? []
-    Object.assign(glide, startGlide(current, view.target, speed, bounds.value, centre => snapView(centre, centres, focusOf, bounds.value)))
-    return
-  }
-  // A flicked finger lets the pile glide on (a mouse drag stops where it is let go).
-  const flicked = dragging && event.type === 'pointerup' && event.pointerType !== 'mouse'
-    && event.timeStamp - lastMoveAt < FLING_WINDOW
   dragging = false
-  if (flicked) scrollBy(dragSpeed * FLING_SECONDS)
+  if (!touching) return
+  // A flicked finger lets the pile glide on (a mouse drag stops where it is let go).
+  touching = false
+  if (pickedId.value || touchTravel < TAP_TRAVEL) return
+  const current = feel()
+  const speed = event.type === 'pointerup' ? releaseSpeed(touches, event.timeStamp) * current.gain * pixelMetres : 0
+  glide.speed = startGlide(current, speed).speed
 }
 
 function onKey(event: KeyboardEvent) {
@@ -291,24 +262,18 @@ onBeforeUnmount(() => {
 
 /** One frame of a touch glide; it stops at either end of the pile and while a Book is out. */
 function moveGlide(seconds: number) {
-  const current = feel.value
-  if (!current || pickedId.value) {
+  if (pickedId.value) {
     stopTouchScroll()
     return
   }
-  const free = view.target + glideStep(glide, current.glideTau, seconds)
+  const free = view.target + glideStep(glide, feel().glideTau, seconds)
   view.target = MathUtils.clamp(free, ...bounds.value)
   if (view.target !== free) glide.speed = 0
-  if (glide.speed === 0) {
-    // A snapping glide ends exactly on its Book.
-    if (glide.rest !== null) view.target = glide.rest
-    glide.rest = null
-  }
 }
 
 onBeforeRender(({ delta }) => {
   const seconds = delta || 0.016
-  if (glide.speed !== 0 || glide.rest !== null) moveGlide(seconds)
+  if (glide.speed !== 0) moveGlide(seconds)
   const smoothing = reducedMotion.value === 'reduce' || following ? 1 : 1 - Math.exp(-seconds * 7)
   view.y += (view.target - view.y) * smoothing
   // Smoothed, and a jump (a new pile, reduced motion) counts no faster than 3 m/s.
@@ -329,7 +294,7 @@ onBeforeRender(({ delta }) => {
     cam.position.set(0, view.y + CAMERA_RISE * scale, distance)
     cam.lookAt(0, view.y, 0)
     // The middle of the view, where the line of sight meets the Spines.
-    lineOffset = CAMERA_RISE * scale * FOCUS_Z / distance
+    const lineOffset = CAMERA_RISE * scale * FOCUS_Z / distance
     pixelMetres = 2 * (distance - FOCUS_Z) * Math.tan(MathUtils.degToRad(CAMERA_FOV) / 2) / Math.max(1, sizes.height.value)
     scroll.focusY = focusLine(view.y, bounds.value, ends) + lineOffset
     scroll.targetY = focusLine(view.target, bounds.value, ends) + lineOffset
