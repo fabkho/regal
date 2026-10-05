@@ -3,8 +3,8 @@ import { $fetch, createPage, fetch, setup, url } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 
 // Regal as a Nuxt layer: tests/fixtures/layer-host extends the repo root and
-// puts RegalBooksStage + RegalBooksSidebar on /books, fed a synthetic Regal
-// library file (public/books/library.json).
+// puts RegalBooksStage + RegalBooksSidebar on /books and two RegalBooksRow
+// cards on /profile, fed a synthetic Regal library file (public/books/library.json).
 describe('Regal as a Nuxt layer', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('../fixtures/layer-host', import.meta.url)),
@@ -71,6 +71,50 @@ describe('Regal as a Nuxt layer', async () => {
     // The host's own sorting reaches the 3D.
     await sidebar.getByRole('button', { name: 'Rating', exact: true }).click()
     await expect.poll(() => page.url(), { timeout: 5_000 }).toContain('sort=rating')
+
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('shows the Library as a row in a card, with its own Pick, kept in the card or breaking out', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/profile'), { waitUntil: 'networkidle' })
+
+    const rows = page.locator('section.row-card')
+    await rows.first().locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await rows.count()).toBe(2)
+    expect(await rows.nth(0).getAttribute('data-book-count')).toBe('5')
+    expect(await rows.nth(0).getAttribute('aria-label')).toBe('Read lately')
+    // A year: only its reads.
+    expect(await rows.nth(1).getAttribute('data-book-count')).toBe('2')
+    expect(await rows.nth(1).getAttribute('aria-label')).toBe('Books read in 2025')
+
+    // Kept in the card: Enter takes out the Book in focus, its details stay in the row.
+    const first = rows.nth(0)
+    await first.locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    await first.locator('.row-card__scroller').focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
+    expect(await first.locator('article.row-card__details').count()).toBe(1)
+    expect(await page.locator('.row-card__view--out').count()).toBe(0)
+    await page.keyboard.press('Escape')
+    await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+
+    // Breaking out: the canvas covers the viewport, the page is held, Escape lands it back.
+    const second = rows.nth(1)
+    await second.locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    await second.locator('.row-card__scroller').focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => second.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
+    expect(await page.locator('body > .row-card__view--out canvas').count()).toBe(1)
+    expect(await page.locator('body > article.row-card__details').count()).toBe(1)
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.locator('.row-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+    expect(await second.locator('canvas').count()).toBe(1)
 
     expect(errors).toEqual([])
     await page.close()
