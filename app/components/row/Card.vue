@@ -39,7 +39,7 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
-import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
 import { backgroundOf } from '#layers/regal/app/utils/theme/color'
@@ -402,6 +402,7 @@ function placeLabels() {
     near.filter(({ label }) => label.shown).map(({ label, x }) => ({ key: label.key, x, width: label.width })),
     w,
     steppedBack,
+    rowLabelReach(pxPerMetre.value),
   )
   steppedBack = new Set()
   for (const { label, x, y } of near) {

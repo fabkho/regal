@@ -180,8 +180,17 @@ export function rowLabelPlan(labels: RowLabel[], widths: ReadonlyMap<string, num
   return plan
 }
 
-/** A sliding date still ranks first while its sheet is at most this far (px) off the card (January's at a year row's rest). */
-export const ROW_LABEL_SHEET_REACH = 10
+/**
+ * How far (px) outside the card a date's sheet may be for the date to slide in
+ * and stay whole at the edge: the inset, and 2 cm of the row's scale (January's
+ * sheet stands just off the card at a year row's rest: half its width, and
+ * the sheet stands in front of the Spines the row is flush against, so
+ * perspective puts it a little further out). Further out the date can't stay
+ * beside its leader line, so it collapses to the line.
+ */
+export function rowLabelReach(pxPerMetre: number): number {
+  return ROW_LABEL_INSET + 0.02 * pxPerMetre
+}
 
 export interface RowLabelPlace {
   key: string
@@ -199,42 +208,41 @@ export interface RowLabelSlot {
 
 /**
  * The planned dates near the card at one scroll position (`x` from the
- * resting camera). A date at the card's edge slides in to stay readable
- * (rowLabelNudge) and then may run into a neighbour that isn't sliding. While
- * it is whole inside the card and its sheet is (all but) in the card, it
- * keeps its label (it is the one being read) and the neighbour steps back to
- * its leader line until there is room again; of two sliding ones the one
- * nearer the card's middle wins. A date on its way out (cut by the card's
- * edge), or still coming in with its sheet off the card, gives way to the
- * others. A date that stepped
- * back for the sliding (in `hidden`) returns only with ROW_LABEL_HYSTERESIS
- * more room, so it doesn't flicker when the scroll rests on the threshold.
- * Dates outside the card block no one.
+ * resting camera). A date is always shown whole or not at all:
+ * - A date at the card's edge slides in to stay whole inside it (rowLabelNudge)
+ *   while its sheet is within `reachOutside` (rowLabelReach) of the card; its leader
+ *   line stays on the sheet. Once the sheet is further out, the date collapses
+ *   to its leader line (which has left the card too) instead of being cut.
+ * - A sliding date may run into a neighbour that isn't sliding. It keeps its
+ *   label (it is the one being read) and the neighbour steps back to its
+ *   leader line until there is room again; of two sliding ones the one nearer
+ *   the card's middle wins.
+ * A date that stepped back (in `hidden`) returns only with ROW_LABEL_HYSTERESIS
+ * more room (for the sliding, or for the card's edge), so it doesn't flicker
+ * when the scroll rests on a threshold.
  */
-export function rowLabelSlots(items: RowLabelPlace[], cardWidth: number, hidden: ReadonlySet<string> = new Set()): Map<string, RowLabelSlot> {
-  const ranked = items.map((item) => {
-    const nudge = rowLabelNudge(item.x, item.width, cardWidth)
-    const box: LabelBox = { centre: item.x + nudge, width: item.width }
-    const inCard = box.centre + item.width / 2 > 0 && box.centre - item.width / 2 < cardWidth
-    const whole = box.centre - item.width / 2 >= 0 && box.centre + item.width / 2 <= cardWidth
-    // 0: slid in, whole, its sheet (just) in the card; 1: where its sheet puts it; 2: slid but cut, or its sheet well outside the card.
-    const rank = nudge === 0 ? 1 : whole && item.x > -ROW_LABEL_SHEET_REACH && item.x < cardWidth + ROW_LABEL_SHEET_REACH ? 0 : 2
-    return { key: item.key, nudge, box, inCard, rank, middle: Math.abs(item.x - cardWidth / 2) }
-  })
-  // Within a rank: the slid ones by the smaller slide, the ones on their way out or in by the nearer the middle, the rest in order.
-  const order = [...ranked].sort((a, b) => a.rank - b.rank || (a.rank === 0 ? Math.abs(a.nudge) - Math.abs(b.nudge) : a.rank === 2 ? a.middle - b.middle : 0))
+export function rowLabelSlots(items: RowLabelPlace[], cardWidth: number, hidden: ReadonlySet<string> = new Set(), reachOutside = rowLabelReach(300 / ROW_CAMERA.viewHeight)): Map<string, RowLabelSlot> {
   const slots = new Map<string, RowLabelSlot>()
-  const kept: typeof ranked = []
-  for (const entry of order) {
-    if (!entry.inCard) {
-      slots.set(entry.key, { nudge: entry.nudge, shown: true })
+  const ranked: { key: string, nudge: number, box: LabelBox, slid: boolean }[] = []
+  for (const item of items) {
+    const back = hidden.has(item.key)
+    const reach = reachOutside - (back ? ROW_LABEL_HYSTERESIS : 0)
+    if (item.x < -reach || item.x > cardWidth + reach) {
+      slots.set(item.key, { nudge: 0, shown: false })
       continue
     }
+    const nudge = rowLabelNudge(item.x, item.width, cardWidth)
+    ranked.push({ key: item.key, nudge, box: { centre: item.x + nudge, width: item.width }, slid: nudge !== 0 })
+  }
+  // The slid ones first, the smaller slide (nearer the middle) first; then the rest in order.
+  const order = [...ranked].sort((a, b) => Number(b.slid) - Number(a.slid) || (a.slid ? Math.abs(a.nudge) - Math.abs(b.nudge) : 0))
+  const kept: typeof ranked = []
+  for (const entry of order) {
     const back = hidden.has(entry.key)
     const clash = kept.some((other) => {
       // Only room lost to the sliding needs more to come back; dates planned this close stay as they are.
-      const slid = entry.nudge !== 0 || other.nudge !== 0
-      return labelsCollide(entry.box, other.box, ROW_LABEL_GAP + (back && slid ? ROW_LABEL_HYSTERESIS : 0))
+      const moved = entry.slid || other.slid
+      return labelsCollide(entry.box, other.box, ROW_LABEL_GAP + (back && moved ? ROW_LABEL_HYSTERESIS : 0))
     })
     slots.set(entry.key, { nudge: entry.nudge, shown: !clash })
     if (!clash) kept.push(entry)
@@ -316,23 +324,21 @@ export function rowProject(x: number, y: number, cameraX: number, width: number,
   return { x: width / 2 + across * scale, y: height / 2 - up * scale }
 }
 
-/** A date keeps at least this far (px) from the card's sides while its sheet is in the card. */
+/** A date keeps at least this far (px) from the card's sides. */
 export const ROW_LABEL_INSET = 6
 
 /**
  * How far (px) a date `labelWidth` px wide, centred on its sheet at `x` px in
- * a card `width` px wide, slides sideways to stay inside the card: in from
- * either side, the inset from it, until its sheet is half a date beyond the
- * edge (January's sheet at a year row's rest is just off the card, behind
- * the first Spine's edge), then out with it, without a jump. Its leader line
- * stays on the sheet.
+ * a card `width` px wide, slides sideways to stay whole inside the card, the
+ * inset from either side. Its leader line stays on the sheet (it may end up
+ * beside the date, not under its middle). A card too narrow for the date
+ * centres it.
  */
 export function rowLabelNudge(x: number, labelWidth: number, width: number, inset = ROW_LABEL_INSET): number {
-  const half = labelWidth / 2
-  const most = labelWidth + inset
-  const fromLeft = Math.min(most, Math.max(0, inset + half - x))
-  const fromRight = Math.min(most, Math.max(0, x + half + inset - width))
-  return fromLeft - fromRight
+  const room = width - 2 * inset - labelWidth
+  if (room < 0) return width / 2 - x
+  const centre = Math.min(width - inset - labelWidth / 2, Math.max(inset + labelWidth / 2, x))
+  return centre - x
 }
 
 /** Px between the row's front bottom edge and the top of its focus label. */

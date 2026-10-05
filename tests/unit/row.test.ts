@@ -1,7 +1,7 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import type { Book } from '../../shared/types/book'
-import { layoutRow, ROW_CAMERA, ROW_FOCUS_GAP, ROW_LABEL_GAP, ROW_LABEL_HYSTERESIS, ROW_LABEL_INSET, ROW_SHEET, rowBooks, rowFocusLabelTop, rowLabelEstimate, rowLabelNudge, rowLabelPlan, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '../../app/utils/row/layout'
+import { layoutRow, ROW_CAMERA, ROW_FOCUS_GAP, ROW_LABEL_GAP, ROW_LABEL_HYSTERESIS, ROW_LABEL_INSET, ROW_SHEET, rowBooks, rowFocusLabelTop, rowLabelEstimate, rowLabelNudge, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '../../app/utils/row/layout'
 import type { RowMarker } from '../../app/utils/row/layout'
 
 const book = (id: string, overrides: Partial<Book>): Book => ({
@@ -160,6 +160,7 @@ describe('rowLabelPlan (dates never collide, the month at the resting end wins)'
 describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
   const width = 360
   const wide = 70
+  const REACH = rowLabelReach(300 / ROW_CAMERA.viewHeight)
 
   it('leaves dates inside the card where their sheets are', () => {
     const slots = rowLabelSlots([{ key: 'a', x: 100, width: wide }, { key: 'b', x: 250, width: wide }], width)
@@ -176,7 +177,7 @@ describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
   })
 
   it('keeps the one nearer the middle when two slide in from the same side', () => {
-    const slots = rowLabelSlots([{ key: 'old', x: -60, width: wide }, { key: 'new', x: 4, width: wide }], width)
+    const slots = rowLabelSlots([{ key: 'old', x: -5, width: wide }, { key: 'new', x: 4, width: wide }], width)
     expect(slots.get('new')!.shown).toBe(true)
     expect(slots.get('old')!.shown).toBe(false)
   })
@@ -188,16 +189,25 @@ describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
     expect(slots.get('oct')!.shown).toBe(true)
   })
 
-  it('lets a date on its way out (cut by the edge) give way to the one coming in', () => {
-    const slots = rowLabelSlots([{ key: 'leaving', x: -70, width: wide }, { key: 'next', x: 6, width: wide }], width)
-    expect(slots.get('leaving')!.shown).toBe(false)
-    expect(slots.get('next')!.shown).toBe(true)
+  it('collapses a date to its leader line, whole or not at all, once its sheet is too far off the card', () => {
+    const left = rowLabelSlots([{ key: 'leaving', x: -REACH - 1, width: wide }, { key: 'next', x: 40, width: wide }], width)
+    expect(left.get('leaving')!.shown).toBe(false)
+    expect(left.get('next')!.shown).toBe(true)
+    const right = rowLabelSlots([{ key: 'coming', x: width + REACH + 1, width: wide }], width)
+    expect(right.get('coming')!.shown).toBe(false)
+    // Just within reach it is whole at the edge.
+    const near = rowLabelSlots([{ key: 'jan', x: -REACH, width: wide }], width).get('jan')!
+    expect(near.shown).toBe(true)
+    expect(-REACH - wide / 2 + near.nudge).toBeCloseTo(ROW_LABEL_INSET, 9)
   })
 
-  it('does not let dates outside the card block those inside', () => {
-    const slots = rowLabelSlots([{ key: 'gone', x: -400, width: wide }, { key: 'here', x: 20, width: wide }], width)
-    expect(slots.get('gone')!.shown).toBe(true)
-    expect(slots.get('here')!.shown).toBe(true)
+  it('comes back at the card\'s edge only with the hysteresis', () => {
+    const at = (x: number, hidden: string[]) => rowLabelSlots([{ key: 'd', x, width: wide }], width, new Set(hidden)).get('d')!.shown
+    expect(at(-REACH + 1, [])).toBe(true)
+    expect(at(-REACH + 1, ['d'])).toBe(false)
+    expect(at(-REACH + ROW_LABEL_HYSTERESIS + 1, ['d'])).toBe(true)
+    expect(at(width + REACH - 1, ['d'])).toBe(false)
+    expect(at(width + REACH - ROW_LABEL_HYSTERESIS - 1, ['d'])).toBe(true)
   })
 
   it('returns a date that stepped back only with more room, so it does not flicker at the threshold', () => {
@@ -241,7 +251,7 @@ describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
         history.set(item.key, state)
         return { key: item.key, from: centre - item.width / 2, to: centre + item.width / 2, shown: slot.shown }
       })
-      return boxes.filter(box => box.shown && box.to > 0 && box.from < cardWidth).sort((a, b) => a.from - b.from)
+      return boxes.filter(box => box.shown).sort((a, b) => a.from - b.from)
     })
     return { frames, history }
   }
@@ -249,11 +259,16 @@ describe('rowLabelSlots (dates at the card\'s edge give or take room)', () => {
   const pxPerMetre = 300 / ROW_CAMERA.viewHeight
   for (const [name, months, spacing] of [['close months', 30, 40], ['very close months', 30, 18], ['mixed', 30, 63], ['wide months', 12, 160]] as const) {
     for (const cardWidth of [220, 360, 412, 720]) {
-      it(`never overlaps at any scroll position: ${name}, card ${cardWidth} px`, () => {
+      it(`shows every date whole and never overlaps at any scroll position: ${name}, card ${cardWidth} px`, () => {
         const plan = rowLabelPlan(monthLabels(months, spacing / pxPerMetre), new Map(), pxPerMetre)
         const positions = Array.from({ length: Math.ceil((months * spacing + cardWidth) / 3) }, (_, index) => index * 3 - cardWidth / 2)
         const { frames } = sweep(plan, cardWidth, positions)
         for (const [index, boxes] of frames.entries()) {
+          // Every date shown is whole inside the card, the inset from its sides.
+          for (const box of boxes) {
+            expect(box.from, `scroll ${positions[index]}: ${box.key}`).toBeGreaterThanOrEqual(ROW_LABEL_INSET - 1e-9)
+            expect(box.to, `scroll ${positions[index]}: ${box.key}`).toBeLessThanOrEqual(cardWidth - ROW_LABEL_INSET + 1e-9)
+          }
           for (let box = 1; box < boxes.length; box++) {
             expect(boxes[box]!.from - boxes[box - 1]!.to, `scroll ${positions[index]}: ${boxes[box - 1]!.key} / ${boxes[box]!.key}`).toBeGreaterThanOrEqual(ROW_LABEL_GAP - 1e-9)
           }
@@ -423,30 +438,36 @@ describe('rowProject (the dates, from the resting camera)', () => {
   })
 })
 
-describe('rowLabelNudge (a date at the card\'s edge stays readable)', () => {
+describe('rowLabelNudge (a date at the card\'s edge stays whole)', () => {
   const width = 360
   const label = 60
+  const REACH = rowLabelReach(300 / ROW_CAMERA.viewHeight)
 
   it('leaves dates well inside the card alone', () => {
     expect(rowLabelNudge(180, label, width)).toBe(0)
     expect(rowLabelNudge(label / 2 + ROW_LABEL_INSET, label, width)).toBe(0)
   })
 
-  it('slides one at either edge in, the inset from the side', () => {
+  it('slides one at either edge in, the whole box the inset from the side', () => {
     expect(rowLabelNudge(4, label, width)).toBeCloseTo(label / 2 + ROW_LABEL_INSET - 4, 9)
     expect(4 - label / 2 + rowLabelNudge(4, label, width)).toBeCloseTo(ROW_LABEL_INSET, 9)
     expect(width - 4 + label / 2 + rowLabelNudge(width - 4, label, width)).toBeCloseTo(width - ROW_LABEL_INSET, 9)
   })
 
-  it('stays in while its sheet is just off the card (January at a year row\'s rest)', () => {
-    for (const x of [0, -11, -label / 2]) expect(x - label / 2 + rowLabelNudge(x, label, width), String(x)).toBeCloseTo(ROW_LABEL_INSET, 9)
+  it('keeps it whole while its sheet is just off the card (January at a year row\'s rest)', () => {
+    for (const x of [0, -REACH]) expect(x - label / 2 + rowLabelNudge(x, label, width), String(x)).toBeCloseTo(ROW_LABEL_INSET, 9)
+    for (const x of [width, width + REACH]) expect(x + label / 2 + rowLabelNudge(x, label, width), String(x)).toBeCloseTo(width - ROW_LABEL_INSET, 9)
   })
 
-  it('then goes out with its sheet, without a jump', () => {
-    const most = label + ROW_LABEL_INSET
-    expect(rowLabelNudge(-label / 2, label, width)).toBeCloseTo(most, 9)
-    expect(rowLabelNudge(-80, label, width)).toBeCloseTo(most, 9)
-    // Its left edge follows the sheet off the card.
-    expect(-80 - label / 2 + rowLabelNudge(-80, label, width)).toBeCloseTo(-80 + label / 2 + ROW_LABEL_INSET, 9)
+  it('never lets any date reach beyond the inset, wherever its sheet is', () => {
+    for (let x = -300; x <= width + 300; x += 7) {
+      const centre = x + rowLabelNudge(x, label, width)
+      expect(centre - label / 2, String(x)).toBeGreaterThanOrEqual(ROW_LABEL_INSET - 1e-9)
+      expect(centre + label / 2, String(x)).toBeLessThanOrEqual(width - ROW_LABEL_INSET + 1e-9)
+    }
+  })
+
+  it('centres a date in a card too narrow for it', () => {
+    expect(100 + rowLabelNudge(100, 80, 70)).toBeCloseTo(35, 9)
   })
 })

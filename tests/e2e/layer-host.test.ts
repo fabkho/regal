@@ -235,7 +235,7 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
-  it('never lets two dates overlap, at any scroll position or card width', async () => {
+  it('shows every date whole and never lets two overlap, at any scroll position or card width', async () => {
     const errors: string[] = []
     const page = await createPage()
     page.on('pageerror', error => errors.push(error.message))
@@ -274,7 +274,12 @@ describe('Regal as a Nuxt layer', async () => {
         }
         await page.waitForTimeout(40)
         const dates = await shownDates(row)
-        for (const date of dates) seen.add(date.text)
+        for (const date of dates) {
+          seen.add(date.text)
+          // Whole: the month, year and count inside the card, never cut by its edge (the inset is 6 px; 2 px of slack for the frame).
+          expect(date.from, `${name} at ${at ?? 'rest'}: ${date.text} (left)`).toBeGreaterThanOrEqual(4)
+          expect(date.to, `${name} at ${at ?? 'rest'}: ${date.text} (right)`).toBeLessThanOrEqual(date.width - 4)
+        }
         for (let pair = 1; pair < dates.length; pair++) {
           // The gap is 12 px; 1 px of slack for the box's sub-pixel size.
           expect(dates[pair]!.from - dates[pair - 1]!.to, `${name} at ${at ?? 'rest'}: ${dates[pair - 1]!.text} / ${dates[pair]!.text}`).toBeGreaterThanOrEqual(11)
