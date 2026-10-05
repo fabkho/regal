@@ -32,7 +32,9 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
     })
     nuxt.hook('components:extend', (components) => {
       for (let index = components.length - 1; index >= 0; index--) {
-        if (own(components[index]!.filePath, 'app/components/dev')) components.splice(index, 1)
+        // Dev panel and the design-round prototypes (app/pages/prototype) stay Regal's own.
+        const file = components[index]!.filePath
+        if (own(file, 'app/components/dev') || own(file, 'app/components/prototype')) components.splice(index, 1)
       }
     })
     return
@@ -58,6 +60,22 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
   nuxt.options.nitro.publicAssets.push({ dir: join(regalDir, 'demo'), baseURL: '/', maxAge: 0 })
   const regalConfig = nuxt.options.runtimeConfig.public.regal as { librarySrc: string }
   regalConfig.librarySrc ||= DEMO_LIBRARY_SRC
+
+  // Dev only (the prototypes, /prototype/row): the published shelf through this
+  // origin, as books.fabkho.dev allows CORS for a few origins only. Nothing is
+  // copied into the repo; never part of a build.
+  if (nuxt.options.dev) {
+    nuxt.options.nitro.devProxy ??= {}
+    nuxt.options.nitro.devProxy['/_published/v2'] = { target: 'https://books.fabkho.dev/v2', changeOrigin: true }
+  }
+  else {
+    // The prototypes are a dev server thing: no build ships them.
+    nuxt.hook('pages:extend', (pages) => {
+      for (let index = pages.length - 1; index >= 0; index--) {
+        if (pages[index]!.file?.startsWith(join(regalDir, 'app/pages/prototype'))) pages.splice(index, 1)
+      }
+    })
+  }
 }
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
