@@ -1,0 +1,180 @@
+# The daily chain, in the cloud (fabkho/libellus#110): the owner's Libellus
+# Library → library file → Regal assets → R2 `portfolio-books/v2/` →
+# fabkho.dev/books. Runs daily, by hand, and when Libellus says the owner's
+# Library changed (a database trigger sends `repository_dispatch`
+# `libellus-changed`, at most every ten minutes). README: "The daily chain".
+#
+# Secrets (repository → Settings → Secrets and variables → Actions):
+#   REGAL_EXPORT_TOKEN     the shared bearer secret of Libellus' `regal-export` edge function
+#   LIBELLUS_EXPORT_URL    https://<project>.supabase.co/functions/v1/regal-export
+#   CLOUDFLARE_API_TOKEN   R2 Object Read & Write on the bucket portfolio-books only
+#   CLOUDFLARE_ACCOUNT_ID  the Cloudflare account that holds the bucket
+# Variables (optional): REGAL_R2_BUCKET (default portfolio-books),
+#   REGAL_PUBLISHED_URL (default https://books.fabkho.dev/v2/library.json).
+name: publish-shelf
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: enrich and report what would be published, upload nothing (--dry-run)'
+        type: boolean
+        default: false
+      allow_shrink:
+        description: 'Publish even if the export has far fewer Books than the published shelf'
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [libellus-changed]
+
+# One run at a time. A run that starts while another publishes waits; of the
+# runs waiting, only the latest is kept (it reads the newest Library anyway).
+# Never cancelled mid-upload.
+concurrency:
+  group: publish-shelf
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+      ALLOW_SHRINK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_shrink && 'true' || 'false' }}
+      PUBLISHED_URL: ${{ vars.REGAL_PUBLISHED_URL || 'https://books.fabkho.dev/v2/library.json' }}
+      LIBRARY: ${{ github.workspace }}/.data/shelf/library.json
+      WRANGLER_SEND_METRICS: 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pipeline/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile && pnpm --dir pipeline install --frozen-lockfile
+
+      # Downloads, the enriched output and the state of the last publish (which
+      # files are up there): with them a quiet day rebuilds and uploads nothing.
+      # A new entry per run; the newest is restored.
+      - name: Restore the assets cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .data/regal-assets
+          key: regal-assets-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: regal-assets-
+
+      - name: Fetch the library file from Libellus
+        env:
+          REGAL_EXPORT_TOKEN: ${{ secrets.REGAL_EXPORT_TOKEN }}
+          LIBELLUS_EXPORT_URL: ${{ secrets.LIBELLUS_EXPORT_URL }}
+        run: |
+          for name in REGAL_EXPORT_TOKEN LIBELLUS_EXPORT_URL; do
+            if [ -z "${!name}" ]; then echo "::error::The secret $name is not set"; exit 1; fi
+          done
+          mkdir -p "$(dirname "$LIBRARY")"
+          curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 120 \
+            -H "Authorization: Bearer $REGAL_EXPORT_TOKEN" "$LIBELLUS_EXPORT_URL" -o "$LIBRARY" \
+            || { echo "::error::The Libellus export failed: $(head -c 500 "$LIBRARY" 2>/dev/null)"; exit 1; }
+
+      # Regal's own validator, and a guard: an export with far fewer Books than
+      # the shelf shows now (a wrong owner, a broken read) is not published
+      # unless a manual run says allow_shrink.
+      - name: Validate
+        run: |
+          cat > "$RUNNER_TEMP/validate.mts" <<'EOF'
+          import { appendFileSync, readFileSync } from 'node:fs'
+          import { formatLibraryFileErrors, parseLibraryFile } from '${{ github.workspace }}/pipeline/src/layer.ts'
+
+          const fail = (message: string): never => {
+            console.log(`::error::${message.replaceAll('\n', '%0A')}`)
+            process.exit(1)
+          }
+          const parsed = parseLibraryFile(readFileSync(process.env.LIBRARY!, 'utf8'))
+          if (!parsed.ok) fail(`The export is not a valid Regal library file:\n${formatLibraryFileErrors(parsed.errors).slice(0, 20).join('\n')}`)
+          const books = parsed.library.books.length
+
+          let published: number | null = null
+          try {
+            const response = await fetch(process.env.PUBLISHED_URL!, { headers: { 'cache-control': 'no-cache' } })
+            if (response.ok) published = (JSON.parse(await response.text()) as { books?: unknown[] }).books?.length ?? null
+          } catch {}
+          const floor = published === null ? 1 : Math.max(1, published - Math.max(5, Math.ceil(published * 0.1)))
+          console.log(`The export has ${books} Book(s); the published shelf ${published ?? 'could not be read'}.`)
+          appendFileSync(process.env.GITHUB_ENV!, `EXPORT_BOOKS=${books}\nPUBLISHED_BOOKS=${published ?? '?'}\n`)
+          if (books < floor && process.env.ALLOW_SHRINK !== 'true') {
+            fail(`The export has ${books} Book(s), the published shelf ${published ?? '?'}: not published. If that is right, run the workflow by hand with allow_shrink.`)
+          }
+          EOF
+          pnpm --dir pipeline exec tsx "$RUNNER_TEMP/validate.mts"
+
+      - name: Regal assets
+        id: assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          REGAL_R2_BUCKET: ${{ vars.REGAL_R2_BUCKET }}
+        run: |
+          args=(--in "$LIBRARY" --no-ai --no-model --revalidate --publish v2)
+          if [ "$DRY_RUN" = true ]; then
+            args+=(--dry-run)
+          else
+            for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+              if [ -z "${!name}" ]; then echo "::error::The secret $name is not set"; exit 1; fi
+            done
+          fi
+          [ -n "$REGAL_R2_BUCKET" ] || unset REGAL_R2_BUCKET
+          pnpm --silent regal-assets "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/assets.log"
+
+      - name: Summary
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/assets.log"
+          {
+            echo "## Shelf: ${{ github.event_name }}$([ "$DRY_RUN" = true ] && echo ', dry run')"
+            echo
+            echo "Export: ${EXPORT_BOOKS:-?} Book(s); published before: ${PUBLISHED_BOOKS:-?}."
+            if [ -f "$log" ]; then
+              echo
+              grep -E '^(Wrote|Unchanged:)|^  [0-9]+ Books:|^Publish|^Published|^Dry run|^Not published|^✗|input image not loaded' "$log" \
+                | sed 's/^/- /' || true
+              rebuilt=$(grep -c '^→' "$log" || true)
+              if [ "${rebuilt:-0}" -gt 0 ]; then
+                echo
+                echo "<details><summary>${rebuilt} Book(s) rebuilt</summary>"
+                echo
+                grep '^→' "$log" | sed 's/^→ */- /' || true
+                echo
+                echo "</details>"
+              fi
+            else
+              echo
+              echo "Regal assets did not run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the assets cache
+        if: always() && steps.assets.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: .data/regal-assets
+          key: regal-assets-${{ github.run_id }}-${{ github.run_attempt }}
