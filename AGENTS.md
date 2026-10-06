@@ -23,14 +23,15 @@
 
 ## Nuxt layer
 
-Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer"; the portfolio's `/books` extends it). Keep it host-safe:
+Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer", full reference in `docs/nuxt-layer.md`; the portfolio's `/books` and Libellus extend it). Keep it host-safe:
 
 - Standalone-only setup (global CSS `main.css`, head, `@nuxt/eslint`, test-utils, the dev choices panel, the demo library file served from `demo/`) lives in the `regalApp` module in `nuxt.config.ts` and runs only when Regal is the root app. Don't add globals to the plain config keys.
-- Host API: `RegalBooksStage`, `RegalBooksSidebar`, `RegalBooksFilters`, `RegalBooksRow` (`app/components/regal/`), config `runtimeConfig.public.regal` (`librarySrc`, the library file's URL). The layer registers no server routes. Keep it small; document changes in the README.
+- Host API: `RegalBooksStage`, `RegalBooksSidebar`, `RegalBooksFilters`, `RegalBooksRow` (`app/components/regal/`), config `runtimeConfig.public.regal` (`librarySrc`, the library file's URL). The layer registers no server routes. Keep it small; document changes in `docs/nuxt-layer.md` (and the README's summary when the surface changes), and keep the playground (`app/showcase/settings.ts`, `app/components/showcase/`) in step with the props.
 - Component CSS: tokens always with a fallback, `var(--color-ink, #2C2C2A)`; no reliance on global classes (`.btn`) in anything the embed components render.
 - In `app/`, import shared code as `~~/shared/...` (layer-aware), never `#shared/...` (that is the host's).
 - Runtime packages go in `dependencies` (hosts install the layer with `{ install: true }`).
 - Look decisions: `DECIDED_LOOK` in `useDevChoices.ts`, read through `useLook()`.
+- The playground (`/playground`, the showcase on GitHub Pages) and the dev pages are standalone-only like the dev panel: `app/pages/` and `app/components/showcase/` are stripped from hosts in `regalApp`; `app/showcase/` is not auto-imported. Its data is synthetic (`demo/showcase-library.json`, covers from `scripts/showcase/covers.mjs`); README screenshots come from it (`scripts/showcase/shots.mjs`), never from a real library or publisher art.
 - `tests/e2e/layer-host.test.ts` builds `tests/fixtures/layer-host/` (synthetic data only).
 
 ## Dependencies
@@ -44,7 +45,7 @@ Pinned below latest:
 
 ## Asset pipeline (Regal assets, `pipeline/`)
 
-The layer doesn't make assets. `pipeline/` (own package and lockfile; `pnpm --dir pipeline install`) takes a library file and returns it enriched: `pnpm regal-assets --in <file|url> [--out <dir>] …` (README: "Producing the library file"). Always `--dry-run` first: nothing remote, no Gemini call, the AI cost printed. AI needs `GEMINI_API_KEY` (billing on); `--no-ai`/`--no-model` for free runs. Output, downloads, jackets and state go to `.data/regal-assets/` (gitignored). `--publish <prefix>` writes to R2 under that prefix only (`v2`), never the bucket root.
+The layer doesn't make assets. `pipeline/` (own package and lockfile; `pnpm --dir pipeline install`) takes a library file and returns it enriched: `pnpm regal-assets --in <file|url> [--out <dir>] …` (`docs/producing.md`). Always `--dry-run` first: nothing remote, no Gemini call, the AI cost printed. AI needs `GEMINI_API_KEY` (billing on); `--no-ai`/`--no-model` for free runs. Output, downloads, jackets and state go to `.data/regal-assets/` (gitignored). `--publish <prefix>` writes to R2 under that prefix only (`v2`), never the bucket root.
 
 - Put pipeline code and its tests in `pipeline/src`, `pipeline/tests` (`pnpm --dir pipeline test`, offline with stubbed lookups). It may import the layer's pure files (`shared/`, `app/utils/…`) via `pipeline/src/layer.ts`; the layer never imports the pipeline.
-- Sources are not here: Libellus (fabkho/libellus) writes the library file and the workflow `.github/workflows/publish-shelf.yml` (daily, by hand, and on Libellus' `libellus-changed` dispatch) fetches it from Libellus' `regal-export` function and runs `regal-assets --publish v2` (README: "The daily chain"). The old reading-tracker build (`books:daily`) is retired; `pnpm library:convert` (`scripts/library/`) stays as a bridge for v1 published data. Never copy the owner's overrides file, Goodreads exports or their contents into the repo.
+- Sources are not here: Libellus (fabkho/libellus) writes the library file and the workflow `.github/workflows/publish-shelf.yml` (daily, by hand, and on Libellus' `libellus-changed` dispatch) fetches it from Libellus' `regal-export` function and runs `regal-assets --publish v2` (`docs/producing.md`, "The daily chain"). The old reading-tracker build (`books:daily`) is retired; `pnpm library:convert` (`scripts/library/`) stays as a bridge for v1 published data. Never copy the owner's overrides file, Goodreads exports or their contents into the repo.

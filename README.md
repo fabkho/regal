@@ -2,358 +2,153 @@
 
 *Regal* is German for shelf.
 
-A reading library as a 3D bookcase. Pull a book off the shelf, turn it around, see what you thought of it.
+A reading library as a 3D stack of books, for your own site. Pull a Book out, turn it around, read what you thought of it.
 
-Regal is only the display: it renders one input, the [Regal library file](docs/library-file.md). Where the reading data comes from (a reading tracker, Goodreads, [Libellus](https://github.com/fabkho/libellus)) is the business of whatever writes that file, a **Pipeline**.
+**[Playground](https://fabkho.github.io/regal/playground)** (every setting, live) · **[Demo](https://fabkho.github.io/regal/)** (on GitHub Pages; `pnpm dev` runs both locally) · [Nuxt layer reference](docs/nuxt-layer.md) · [Library file format](docs/library-file.md) · [Producing and publishing](docs/producing.md)
 
-Built with Nuxt 4 and [TresJS](https://tresjs.org) (three.js for Vue).
+![The Stack with a Book taken out, beside the sidebar with sort, filters and the records](docs/assets/stack.jpg)
 
-## What it does
+Regal is a [Nuxt](https://nuxt.com) layer built with [TresJS](https://tresjs.org) (three.js for Vue). Add it to a Nuxt 4 app, point it at one JSON file, and put its components on a page:
 
-- Point it at a Regal library file (the site shows a demo; `?src=<url>` any other) and its Books stand on an antique Bookcase — sized by page count and binding, grouped by Reading status.
-- Covers, Spines and backs come with the file. What it lacks is drawn: a placeholder front, the colour sampled from the front's left edge, title and author typeset along the Spine, the blurb and ISBN barcode on the back.
-- Hover a Book: it eases forward and catches the light. Click: it comes out to you showing its Cover; click again for the back, again to put it away. Drag to spin it.
-- The picked Book's details (rating, review, blurb, Goodreads) come in a card beside it; on narrow screens a bottom sheet on the screen's bottom edge, reaching at most 30% up the stage; title, author, rating and the actions always show, the blurb and review scroll below them, and dragging it down puts the Book back. The Book sits centred in the space left between the sheet and whatever covers the stage's top.
-- **Row**: the Stack turned on its side for a card in another page (`/row`; `RegalBooksRow` in a host): the Books stand pressed together left to right, oldest first, what you read last on the right where it starts, each month after a hairline sheet with its date above. Swipe or drag it sideways; Books passing the middle tip out as if pulled by the head. A Book taken out stays in the card or breaks out to the whole screen.
-- **Stack** view: the whole Library as one pile you scroll through smoothly (wheel, drag, arrow keys; on touch a flicked finger glides on). Books passing the middle of the view fan out like pages flipped through, the centred one most, with its title and stars beside it (a caption on narrow screens): the hover for scrolling and phones.
+- **The Stack** (`RegalBooksStage`): your Books as one pile you scroll through, sized by page count and binding, grouped by year or month, what you're reading on top. Hover a Book and it eases forward; click it and it comes out to you, front first, then the back, with your rating, review and the blurb beside it.
+- **The sidebar and the filter bar** (`RegalBooksSidebar`, `RegalBooksFilters`): the count, sort and filters (kept in the URL), and the Books as records linked to the 3D.
+- **The row** (`RegalBooksRow`): the Stack turned on its side for a card on another page (a profile, a year in review), the months marked above it.
+- **Phones**: the details become a bottom sheet, the row can break out to the whole screen, swipes and haptics feel native.
+- **Your look**: light, dark or following your site, every colour, frame and font a CSS token, your own markup in slots.
 
-![bookcase](docs/assets/pick-bookcase.png)
+| | |
+|---|---|
+| ![The row in a card](docs/assets/row.jpg) | ![A Book taken out of the row, its details beside it](docs/assets/row-inspect.jpg) |
+| ![On a phone: the filter bar and the details as a bottom sheet](docs/assets/phone-sheet.jpg) | ![The playground: every prop, token and slot, with the code for it](docs/assets/playground.jpg) |
 
-Spec and roadmap: [#1](https://github.com/fabkho/regal/issues/1).
+*All screenshots show the synthetic showcase shelf (`demo/showcase-library.json`): public-domain titles with invented data and covers drawn by `scripts/showcase/covers.mjs`, made with `scripts/showcase/shots.mjs`.*
 
-## Development
+## How it works
 
-```bash
-pnpm install
-pnpm dev          # http://localhost:3000 — the demo library file; /?src=<url> views another
-pnpm test         # unit + nuxt + browser e2e
-pnpm lint
+```
+producer ──► Regal library file ──► Regal assets (optional) ──► library file + images on any static host ──► Regal (this layer) on your page
 ```
 
-The site is a viewer: it shows `librarySrc` (default: the synthetic demo library, `demo/demo-library.json`, served at `/demo-library.json`; `NUXT_PUBLIC_REGAL_LIBRARY_SRC` points it elsewhere) and `?src=<url>` views any library file. A `?src=` file is loaded by the browser only, never through the server, so it must allow cross-origin requests from the site.
-
-Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (it loads `/?view=stack&debug=pick`; `--view bookcase`, `--src <url>` for another library file, e.g. your own converted one).
+- **The display (this layer)** renders one input, the [Regal library file](docs/library-file.md): a versioned JSON with every Book, its reading data and its images. It never reads a source itself: no Goodreads import, no API keys, no server routes.
+- **A producer** writes that file: [Libellus](https://github.com/fabkho/libellus) (a reading tracker), a converter for older data, or you, by hand ([Producing](docs/producing.md)).
+- **Regal assets** ([`pipeline/`](pipeline/README.md), optional) fills in what the file lacks: covers, Spine and back art, small pile copies, Spine colours, missing blurbs. Without it, Regal draws the Spines and backs itself.
 
 ## Use Regal as a Nuxt layer
 
-Regal is also a [Nuxt layer](https://nuxt.com/docs/guide/going-further/layers): another Nuxt 4 app can extend it and show a Library on one of its own pages (the portfolio's `/books`). The host gets two components and their composables, nothing else: no Regal page, no server routes, no global CSS, no page title, no dev panel, no demo data.
+You need a Nuxt 4 app (Node 22.12 or newer).
 
-### Extend it
+**1. Extend Regal** in `nuxt.config.ts`, and tell it where the library file is:
 
 ```ts
-// nuxt.config.ts of the host app
 export default defineNuxtConfig({
-  // Deploys: from GitHub (the layer's dependencies are installed with it).
-  // Pin a branch or tag with a ref: 'github:fabkho/regal#main'.
   extends: [['github:fabkho/regal', { install: true }]],
-  // Local development against a checkout: extends: ['../regal/'] (trailing slash).
-
   runtimeConfig: {
     public: {
-      regal: {
-        librarySrc: '/books/library.json',
-      },
+      regal: { librarySrc: '/books/library.json' },
     },
   },
 })
 ```
 
+**2. Add a library file.** To start, copy the demo: [`demo/demo-library.json`](demo/demo-library.json) to `public/books/library.json`. [Producing](docs/producing.md) has your own.
+
+**3. Put the components on a page** and give the stage a size (it fills its box):
+
+```vue
+<!-- app/pages/index.vue -->
+<template>
+  <main class="books">
+    <RegalBooksStage class="books__stage" />
+    <RegalBooksSidebar class="books__sidebar" heading="My shelf" />
+  </main>
+</template>
+
+<style scoped>
+.books { display: grid; grid-template-columns: 1fr 22rem; height: 100dvh; }
+.books__sidebar { overflow: auto; padding: 1rem; }
+</style>
+```
+
+**4. `npx nuxi dev`.** The Stack, the records and a picked Book's details are there. A card elsewhere: `<RegalBooksRow style="height: 18rem" :year="2025" />`.
+
+Each component loads the library file itself (server-side when it can, one fetch per page) and they share it, the Pick and the filters. No global CSS beyond three `@font-face`s, no pages, no server routes come with the layer.
+
 ### Config: `runtimeConfig.public.regal`
 
 | Key | Default | Meaning |
 |---|---|---|
-| `librarySrc` | `''` | URL of the [Regal library file](docs/library-file.md) to show: absolute, or relative to the page (`/books/library.json` from the host's `public/`). Unset: the components show an error saying so. |
-| `theme` | `'light'` | Colour scheme of the tooltip and the Book detail panel (and `RegalBooksRow`'s card) where a component doesn't set its `theme` prop: `'light'` (Regal's look), `'dark'` or `'auto'` (follows the host). See [Theming](#theming). |
-| `haptics` | `true` | Short vibrations on phones that can (Android Chrome; iOS Safari has no Vibration API): a soft double pulse when a Book is taken out (10 ms, a 45 ms pause, 18 ms), one pulse when it is put back (10 ms), and a tiny tick (1 ms, at most ~16 a second) each time a new Book reaches the focus line while a finger scrolls the Stack. Only with the user's own taps and swipes, never with reduced motion. `false` turns them all off. |
+| `librarySrc` | `''` | URL of the [Regal library file](docs/library-file.md): absolute, or relative to the page (`/books/library.json` from the host's `public/`). On another origin it, and its images, need CORS ([why](docs/nuxt-layer.md#cors-for-the-image-host)). Unset: the components show an error saying so. |
+| `theme` | `'light'` | Colour scheme of the tooltip, the detail panel and the row's card where a component doesn't set `theme`: `'light'`, `'dark'` or `'auto'` (follows the host). |
+| `haptics` | `true` | Short vibrations on phones that can (Android Chrome) when a Book is taken out or put back and while a finger scrolls. `false` turns them off. |
 
-Env override as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_REGAL_HAPTICS=false`, `NUXT_PUBLIC_REGAL_THEME=auto`.
-
-To turn haptics off on a host page:
-
-```ts
-// nuxt.config.ts of the host
-export default defineNuxtConfig({
-  extends: [/* Regal */],
-  runtimeConfig: { public: { regal: { librarySrc: '/books/library.json', haptics: false } } },
-})
-```
-
-**The scroll ticks and the first swipe.** Chrome only lets a page vibrate once the user has activated it ("sticky user activation", `navigator.userActivation.hasBeenActive`): a tap, a click, a key, or a touch that ends in a real `pointerup`. A touch the browser turns into its own scroll doesn't count: it ends as a `pointercancel`. So neither the Stack nor the row scrolls natively under a finger: the Stack drives its own drag (`touch-action: none`), the row its own sideways drag (`touch-action: pan-y`, an up/down swipe still scrolls the page) with a fling along Android's own curve (`app/utils/row/touchDrag.ts`). Lifting the finger after the first swipe activates the page, and the glide after it ticks; from then on every swipe ticks while the finger moves too. Only the very first swipe's drag (before the finger lifts) stays silent, in both. Measured on Chrome 145 (Android emulator, a fresh load, one real swipe, `dumpsys vibrator_manager`): the Stack 3 vibrations, the row 1–4 (0 while it still scrolled natively). A trackpad, the wheel, the keys and the scroll bar still scroll the row natively. Taking out and putting back pulse within the tap itself, so they always can.
-
-**Changed with the library file** ([#39](https://github.com/fabkho/regal/issues/39)): `mode` and `assetsBase` are gone. There is one way to get a Library (the file at `librarySrc`, its images listed in it), so a host that still sets them gets no error, they are ignored; drop them when you switch. `librarySrc` now names a library file, not a reading-tracker export (Libellus writes one; `pnpm library:convert` converts old published data, see below); such an export shows the error card. The Cover and description resolvers (`/api/cover`, `/api/description`, `NUXT_GOOGLE_BOOKS_API_KEY`) are no longer part of the layer.
+Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_REGAL_THEME=auto`, `NUXT_PUBLIC_REGAL_HAPTICS=false`.
 
 ### Components
 
-```vue
-<!-- body -->
-<RegalBooksStage class="books-stage" />
-<!-- the host's sidebar -->
-<RegalBooksSidebar heading="Bookshelf" count-label="Books read" />
-<!-- a card in another page: a profile, a year in review -->
-<RegalBooksRow class="books-row" inspect="auto" :limit="80" />
-<RegalBooksRow class="books-row" :year="2025" />
-```
+| Component | What | Main props |
+|---|---|---|
+| `RegalBooksStage` | The 3D Stack and the picked Book's details (a bottom sheet on stages ≤ 560 px). | `controls`, `rotate`, `theme`, `unstyled`; slots `#tooltip`, `#detail…` |
+| `RegalBooksSidebar` | Count, sort & filters, the Books as records, linked to the Stack. | `heading`, `count-label`, `filters`, `list`, `theme`, `unstyled` |
+| `RegalBooksFilters` | The same sort & filters as one bar, for a phone. | – |
+| `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `back-button`, `label`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
 
-- **`RegalBooksStage`**: the 3D Stack only (no Bookcase/Stack switch), the picked Book's details card over it. On narrow stages (≤ 560 px) the details are a bottom sheet instead: it sits on the viewport's bottom edge (in `<body>`, `position: fixed`) while a Book is out, covering what the host has under the stage, at `z-index: var(--regal-sheet-z-index, 15)`: above page content, below sticky bars at 20 and up. Give it a height (it fills its box; `min-height: 24rem`). Prop `controls` (default `false`) adds the sort & filter chips over the 3D; `rotate` (`'turntable'`) how a drag turns a picked Book: `'turntable'` turns it left/right and tips it at most ~75° (as always), `'free'` spins it about both axes like a trackball and lets it glide on after a quick release (the row's default); `theme`, `unstyled` and the `#tooltip` / `#detail…` slots theme the tooltip and the detail panel ([Theming](#theming)).
-- **`RegalBooksSidebar`**: the count of read Books, the Stack's sort/year/rating filters and the Books as records (hover lifts the Book in the 3D, click takes it out). Props: `heading` (`'Bookshelf'`, `''` hides it), `countLabel` (`'Books read'`), `filters` (`true`), `list` (`true`); `theme`, `unstyled` and the `#detail…` slots for the detail panel it shows while a Book is out. Fills the height it gets; the records scroll. Its filters section has the class `sidebar__filters`, so a host can hide it where `RegalBooksFilters` takes over.
-- **`RegalBooksRow`**: the Library as one horizontal row for a card: the Stack turned 90°, the Books pressed together left to right (oldest first, the row starts at the newest), each month after a hairline sheet with its date above (`MAR`, the year small), the Stack's hover and, while you scroll, Books passing the middle tipping out as if pulled by the head, with the title, stars and rating (4.25) of the one in focus under it. The Book in focus is always the one in the card's middle: at rest the card is full of Books, the newest flush with its right edge (with `year`, January's first flush with its left edge; a row too short to fill the card stands centred), and the Book then in the middle is in focus; scrolling on brings the first and the last Book to the middle too (the scroll has room before the first Book and after the last, half the card). The focus label stays in one place, centred under the row (a long title is cut short with …), and the dates stay in place over their sheets, fading out while a Book is out and back in once it has landed. Dates never overlap, at any scroll position, card width or number of Books: each is measured (month, small year, count) and kept 12 px from the next. Where two months are too close, the one nearer the row's resting end keeps its date (the newest month; a `year` row's January) and the other collapses to its leader line, whatever the scroll, so nothing flickers as you scroll. A date is always whole, never cut by the card's edge: at the edge it slides in to stay inside (6 px from the side; its leader line stays on its month's first Book), and once its sheet is more than 10 px outside the card it collapses to its leader line. A neighbour a sliding date would run into steps back to its leader line until there is room again (with a few px of hysteresis). A sideways swipe scrolls the row (its own drag and fling, so the scroll ticks work from the first swipe, see Haptics), an up/down swipe the page (nothing is trapped); a trackpad, Shift+wheel, a mouse drag, the ‹ › buttons (on hover, mouse only) and the arrow keys (once focused) scroll it natively. A thin scroll bar under the Books shows where you are and how far you can still scroll (a rounded thumb as wide as the share the card shows, quiet at rest, awake while the row moves, soft fades at the card's ends); drag it or press beside it to jump. A tap or click takes a Book out, again turns it; a drag spins it freely (up/down tips it, left/right turns it, a quick release lets it glide on; in the card a finger's up/down swipe still scrolls the page), a sideways flick turns it over; the Back button, the browser's Back, Escape or a tap beside it put it back. Give it a size (it fills its box; `min-height: 18rem`; a phone card of 360 × 300 shows about 20 Books). Props:
-  - `inspect` (`'card'`): where a Book taken out is looked at. `'card'` keeps it in the card (the camera steps back, the Book comes forward and grows a little; the details under it, or beside it on a wide card). `'viewport'` breaks out: the row's canvas moves into a fixed box over the whole viewport (the row stays exactly in place), the Book comes to the middle of the screen with its details as a bottom sheet (≤ 560 px wide) or a card at the bottom right, the page is veiled and does not scroll until the Book is back in the row. `'auto'`: the viewport on narrow screens (≤ 560 px), the card elsewhere. Broken out it sits at `z-index: var(--regal-row-z-index, 40)`, above the host's page and its sticky bars; it moves to `<body>`, so a CSS transform on the card's ancestors doesn't trap it.
-  - `limit` (`null`): only the newest this many Books (read and being read).
-  - `year` (`null`): only the Books read in that year; the row then starts at January.
-  - `back-button` (`true`): Regal's Back button while a Book is out. `false` hides it (e.g. with your own close in `#detail`); Escape, the browser's/Android's Back, a tap beside the Book and the details' `close` still put it back. The `#back="{ book, close, broken }"` slot replaces it with your own markup in its place (top left of the card; broken out, of the screen).
-  - `rotate` (`'free'`): how a drag turns a Book taken out: `'free'` (a trackball, both axes), or `'turntable'` (the Stage's: left/right, a little tip, only left/right for a finger in the card).
-  - `label` (`''`): the row's accessible name (default "Books read", "Books read in 2025").
-  - `theme`, `unstyled` and the `#tooltip` / `#detail…` slots, as on `RegalBooksStage` ([Theming](#theming)): the card, its focus label and details, also broken out.
-
-  It has its own Pick (not shared with `RegalBooksStage` and the sidebar), so it can sit on any page beside them. Spines are drawn at the size the card shows them and a front loads only when its Book is taken out; the canvas renders only when something moves and only while the row is on screen.
-
-  **Its intro.** A row shows nothing (just its card) until the Spines of the Books in view are drawn, so no Spine pops in afterwards. Then its Books come into place the way the Stack's pile does, turned for a row: each pops in a little to the right of its place and slides home, cascading from the left, the newest last (0.7 s). The month sheets grow with them; the dates with their leader lines, the focus label and the scroll bar stay out until the Books are home, then fade in together (0.25 s with the host's motion tokens, a 3 px rise), starting in the intro's last 0.1 s so it reads as one motion. It plays once per mount, never again for new Books or a resize, and is skipped once a Book is taken out; with Reduce Motion there is none, the row simply shows, its labels at once. It waits at most 2.5 s for its Spines, then plays anyway. Drawn Spines are kept for the page, so the row mounted again (the page entered again) shows them on its first frame; [`preloadRegal`](#preloading) gets a row's first mount there too.
-- **`RegalBooksFilters`**: the same sort & filters as one bar for a phone, to sit above `RegalBooksStage`: a line with the current choices ("Date read · Year · All years · All ratings") that opens a panel over the page. The bar is `--regal-filter-bar-height` tall (default `2.8rem`), so the host can size the stage below it in CSS; give it a `z-index` above the 3D when it is sticky. The portfolio shows it under 1025 px and hides the sidebar's filters there.
-
-On a tall, narrow stage (a phone) the pile starts with its top Book at about 80 % of the stage's height instead of mid-view (`app/utils/stack/camera.ts`); wide stages are unchanged.
-
-All of them load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML; one fetch) and share it; the Stage, the Sidebar and the Filters also share the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
-
-The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; Books a filter brings back pop in scattered around the pile and leaving ones slide out and shrink away, and when no Book stays (a new year) the old pile sweeps out to the left before the new one settles in from the bottom up (instant with reduced motion); classic back covers; title and stars in the hover label; while you scroll the Stack (and on touch screens), Books passing the middle of the view riffle out, the centred one with that label.
-
-**Styling.** The tooltip, the detail panel and `RegalBooksRow`'s card have their own tokens, `--regal-*` ([Theming](#theming)). The rest (the sidebar, the filters, the stage's notes) use the paper-ink tokens with fallbacks, e.g. `var(--color-ink, #2C2C2A)`, so they look right with or without them. A host that defines the same tokens (`--color-bg`, `--color-ink`, `--color-ink-muted`, `--color-ink-faint`, `--color-line`, `--color-accent`, `--color-accent-tint`, `--font-mono`, `--font-serif`, `--text-2xs` … `--text-2xl`) restyles them; set them on a wrapper to change only Regal. The `--regal-*` defaults of the light theme read them too, so a host that already maps them keeps that look. Regal registers the IBM Plex Mono, Patua One and Antonio `@font-face`s (no other global CSS).
-
-Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
-
-### Preloading
-
-A `RegalBooksRow` that mounts cold waits for the row's code (three.js, TresJS and Regal: ~230 KB brotli), the library file (fetched only once the row has mounted), the Spine images and fonts, and drawing the Spines. `preloadRegal()` does all of it ahead, while the owner is still on another screen, so the row shows its Spines on its first frame and goes straight into its intro:
-
-```ts
-// Where the row is likely next (the Home or app start of the signed-in owner), on idle:
-requestIdleCallback(async () => {
-  const { preloadRegal } = await import('#layers/regal/app/utils/preload')
-  await preloadRegal({ limit: 80 })            // the row's own `limit` / `year`
-})
-```
-
-- **What it does.** Fetches and reads the library file into the page's cache (the row reads it there and shows the Library in its first render, no second fetch); fetches the row's code (`import()` of `RegalBooksRow`); draws the Spines and page edges of the Books the row opens on (the newest, a `year` row's January; as many as the card shows) into the page's face cache, exactly as the row would draw them. Only Spines whose colours the library file gives (`palette`, as Regal assets writes) are drawn ahead; others the row draws itself.
-- **Options.** `src` (default `librarySrc`; pass it when calling outside the app's context with a page-specific source), `limit` and `year` (the row's), `spines` (`'visible'`, a number from where the row opens, or `false`), `width` / `height` (the card's CSS px; default the viewport's width × 288, for which Books show and the Spines' resolution), `chunk` (`true`: `RegalBooksRow`'s chunk; a function: your own import, e.g. of the component that wraps the row, when it brings Regal's fonts with it; `false`: none).
-- **Safe anywhere.** It resolves when done and never rejects (whatever didn't warm, the row loads as before); a failed warm-up (offline) is tried again on the next call. Calls with the same options share one warm-up; everything is kept for the page (module level) and reused by every row and by a row mounted again. It does nothing on the server and needs no row on the page.
-- **Where to call it.** As soon as the owner's row is a likely next step: on the screen before it, on idle (`requestIdleCallback`), or when its link comes into view. A dynamic `import()` keeps it out of the host's entry, and when the host bundles Regal into one chunk (a `codeSplitting` group), that import already fetches the chunk. The Spines are drawn only once the Spine fonts (Patua One, Antonio) are registered; a host that moves Regal's `@font-face` rules into its own chunk passes `chunk: () => import('~/components/MyRow.vue')`.
-
-The row marks its first look in the browser's performance timeline (`regal:library:shown`, `regal:row:first-frame`, `regal:row:spines-ready`, `regal:row:intro-start`, `regal:preload:done` …), for a host's own profiling. On a phone profile (4× CPU, Fast 4G; a production host that loads the row like Libellus), from the tap to the first frame with every Spine in view: 2.25 s before the row's first look was reworked, 1.24 s cold now, 0.27 s with `preloadRegal` on the screen before (the first frame drawn is full), 0.15 s for a row mounted again. The intro's 0.7 s follow.
+Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
 
 ### Theming
 
-`RegalBooksStage` and `RegalBooksRow` take the host's look the same way, with the same tokens, the same `theme` prop, the same slots and `unstyled` (`RegalBooksSidebar`: `theme`, `unstyled` and the detail slots, for the panel it shows while a Book is out). Regal's DOM around the 3D is themed:
-
-- `RegalBooksStage`: the **tooltip** (the hover label, the Stack's scroll focus label, the morph box between label and card) and the **Book detail panel** (the card, the bottom sheet on phones).
-- `RegalBooksRow`: the card itself (its surface and frame, the month/year labels with their leader lines, the scroll indicator, the ‹ › and Back buttons), its **tooltip** (the focus label: title and stars under the Book in focus) and its **detail panel** (the details under or beside the Book in the card; broken out, `inspect="viewport"`, the phone's sheet or the card at the bottom right). The veil behind a Book taken out is the card's surface colour: paper by default, dark in the dark theme, the host's `--regal-surface` when set.
-
-Three ways, from light to full control. Regal always keeps placing them, opening and closing (click, Escape, the sheet's drag, the host's Back via `putAway`; Back and a tap beside the Book in the row), the label ↔ card morph, the row's break-out and the swap between Books. The 3D (Books, lights, the row's hairline sheets) is not themed, but for the Books' shadow on the floor (`--regal-floor-shadow`: Regal's warm brown in the light theme, none in the dark one, where it would read as a lit block).
-
-**1. Tokens.** Every colour, frame, type and spacing value of these parts is a CSS custom property. Set them anywhere above Regal: on `:root`, on your theme's `[data-theme="dark"]` rule, or on the class you give the component. Parts that live in `<body>` (the hover label, the morph box, the phone's sheet; a broken-out row's canvas box with its labels, Back and the details) get the values the component resolved, so a token on the wrapper reaches them too. Unset ones fall back to the theme's defaults. Regal's own values live on a `.regal` scope (the component's root and each surface), never on `:root`. One table for both components (– : not used there); the row keeps its own smaller type and paddings, so a few tokens only reach it once set (the table says so):
-
-| Token | Light default | Dark default | `RegalBooksStage` | `RegalBooksRow` |
-|---|---|---|---|---|
-| `--regal-surface` | `var(--color-bg, #F5F2EB)` | `#1F1E1B` | Tooltip background | The card, the focus label, ‹ › and Back; the veil behind a Book taken out |
-| `--regal-surface-raised` | `--regal-surface` | `#262420` | Detail panel background; button text on hover | The details |
-| `--regal-ink` | `var(--color-ink, #2C2C2A)` | `#ECE8DF` | Text; button background on hover | Text, the month/year labels and their leader lines, the scroll indicator |
-| `--regal-ink-muted` | `var(--color-ink-muted, #6B6B69)` | `#A8A399` | Meta line, labels, the rating's number (also in the tooltip) | The line under the title, the hint, the rating's number in the focus label |
-| `--regal-ink-subtle` | `var(--color-ink-subtle, rgba(44, 44, 42, 0.72))` | `rgba(236, 232, 223, 0.75)` | Button text | – |
-| `--regal-ink-faint` | `var(--color-ink-faint, rgba(44, 44, 42, 0.55))` | `rgba(236, 232, 223, 0.5)` | The sheet's grip | "No books to show" |
-| `--regal-accent` | `var(--color-accent, #B93E2E)` | `#E0705F` | Stars, links | Stars, the month's count, "Turn over", ‹ › and Back on hover, the focus ring |
-| `--regal-accent-hover` | `var(--color-accent-light, #E8665A)` | `#F0907F` | Links on hover | – |
-| `--regal-hairline` | `var(--color-line, rgba(44, 44, 42, 0.14))` | `rgba(236, 232, 223, 0.16)` | Empty stars, the review's rule | Empty stars, the scroll track |
-| `--regal-border` | `var(--color-ink, #2C2C2A)` | `rgba(236, 232, 223, 0.28)` | Frame of the tooltip, the panel and its buttons | Frame of the card, the focus label, the details and the buttons |
-| `--regal-border-width` | `1px` | | `0` for frameless surfaces | The same frames |
-| `--regal-radius` | `0` | | Corner radius of the tooltip and the panel | Corners of the card, the focus label and the broken-out details (the sheet's top ones) |
-| `--regal-radius-control` | `0` | | Corner radius of the panel's buttons | Corners of ‹ › and Back |
-| `--regal-shadow` | `none` | `0 10px 30px rgba(0, 0, 0, 0.45)` | `box-shadow` of the tooltip and the panel | The focus label and the broken-out details |
-| `--regal-backdrop` | `none` | | `backdrop-filter`, e.g. `blur(12px)` with a translucent surface | The focus label and the broken-out details |
-| `--regal-font-body` | `var(--font-mono, 'IBM Plex Mono', …)` | | Everything but the title | Everything |
-| `--regal-font-title` | `var(--font-serif, 'Times New Roman', …)` | | The panel's title | The details' title, once set (else the body font) |
-| `--regal-size-base` | `var(--text-base, 0.85rem)` | | The panel's base size | – |
-| `--regal-size-title` | `var(--text-xl, 1.2rem)` | | Title in the card | – |
-| `--regal-size-title-sheet` | `var(--text-lg, 1.05rem)` | | Title in the phone's sheet | – |
-| `--regal-size-body` | `var(--text-sm, 0.75rem)` | | Author, review | The card's base size: the details and their title |
-| `--regal-size-small` | `var(--text-xs, 0.7rem)` | | Tooltip, blurb, buttons, links | The month labels |
-| `--regal-size-label` | `var(--text-2xs, 0.65rem)` | | Series, meta line, "About", the hint | The focus label, the year and count, Back, the line under the title, the blurb, the hint |
-| `--regal-weight-title` | `400` | | The panel's title | The details' title, once set (else `600`) |
-| `--regal-weight-label` | `400` | | Labels | – |
-| `--regal-style-title` | `italic` | | The panel's title | The details' title, once set (else `normal`) |
-| `--regal-label-case` | `uppercase` | | `text-transform` of labels and the meta line | The labels, Back, "No books to show" |
-| `--regal-label-tracking` | `0.08em` | | Their `letter-spacing` | The year and count, Back |
-| `--regal-space` | `1rem` | | Unit of every margin and gap (they are multiples of it) | – |
-| `--regal-tooltip-padding` | `0.3rem 0.55rem` | | The tooltip's | The focus label's, once set (else `0.2rem 0.45rem`) |
-| `--regal-panel-padding` | `1rem 1.1rem` | | The card's padding (the sheet uses `--regal-space`) | The broken-out details card's, once set (else `0.9rem 1rem`) |
-| `--regal-floor-shadow` | `1` | `0` | How strongly the Books' shadow prints on the floor of the Stack and the Bookcase: `0` none, `1` Regal's, up to `2`; follows the theme live (`unstyled` keeps it) | The same under the row |
-
-**2. Colour scheme.** `theme` on `RegalBooksStage` / `RegalBooksRow` / `RegalBooksSidebar` (default: `runtimeConfig.public.regal.theme`, `'light'`): `'light'` is Regal's look, `'dark'` the dark set above, `'auto'` follows the host: the nearest `data-theme="dark|light"` (or `data-color-scheme`, or a `dark` / `light` class) on an ancestor or `<html>`, else a `color-scheme` there that names one scheme, else the OS (`prefers-color-scheme`); it watches all three. Regal sets `color-scheme` on its surfaces to match (scrollbars, form controls), and the resolved scheme is on the root as `data-regal-theme`, for the host's own rules (`.regal[data-regal-theme="dark"] { --regal-accent: … }`).
-
-```vue
-<!-- A dark host that switches with <html data-theme>: the same tokens for both -->
-<RegalBooksStage class="shelf" theme="auto" />
-<RegalBooksRow class="shelf shelf--row" theme="auto" inspect="auto" />
-
-<style>
-.shelf {
-  --regal-surface: var(--color-surface);
-  --regal-surface-raised: var(--color-surface-raised);
-  --regal-ink: var(--color-ink);
-  --regal-ink-muted: var(--color-ink-muted);
-  --regal-accent: var(--color-accent);
-  --regal-hairline: var(--color-hairline);
-  --regal-border: var(--color-hairline);
-  --regal-radius: 12px;
-  --regal-font-title: var(--font-serif);
-}
-</style>
-```
-
-**3. Slots.** Your own markup and components inside Regal's frame. Pass them to `RegalBooksStage` or `RegalBooksRow` (the detail ones also to `RegalBooksSidebar`); each gets the Book (the normalized `Book`, `shared/types/book.ts`) and what it needs:
-
-| Slot | Props | Replaces in `RegalBooksStage` | Replaces in `RegalBooksRow` |
-|---|---|---|---|
-| `#tooltip` | `{ book }` | Title, stars and the rating's number in the hover and scroll focus labels | Title, stars and the rating's number in the focus label under the Book in focus |
-| `#detail` | `{ book, close, flip, face, sheet }` | The whole panel content (it scrolls as one in the sheet) | The whole details content (Back stays Regal's) |
-| `#detail-header` | `{ book }` | Series, title, author, rating and meta line | Title and the line under it |
-| `#detail-meta` | `{ book, meta }` | Only the meta line (`meta`: `['Read', 'Finished 1 Mar 2025', '200 pages', 'Paperback']`) | Only the line under the title, stars included (`meta`: `['Ada Example', '1 Mar 2025']`, the author and the date read) |
-| `#detail-about` | `{ book, description }` | The "About" part with the blurb (shown for Books without one too when passed) | The blurb, on a wide card and broken out (shown for Books without one too when passed); the owner's review stays |
-| `#detail-actions` | `{ book, close, flip, face }` | Show back / Put back / Goodreads | "Turn over · drag or flick to turn" |
-| `#back` | `{ book, close, broken }` | – | The Back button while a Book is out (`broken`: the row broke out to the viewport); `:back-button="false"` hides it instead |
-
-`close` puts the Book back (like Escape), `flip` turns it, `face` is `'front'` or `'back'`, `sheet` is true in the phone's sheet (the Stage's, or the row's broken out on a phone). The tooltip, the sheet and a broken-out row's details render in `<body>`: style slot content with your component's scoped classes (they come along) rather than descendant selectors from your page.
-
-```vue
-<RegalBooksStage theme="auto">
-  <template #tooltip="{ book }">
-    <BookTitle :book="book" />
-  </template>
-  <template #detail="{ book, close }">
-    <BookSummary :book="book" />
-    <UiButton @click="close">Done</UiButton>
-  </template>
-</RegalBooksStage>
-```
-
-**The row's card and sheet.** A few tokens only `RegalBooksRow` reads, for a host that puts the row in its own card or its own markup in the broken-out phone sheet (`#detail`). Unset, the look above. Set them on the class you give the row (the sheet's are carried to `<body>` with it):
-
-| Token | Default | What |
-|---|---|---|
-| `--regal-row-border` | `var(--regal-border-width) solid var(--regal-border)` | The card's border (`0` or `none`: frameless) |
-| `--regal-row-radius` | `--regal-radius` | The card's corners |
-| `--regal-row-background` | `--regal-surface` | The card's background (`transparent`: the host's card shows through; the veil behind a Book taken out then takes the colour behind) |
-| `--regal-row-z-index` | `40` | Broken out: the canvas box, the sheet and Back sit at this (+1) |
-| `--regal-sheet-radius` | `--regal-radius` | The sheet's top corners |
-| `--regal-sheet-background` | `--regal-surface-raised` | The sheet's background |
-| `--regal-sheet-border` | `var(--regal-border-width) solid var(--regal-border)` | The sheet's border (only its top edge shows) |
-| `--regal-sheet-shadow` | `--regal-shadow` | The sheet's `box-shadow` |
-| `--regal-sheet-padding` | `0.8rem 1rem 1rem` | The sheet's padding; `0` lets a `#detail` slot fill it edge to edge |
-| `--regal-sheet-max-width` | `none` | The sheet's most width (centred when narrower than the screen) |
-| `--regal-sheet-max-height` | `34dvh` | The sheet's most height (it scrolls beyond) |
-| `--regal-sheet-grabber` | `none` | `block` shows a grabber at the sheet's top; dragging it down puts the Book back |
-| `--regal-sheet-grabber-color` | `--regal-ink-faint` | The grabber's colour |
-| `--regal-sheet-grabber-width` | `2.25rem` | The grabber's width |
-| `--regal-sheet-grabber-height` | `2px` | The grabber's height |
-
-```vue
-<!-- Libellus: the row inside its own card, its own sheet content -->
-<RegalBooksRow class="year-row" theme="auto" inspect="viewport" :year="2025" :back-button="false">
-  <template #detail="{ book, close }"><BookSheet :book="book" @close="close" /></template>
-</RegalBooksRow>
-
-<style scoped>
-.year-row {
-  --regal-row-border: 0;
-  --regal-row-radius: 0;
-  --regal-row-background: transparent;
-  --regal-sheet-padding: 0;
-  --regal-sheet-radius: 20px;
-  --regal-sheet-border: 0;
-  --regal-sheet-shadow: 0 -8px 30px rgb(0 0 0 / 0.2);
-  --regal-sheet-max-width: 32rem;
-  --regal-sheet-grabber: block;
-}
-</style>
-```
-
-**`unstyled`.** `<RegalBooksStage unstyled />` / `<RegalBooksRow unstyled />` keep the structure (classes `hover-label`, `focus-label`, `details`, `details__title` …; `row-card`, `row-focus`, `row-label`, `row-card__details` (`--sheet`, `--card` broken out), `row-card__back` …; each surface also `.regal.regal--unstyled`) and the layout (positions, padding, gaps, the sheet's grip), and drop Regal's colours, frame and type: they inherit from the host (the parts in `<body>` from `<body>`). Style them from global CSS, e.g. `.regal--unstyled.details { background: … }`. The row's card is then transparent and frameless, and its veil takes the colour that shows behind it (the nearest background up the page).
-
-`pnpm dev` → `/dev/theming` shows them all (default, dark, auto, custom tokens, slots, part slots, unstyled; `?look=…`), the Stage and the row with the same props and slots (`?show=both|stage|row`, `?inspect=card|viewport` for the row).
-
-### Static data
-
-Regal reads one file: the [Regal library file](docs/library-file.md) (`version: 2`), every Book with its data and resolved assets (front, Spine and back images, small pile copies, Spine colours, blurb), validated when it loads. Put it anywhere (the host's `public/`, a CDN) and point `librarySrc` at it.
-
-- Image references in it are absolute or relative to the file's own URL (`9780756413026/front.webp` next to the file). Images on another origin must allow CORS, as they become WebGL textures.
-- A Book without an image gets the drawn one: a placeholder front, a typeset Spine and back.
-- A file that doesn't load or isn't valid (another `version`, a reading-tracker export, a broken field) shows an error card with the first problems (`books[3].rating: must be …`), never an empty shelf.
-- The Stack loads lazily from the file's `pile` copies: the Spines in and around the view first, then the rest of the pile in the background, and a Book's full front and back only once it is pointed at or taken out. Without `pile` copies the full faces stand in; without `palette` the Spine colours are sampled from the front in the browser.
-
-`nuxt dev` note: a `public/books/` folder next to a `/books` page makes the dev server redirect `/books` to `/books/` (the page still renders). Production builds don't.
-
-`tests/fixtures/layer-host/` is a minimal host (a synthetic library file) built by `tests/e2e/layer-host.test.ts`; `pnpm nuxi dev tests/fixtures/layer-host` runs it.
+Three levels, the same on the Stage and the row: **tokens** (`--regal-surface`, `--regal-ink`, `--regal-accent`, `--regal-radius`, `--regal-font-title` … on any wrapper), **`theme`** (`light`, `dark`, `auto`), and **slots** for your own markup, with **`unstyled`** for full control. The sidebar and filters read the paper-ink tokens (`--color-ink`, `--color-bg` …) with fallbacks. Token table, slot props and examples: [Theming](docs/nuxt-layer.md#theming).
 
 ## Producing the library file
 
-Three steps, each with one job:
+- **From Libellus**: `pnpm export:regal` there, or its `regal-export` function.
+- **From older published data** (the reading-tracker/Goodreads era): `pnpm library:convert`.
+- **By hand**: it's plain JSON; validate it by dropping it on the playground.
+- **Then, optionally, Regal assets** for covers, Spines, backs and colours: `pnpm --dir pipeline install`, then `pnpm regal-assets --in my-library.json --dry-run --no-ai` first (nothing remote, nothing paid, the AI cost printed).
+- **Publish** the file and its images on any static host, or R2 with `--publish <prefix>`.
 
-```
-Libellus (library:convert: bridge for old data) ──► library file ──► regal assets ──► library file + images (R2 v2/) ──► Regal display
-```
-
-1. **Produce.** Something writes a [Regal library file](docs/library-file.md) with the reading data. Today that is [Libellus](https://github.com/fabkho/libellus): its `regal-export` edge function for the workflow that publishes the shelf, `pnpm export:regal` there by hand (see [The daily chain](#the-daily-chain)). `pnpm library:convert` stays as a bridge for old published data: it turns a v1 `library.json` + `manifest.json` into a library file ([Converting](docs/library-file.md#converting-old-published-data)). Where the data comes from is the producer's business, not Regal's.
-2. **Enrich: Regal assets** ([`pipeline/`](pipeline/README.md)). Takes any library file and returns it with each Book's `assets` (front, Spine, back, pile copies, palette, Spine colour, photo faces, source) and the images, plus a blurb for Books without one.
-3. **Display.** Regal (this layer) renders the enriched file, nothing else.
-
-### Running Regal assets
-
-`pipeline/` is its own package (own `package.json` and lockfile, never installed by a host that extends the layer):
-
-```bash
-pnpm --dir pipeline install
-pnpm regal-assets --in .data/library-v2.json --dry-run --no-ai   # = pnpm --dir pipeline assets …
-```
-
-- `--in <file|url>`: the library file, validated with the shared validator (invalid: the errors, nothing written). `--out <dir>` (default `.data/regal-assets/out`): `library.json` plus `<key>/{front,spine,back,front-pile,spine-pile}.webp`, `<key>` the ISBN-13 or the Book id; image references in the output are relative to it.
-- Per Book: what the file brings and is good enough stays (copied into the output, so the published set doesn't depend on where the input's images live); a front below 800 px or none goes through today's front chain (Apple, the German National Library for German editions, Google, the file's own front, Open Library), the taller one wins; photo drop-ins (`<cache>/photos/<key>/front.jpg` …) beat everything; pile copies, palette and Spine colour are made from the faces; a Book without a blurb gets one (Apple's publisher copy, else Open Library/Google).
-- AI Spines/backs (Gemini, `GEMINI_API_KEY` with billing) for Books with a front and no Spine/back art, through the Batch API (half price; `--now` for direct calls). A paid jacket is kept in the cache and never bought twice. `--no-ai` leaves them to Regal's drawn ones, `--no-model` skips the text model too.
-- Incremental and idempotent: a Book is rebuilt only when what its assets are made of changed (its sizing and text fields, its input images' content, its photos); a run without changes rewrites nothing, not even `generatedAt`. Downloads, jackets, open batch jobs and the state live under `.data/regal-assets/` (`--cache`). `--revalidate` asks the servers whether input images changed behind the same URL; `--force` rebuilds anyway; `--limit <n>` takes only the n most recently read Books this run.
-- `--publish v2` uploads what changed to the R2 bucket (`$REGAL_R2_BUCKET`, default `portfolio-books`; `wrangler login` once, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment as in the workflow) under `v2/`: images first, `library.json` last, files that are gone deleted. Only that prefix is ever written; the bucket root (the old v1 files) never, and an empty prefix is refused.
-- `--dry-run`: nothing remote and nothing paid. No upload (the plan is printed), no Gemini call (the AI cost is printed, as today's build did); the free work runs and the local output is written, so the dry run shows the enriched file.
-
-Books without a blurb now get theirs from Regal assets: the display has no description resolver any more, so a file that skips this step shows them without one.
-
-**CORS.** The portfolio loads the images cross-origin as WebGL textures, so the bucket's domain (`books.fabkho.dev`) must answer with CORS headers for the page's origin (`https://fabkho.dev`, and any preview/dev origin that shows `/books`), for `v2/` as for the old v1 files.
+All of it, with the flags and the costs: **[docs/producing.md](docs/producing.md)**. The format: **[docs/library-file.md](docs/library-file.md)**.
 
 ### The daily chain
 
-The shelf is published from the cloud ([libellus#110](https://github.com/fabkho/libellus/issues/110)) by the workflow [`publish-shelf.yml`](.github/workflows/publish-shelf.yml): [Libellus](https://github.com/fabkho/libellus) (hosted Supabase) serves the owner's library file from its `regal-export` edge function, and the workflow enriches and publishes it under `v2/`:
+The owner's shelf on [fabkho.dev/books](https://fabkho.dev/books) is published by [`publish-shelf.yml`](.github/workflows/publish-shelf.yml): Libellus' export → validate → Regal assets → R2 `portfolio-books/v2/`, daily and whenever the Library changes. Secrets, guards and dry runs: [The daily chain](docs/producing.md#the-daily-chain).
 
-```
-Libellus change ─► DB trigger (owner only, ≥ 10 min apart) ─► repository_dispatch libellus-changed ─┐
-daily 05:00 UTC (schedule) ─────────────────────────────────────────────────────────────────────────┼─► publish-shelf
-by hand (workflow_dispatch, dry_run / allow_shrink) ────────────────────────────────────────────────┘
-publish-shelf: GET regal-export ─► validate ─► pnpm regal-assets --no-ai --no-model --revalidate --publish v2 ─► R2 portfolio-books/v2/
-```
-
-1. **Export.** `curl -H "Authorization: Bearer $REGAL_EXPORT_TOKEN" "$LIBELLUS_EXPORT_URL"`: the owner's Books read as a library file, with each Book's published art carried over (Libellus reads `books.fabkho.dev/v2/library.json` and keeps every matched Book's front, Spine and back, by ISBN-13, else by title plus the first author's surname), the member's own page count where she set one. The same file `pnpm export:regal --statuses read --carry-art …` writes in Libellus. When Libellus cannot read the published file it answers 502 and nothing is published, so the art is never dropped.
-2. **Validate.** Regal's validator (`pipeline/src/layer.ts`), and a guard: an export with far fewer Books than the shelf shows now (more than 5 and 10 % fewer: a wrong owner, a broken read) is not published unless a manual run sets `allow_shrink`.
-3. **Enrich and publish.** `pnpm regal-assets --in <file> --no-ai --no-model --revalidate --publish v2` with wrangler on an API token. `.data/regal-assets` (downloads, output, the state of the last publish) is kept in the Actions cache between runs, so a quiet run rebuilds and uploads nothing. A run with an empty cache (the first one, or after GitHub evicted it) rebuilds every Book and uploads every file once.
-
-The job summary lists the export's and the published shelf's Book counts, what Regal assets wrote, what it published (or would have) and the Books it rebuilt. Runs never overlap: one waits for the other, and of the waiting ones only the latest runs. A step that fails fails the run (GitHub mails the owner).
-
-A dry run: **Actions → publish-shelf → Run workflow → dry_run**: everything but the upload (`--dry-run`: the plan is printed). Locally, the same as the workflow, never `--publish` while testing:
+## Development
 
 ```bash
-curl -fsS -H "Authorization: Bearer $REGAL_EXPORT_TOKEN" "$LIBELLUS_EXPORT_URL" -o .data/library.json
-pnpm regal-assets --in .data/library.json --no-ai --no-model --revalidate --dry-run --publish v2
+pnpm install
+pnpm dev               # http://localhost:3000: the viewer (demo library file); /playground; /row; /?src=<url> views another file
+pnpm lint
+pnpm test:unit         # pure modules
+pnpm test              # + Nuxt runtime + browser e2e (builds the app; WebGL in headless Chromium)
+pnpm typecheck
+pnpm check:privacy     # fails on real exports or publisher images in the repo
+pnpm generate          # the static site; NUXT_APP_BASE_URL=/regal/ for a subpath
 ```
 
-Secrets (Settings → Secrets and variables → Actions; never in the repo):
+The site is a viewer of one library file (`librarySrc`, default the synthetic demo) and `?src=<url>` views any other; a `?src=` file is loaded by the browser only, so it must allow cross-origin requests from the site. `/playground` is the showcase. Both, and the dev pages, stay out of an app that extends the layer.
 
-| Secret | |
-|---|---|
-| `REGAL_EXPORT_TOKEN` | The shared bearer secret, the same value as the `regal-export` function secret in Libellus. |
-| `LIBELLUS_EXPORT_URL` | `https://<project>.supabase.co/functions/v1/regal-export`. |
-| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token with R2 Object Read & Write on the bucket `portfolio-books` only. |
-| `CLOUDFLARE_ACCOUNT_ID` | The account that holds the bucket. |
+The showcase is deployed to GitHub Pages from `main` by [`pages.yml`](.github/workflows/pages.yml) (a static `nuxt generate` under `/regal/`).
 
-Optional variables: `REGAL_R2_BUCKET` (default `portfolio-books`), `REGAL_PUBLISHED_URL` (the shelf the shrink guard compares with, default `https://books.fabkho.dev/v2/library.json`). The portfolio reads `books.fabkho.dev/v2/library.json` ([#41](https://github.com/fabkho/regal/issues/41)). This replaces the owner's daily job on his Mac (Libellus `pnpm export:regal`, then `regal-assets` in a local checkout), which is retired once the workflow has run green twice. The old reading-tracker build (`books:daily`) and the `library:convert` step are retired; retiring the v1 R2 data is [#48](https://github.com/fabkho/regal/issues/48).
+Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (`--view bookcase`, `--src <url>` for another library file).
+
+`tests/fixtures/layer-host/` is a minimal host app that extends the layer (synthetic data); `pnpm nuxi dev tests/fixtures/layer-host` runs it.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+- Before a PR: `pnpm lint`, `pnpm test:unit`, `pnpm typecheck` and `pnpm check:privacy` (CI runs the same, and the pipeline's tests). The e2e suite is local only.
+- **Never commit real reading data**: no Goodreads export, no personal library file, no reviews or notes of a real person. Fixtures are synthetic (`Ada Example`, invented ISBNs).
+- **Never commit publisher images**: covers, Spines and backs found by Regal assets, or screenshots showing them. Screenshots come from the synthetic showcase shelf (`node scripts/showcase/shots.mjs <site>`).
+- The layer must stay host-safe: anything for Regal's own site goes in the standalone-only module in `nuxt.config.ts`; see [AGENTS.md](AGENTS.md) for the conventions and [CONTEXT.md](CONTEXT.md) for the vocabulary (Book, Stack, Pick, Spine …).
+
+## Security
+
+Regal renders a library file in the browser and runs no server code in a host. Report a vulnerability privately through [GitHub's security advisories](https://github.com/fabkho/regal/security/advisories/new), not in an issue: [SECURITY.md](SECURITY.md).
+
+## Licence and credits
+
+<!-- Licence: to be decided by the owner before the repository goes public (#61). -->
+The licence is not chosen yet ([#61](https://github.com/fabkho/regal/issues/61)).
+
+Book titles, covers and blurbs that appear in a library file you load belong to their publishers and authors; Regal ships none. The demo and showcase libraries (`demo/`) are synthetic and illustrative: well-known titles with invented ratings, dates, reviews and ISBNs; the showcase's covers are drawn for it, no publisher's art. The bookcase model is CC BY 4.0 (Lorenzo Drago); more in [CREDITS.md](CREDITS.md).
