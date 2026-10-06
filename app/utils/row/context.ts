@@ -5,7 +5,7 @@ import type { Ref } from 'vue'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import type { LoadView } from '#layers/regal/app/utils/covers/loadWindow'
 import type { SpinMode } from '#layers/regal/app/utils/books/spin'
-import type { RowIntroState } from '#layers/regal/app/utils/row/intro'
+import type { RowIntroMode, RowIntroState } from '#layers/regal/app/utils/row/intro'
 
 /**
  * Where the camera is along the row, per frame. A LoadView along x: `focusY`
