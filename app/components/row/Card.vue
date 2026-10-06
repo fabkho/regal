@@ -43,8 +43,8 @@ import type { RowIntroState } from '#layers/regal/app/utils/row/intro'
 import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
-import { backgroundOf } from '#layers/regal/app/utils/theme/color'
-import { floorShadowStrength, ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
+import { backgroundOf, parseCssColor } from '#layers/regal/app/utils/theme/color'
+import { floorShadowStrength, ROW_SHEET_TOKENS, VEIL_OPACITY_CARD, VEIL_OPACITY_FULL, veilOpacity } from '#layers/regal/app/utils/theme/tokens'
 
 const props = withDefaults(defineProps<{
   /** The Books, newest first (rowBooks). */
@@ -83,7 +83,7 @@ const ctx: RowContext = {
   breakout: reactive({ active: false, rect: { left: 0, top: 0, width: 0, height: 0 } }),
   dim: { value: 0 },
   floorShadow: { value: 1 },
-  veil: { color: '#F5F2EB' },
+  veil: { color: '#F5F2EB', opacity: VEIL_OPACITY_CARD, opacityFull: VEIL_OPACITY_FULL },
   visible: ref(true),
   rotate: computed(() => props.rotate),
   intro: ref<RowIntroState>('waiting'),
@@ -564,6 +564,9 @@ const OWN_DEFAULTS = [
   'tooltip-padding',
   'panel-padding',
   'row-z-index',
+  'veil-opacity',
+  'veil-opacity-card',
+  'veil-color',
   ...ROW_SHEET_TOKENS,
 ]
 const carried = shallowRef<Record<string, string>>({})
@@ -583,9 +586,20 @@ const surface = computed(() => (broken.value
   ? { ...resolved.value, style: { ...resolved.value.style, ...carried.value } }
   : resolved.value))
 
-/** The veil is the card's surface; transparent (unstyled), what shows behind the card. */
+/**
+ * The veil behind a Book taken out: `--regal-veil-color` when it is a colour, else the card's surface
+ * (transparent when `unstyled`: what shows behind the card); `--regal-veil-opacity-card` (0.72) in the card,
+ * `--regal-veil-opacity` (0.9) broken out, 1 being solid. Read from the card, so a host sets them above it.
+ */
 function readVeil() {
-  ctx.veil.color = backgroundOf(root.value, ui.scheme.value === 'dark' ? '#1F1E1B' : '#F5F2EB')
+  const style = root.value ? getComputedStyle(root.value) : null
+  const asked = style?.getPropertyValue('--regal-veil-color').trim()
+  const parsed = asked ? parseCssColor(asked) : null
+  ctx.veil.color = parsed && parsed.alpha > 0.01
+    ? parsed.hex
+    : backgroundOf(root.value, ui.scheme.value === 'dark' ? '#1F1E1B' : '#F5F2EB')
+  ctx.veil.opacity = veilOpacity(style?.getPropertyValue('--regal-veil-opacity-card'), VEIL_OPACITY_CARD)
+  ctx.veil.opacityFull = veilOpacity(style?.getPropertyValue('--regal-veil-opacity'), VEIL_OPACITY_FULL)
 }
 /** What the host set may have changed (a class on its page, the theme). */
 function readTheme() {
@@ -625,6 +639,8 @@ onMounted(() => {
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('popstate', onPopState)
+  // A host's media query may change the veil's tokens.
+  window.addEventListener('resize', readVeil, { passive: true })
   syncCamera()
   readTheme()
 })
@@ -636,6 +652,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('popstate', onPopState)
+  window.removeEventListener('resize', readVeil)
   clearTimeout(landing)
   gsap.killTweensOf(ctx.zoom)
   if (broken.value) document.documentElement.style.overflow = ''

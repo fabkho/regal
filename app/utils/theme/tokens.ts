@@ -107,6 +107,22 @@ export function floorShadowStrength(tokens: Readonly<Record<string, string>>, sc
   return Math.min(FLOOR_SHADOW_MAX, Math.max(0, value))
 }
 
+/** The veil behind a Book taken out of RegalBooksRow: how opaque it is in the card, and broken out over the viewport (today's look). */
+export const VEIL_OPACITY_CARD = 0.72
+export const VEIL_OPACITY_FULL = 0.9
+
+/**
+ * A veil opacity from a token's value (`--regal-veil-opacity`,
+ * `--regal-veil-opacity-card`): a number clamped to 0..1 (`1` is solid), else
+ * `fallback` (unset or not a number).
+ */
+export function veilOpacity(raw: string | null | undefined, fallback: number): number {
+  const text = raw?.trim()
+  const value = text ? Number(text) : Number.NaN
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(1, Math.max(0, value))
+}
+
 export interface SchemeHints {
   /** The theme asked for. */
   theme: RegalTheme

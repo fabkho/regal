@@ -52,8 +52,12 @@ export interface RowContext {
   dim: { value: number }
   /** The floor shadow's strength (utils/theme/tokens.ts floorShadowStrength): 1 in the light theme, 0 in the dark (RowCard). */
   floorShadow: { value: number }
-  /** The veil's colour (`#rrggbb`): the card's surface (`--regal-surface`), so it is dark in the dark theme (RowCard). */
-  veil: { color: string }
+  /**
+   * The veil behind a Book taken out (RowCard `readVeil`): its colour (`#rrggbb`, `--regal-veil-color`, else the
+   * card's surface, so dark in the dark theme) and its opacity, 0..1, in the card (`--regal-veil-opacity-card`)
+   * and broken out (`--regal-veil-opacity`); RowScene multiplies the one in use by `dim`.
+   */
+  veil: { color: string, opacity: number, opacityFull: number }
   /** Render only while the row shows (an IntersectionObserver in RowCard). */
   visible: Ref<boolean>
   /** How a drag turns a Book taken out (RegalBooksRow's `rotate`, utils/books/spin.ts). */

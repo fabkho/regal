@@ -2,7 +2,8 @@
 // Dev only (/dev/theming): RegalBooksStage and RegalBooksRow the way a host
 // themes them (docs/nuxt-layer.md: "Theming"), with the same props and slots.
 // ?look=default|dark|auto|tokens|slots|parts|unstyled, ?show=both|stage|row,
-// ?inspect=card|viewport (the row); the switches keep them in the URL. Hover
+// ?inspect=card|viewport (the row), ?veil=default|solid (the backdrop behind a Book
+// taken out: --regal-veil-opacity: 1); the switches keep them in the URL. Hover
 // a Book for the tooltip, click it for the detail panel; a narrow window
 // shows the sheet. Not in a build.
 import { RegalBooksRow, RegalBooksStage } from '#components'
@@ -30,9 +31,12 @@ const show = computed<Show>(() => (SHOWS as readonly string[]).includes(String(r
 const INSPECTS = ['card', 'viewport'] as const
 type Inspect = typeof INSPECTS[number]
 const inspect = computed<Inspect>(() => route.query.inspect === 'viewport' ? 'viewport' : 'card')
-function setQuery(key: 'show' | 'inspect', value: string, fallback: string) {
+function setQuery(key: 'show' | 'inspect' | 'veil', value: string, fallback: string) {
   router.replace({ query: { ...route.query, [key]: value === fallback ? undefined : value } })
 }
+
+const VEILS = ['default', 'solid'] as const
+const veil = computed<typeof VEILS[number]>(() => route.query.veil === 'solid' ? 'solid' : 'default')
 
 /** The components shown, each with the same theme, unstyled and slots. */
 const parts = computed(() => [
@@ -59,7 +63,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
 <template>
   <div
     class="theming"
-    :class="[`theming--${look}`, `theming--show-${show}`]"
+    :class="[`theming--${look}`, `theming--show-${show}`, `theming--veil-${veil}`]"
     :data-host-theme="look === 'auto' ? hostTheme : undefined"
   >
     <nav
@@ -104,6 +108,17 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
         class="theming__option"
         :aria-pressed="inspect === option"
         @click="setQuery('inspect', option, 'card')"
+      >
+        {{ option }}
+      </button>
+      <span class="theming__label theming__label--gap">Veil</span>
+      <button
+        v-for="option in VEILS"
+        :key="option"
+        type="button"
+        class="theming__option"
+        :aria-pressed="veil === option"
+        @click="setQuery('veil', option, 'default')"
       >
         {{ option }}
       </button>
@@ -247,6 +262,12 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
   width: min(46rem, calc(100% - 2rem));
   height: 20rem;
   margin: 1.5rem 1rem 3rem;
+}
+
+/* A solid backdrop behind a Book taken out (the row's `inspect="viewport"` most of all). */
+.theming--veil-solid {
+  --regal-veil-opacity: 1;
+  --regal-veil-opacity-card: 1;
 }
 
 /* The host's page behind the stage. */

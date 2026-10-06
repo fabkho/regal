@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { FLOOR_SHADOW_MAX, floorShadowStrength, hostThemeOf, nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme, ROW_SHEET_TOKENS } from '#layers/regal/app/utils/theme/tokens'
+import { FLOOR_SHADOW_MAX, floorShadowStrength, hostThemeOf, nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme, ROW_SHEET_TOKENS, VEIL_OPACITY_CARD, VEIL_OPACITY_FULL, veilOpacity } from '#layers/regal/app/utils/theme/tokens'
 import { parseRgb } from '#layers/regal/app/utils/theme/color'
 
 const css = readFileSync(new URL('../../app/assets/css/regal-theme.css', import.meta.url), 'utf8')
@@ -134,5 +134,30 @@ describe('parseRgb (the veil takes the card\'s surface)', () => {
   it('leaves other syntaxes to the canvas', () => {
     expect(parseRgb('oklch(0.3 0.02 80)')).toBeNull()
     expect(parseRgb('transparent')).toBeNull()
+  })
+})
+
+describe('veilOpacity (the backdrop behind a Book taken out)', () => {
+  it('keeps today\'s look unset: 0.72 in the card, 0.9 broken out', () => {
+    expect(VEIL_OPACITY_CARD).toBe(0.72)
+    expect(VEIL_OPACITY_FULL).toBe(0.9)
+    expect(veilOpacity('', VEIL_OPACITY_FULL)).toBe(0.9)
+    expect(veilOpacity(undefined, VEIL_OPACITY_CARD)).toBe(0.72)
+    expect(veilOpacity('solid', VEIL_OPACITY_FULL)).toBe(0.9)
+  })
+
+  it('takes a number, 1 being solid, clamped to 0..1', () => {
+    expect(veilOpacity(' 1 ', 0.9)).toBe(1)
+    expect(veilOpacity('0.5', 0.9)).toBe(0.5)
+    expect(veilOpacity('3', 0.9)).toBe(1)
+    expect(veilOpacity('-1', 0.9)).toBe(0)
+  })
+
+  it('is read by the row and documented', () => {
+    const card = readFileSync(new URL('../../app/components/row/Card.vue', import.meta.url), 'utf8')
+    for (const name of ['veil-opacity', 'veil-opacity-card', 'veil-color']) {
+      expect(card, name).toContain(`--regal-${name}`)
+      expect(reference, name).toContain(`| \`--regal-${name}\` |`)
+    }
   })
 })
