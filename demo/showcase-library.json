@@ -1,0 +1,1194 @@
+{
+  "version": 2,
+  "generatedAt": "2026-05-01T06:00:00Z",
+  "owner": "Demo Reader",
+  "generator": "hand-written showcase fixture (synthetic): public-domain titles; ratings, dates, reviews, blurbs and ISBNs invented",
+  "books": [
+    {
+      "id": "shelf-01",
+      "title": "The Count of Monte Cristo",
+      "authors": [
+        "Alexandre Dumas"
+      ],
+      "isbn13": "9780000010018",
+      "pages": 1276,
+      "binding": "Paperback",
+      "yearPublished": 2000,
+      "originalYear": 1844,
+      "status": "currently-reading",
+      "dateStarted": "2026-04-20",
+      "dateAdded": "2026-04-01",
+      "rating": 0,
+      "readCount": 0,
+      "description": "A sailor betrayed on his wedding day escapes prison and returns, rich and patient, to settle every account.",
+      "publisher": "Example Classics",
+      "genre": "ADVENTURE",
+      "assets": {
+        "palette": {
+          "background": "#2f4858",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#2f4858",
+        "front": "covers/shelf-01.jpg"
+      }
+    },
+    {
+      "id": "shelf-02",
+      "title": "Persuasion",
+      "authors": [
+        "Jane Austen"
+      ],
+      "isbn13": "9780000010025",
+      "pages": 249,
+      "binding": "Hardcover",
+      "yearPublished": 2007,
+      "originalYear": 1817,
+      "status": "currently-reading",
+      "dateStarted": "2026-04-28",
+      "dateAdded": "2026-04-01",
+      "rating": 0,
+      "readCount": 0,
+      "description": "Eight years after she was talked out of an engagement, Anne Elliot meets the man again.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#7a2e26",
+          "text": "#f3e9d8",
+          "accent": "#e3c27a"
+        },
+        "spineColor": "#7a2e26",
+        "front": "covers/shelf-02.jpg"
+      }
+    },
+    {
+      "id": "shelf-03",
+      "title": "The Picture of Dorian Gray",
+      "authors": [
+        "Oscar Wilde"
+      ],
+      "isbn13": "9780000010032",
+      "pages": 254,
+      "binding": "Paperback",
+      "yearPublished": 2014,
+      "originalYear": 1890,
+      "status": "read",
+      "dateRead": "2026-04-12",
+      "dateStarted": "2026-04-02",
+      "dateAdded": "2026-03-19",
+      "rating": 4.5,
+      "review": "Every line is a quotation waiting to happen.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A young man stays beautiful while his portrait ages and darkens with every sin.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#3d5a3a",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#3d5a3a",
+        "front": "covers/shelf-03.jpg"
+      }
+    },
+    {
+      "id": "shelf-04",
+      "title": "The War of the Worlds",
+      "authors": [
+        "H. G. Wells"
+      ],
+      "isbn13": "9780000010049",
+      "pages": 192,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 2021,
+      "originalYear": 1898,
+      "status": "read",
+      "dateRead": "2026-03-29",
+      "dateStarted": "2026-03-21",
+      "dateAdded": "2026-03-07",
+      "rating": 4,
+      "review": "The heat-ray still feels modern.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Cylinders fall on Surrey, and something climbs out.",
+      "publisher": "Example Classics",
+      "genre": "SCIENCE FICTION",
+      "assets": {
+        "palette": {
+          "background": "#1f3a5f",
+          "text": "#efe7d6",
+          "accent": "#c9a227"
+        },
+        "spineColor": "#1f3a5f",
+        "front": "covers/shelf-04.jpg"
+      }
+    },
+    {
+      "id": "shelf-05",
+      "title": "Dracula",
+      "authors": [
+        "Bram Stoker"
+      ],
+      "isbn13": "9780000010056",
+      "pages": 418,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1897,
+      "status": "read",
+      "dateRead": "2026-03-02",
+      "dateStarted": "2026-02-13",
+      "dateAdded": "2026-01-30",
+      "rating": 4.25,
+      "review": "Told in letters and diaries, which makes it creep closer.",
+      "reviewHasSpoiler": false,
+      "readCount": 2,
+      "description": "A solicitor travels to Transylvania to sell a house to a count who never eats.",
+      "publisher": "Example Classics",
+      "genre": "HORROR",
+      "assets": {
+        "palette": {
+          "background": "#5b4a3a",
+          "text": "#f2ead9",
+          "accent": "#c58b4c"
+        },
+        "spineColor": "#5b4a3a",
+        "front": "covers/shelf-05.jpg"
+      }
+    },
+    {
+      "id": "shelf-06",
+      "title": "The Hound of the Baskervilles",
+      "seriesTitle": "Sherlock Holmes, #3",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "isbn13": "9780000010063",
+      "pages": 256,
+      "binding": "Paperback",
+      "yearPublished": 2010,
+      "originalYear": 1902,
+      "status": "read",
+      "dateRead": "2026-02-14",
+      "dateStarted": "2026-02-04",
+      "dateAdded": "2026-01-21",
+      "rating": 4,
+      "review": "Holmes is offstage for half of it and it still works.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A family curse, a moor, and a hound that leaves enormous footprints.",
+      "publisher": "Example Classics",
+      "genre": "MYSTERY",
+      "assets": {
+        "palette": {
+          "background": "#8c6d3f",
+          "text": "#1f1d1a",
+          "accent": "#5c1f16"
+        },
+        "spineColor": "#8c6d3f",
+        "front": "covers/shelf-06.jpg"
+      }
+    },
+    {
+      "id": "shelf-07",
+      "title": "A Study in Scarlet",
+      "seriesTitle": "Sherlock Holmes, #1",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "isbn13": "9780000010070",
+      "pages": 188,
+      "binding": "Paperback",
+      "yearPublished": 2017,
+      "originalYear": 1887,
+      "status": "read",
+      "dateRead": "2026-01-20",
+      "dateStarted": "2026-01-12",
+      "dateAdded": "2025-12-29",
+      "rating": 3.5,
+      "review": "The Utah half is a detour, but the first meeting is perfect.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Dr Watson needs cheap lodgings and is introduced to a strange flatmate.",
+      "publisher": "Example Classics",
+      "genre": "MYSTERY",
+      "assets": {
+        "palette": {
+          "background": "#2c2c2a",
+          "text": "#f5f2eb",
+          "accent": "#b93e2e"
+        },
+        "spineColor": "#2c2c2a",
+        "front": "covers/shelf-07.jpg"
+      }
+    },
+    {
+      "id": "shelf-08",
+      "title": "Twenty Thousand Leagues Under the Seas",
+      "authors": [
+        "Jules Verne"
+      ],
+      "isbn13": "9780000010087",
+      "pages": 426,
+      "binding": "Hardcover",
+      "yearPublished": 2024,
+      "originalYear": 1870,
+      "status": "read",
+      "dateRead": "2026-01-03",
+      "dateStarted": "2025-12-17",
+      "dateAdded": "2025-12-03",
+      "rating": 3.75,
+      "review": "Too many fish lists, worth it for Nemo.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A professor hunting a sea monster ends up a guest aboard the Nautilus.",
+      "publisher": "Example Classics",
+      "genre": "ADVENTURE",
+      "assets": {
+        "palette": {
+          "background": "#4b5d67",
+          "text": "#f0ebe0",
+          "accent": "#e0a458"
+        },
+        "spineColor": "#4b5d67",
+        "front": "covers/shelf-08.jpg"
+      }
+    },
+    {
+      "id": "shelf-09",
+      "title": "Little Women",
+      "authors": [
+        "Louisa May Alcott"
+      ],
+      "isbn13": "9780000010094",
+      "pages": 759,
+      "binding": "Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1868,
+      "status": "read",
+      "dateRead": "2025-12-18",
+      "dateStarted": "2025-11-18",
+      "dateAdded": "2025-11-04",
+      "rating": 4.5,
+      "review": "Jo March forever.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Four sisters grow up in Massachusetts while their father is away at war.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#6a2c4f",
+          "text": "#f6ecdf",
+          "accent": "#d9a5b3"
+        },
+        "spineColor": "#6a2c4f",
+        "front": "covers/shelf-09.jpg"
+      }
+    },
+    {
+      "id": "shelf-10",
+      "title": "The Adventures of Huckleberry Finn",
+      "authors": [
+        "Mark Twain"
+      ],
+      "isbn13": "9780000010100",
+      "pages": 366,
+      "binding": "Paperback",
+      "yearPublished": 2013,
+      "originalYear": 1884,
+      "status": "read",
+      "dateRead": "2025-11-30",
+      "dateStarted": "2025-11-15",
+      "dateAdded": "2025-11-01",
+      "rating": 4,
+      "readCount": 1,
+      "description": "A boy and an escaped slave float down the Mississippi on a raft.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#c9b98f",
+          "text": "#2c2c2a",
+          "accent": "#7a2e26"
+        },
+        "spineColor": "#c9b98f",
+        "front": "covers/shelf-10.jpg"
+      }
+    },
+    {
+      "id": "shelf-11",
+      "title": "Wuthering Heights",
+      "authors": [
+        "Emily Brontë"
+      ],
+      "isbn13": "9780000010117",
+      "pages": 416,
+      "binding": "Hardcover",
+      "yearPublished": 2020,
+      "originalYear": 1847,
+      "status": "read",
+      "dateRead": "2025-11-08",
+      "dateStarted": "2025-10-22",
+      "dateAdded": "2025-10-08",
+      "rating": 3.25,
+      "review": "Everyone is terrible and the weather is worse.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A foundling taken in by the Earnshaws grows up to ruin two families.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#365f63",
+          "text": "#f3eee2",
+          "accent": "#e6c068"
+        },
+        "spineColor": "#365f63",
+        "front": "covers/shelf-11.jpg"
+      }
+    },
+    {
+      "id": "shelf-12",
+      "title": "The Strange Case of Dr Jekyll and Mr Hyde",
+      "authors": [
+        "Robert Louis Stevenson"
+      ],
+      "isbn13": "9780000010124",
+      "pages": 92,
+      "binding": "Paperback",
+      "yearPublished": 2002,
+      "originalYear": 1886,
+      "status": "read",
+      "dateRead": "2025-10-31",
+      "dateStarted": "2025-10-27",
+      "dateAdded": "2025-10-13",
+      "rating": 4,
+      "review": "Perfect for one evening.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A lawyer investigates the link between a respected doctor and a brutal stranger.",
+      "publisher": "Example Classics",
+      "genre": "HORROR",
+      "assets": {
+        "palette": {
+          "background": "#9b3d2e",
+          "text": "#f7efe1",
+          "accent": "#2c2c2a"
+        },
+        "spineColor": "#9b3d2e",
+        "front": "covers/shelf-12.jpg"
+      }
+    },
+    {
+      "id": "shelf-13",
+      "title": "Pride and Prejudice",
+      "authors": [
+        "Jane Austen"
+      ],
+      "isbn13": "9780000010131",
+      "pages": 432,
+      "binding": "Hardcover",
+      "yearPublished": 2009,
+      "originalYear": 1813,
+      "status": "read",
+      "dateRead": "2025-10-05",
+      "dateStarted": "2025-09-18",
+      "dateAdded": "2025-09-04",
+      "rating": 5,
+      "review": "Better every time.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Elizabeth Bennet meets Mr Darcy and dislikes him at once.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#e8dcc0",
+          "text": "#2c2c2a",
+          "accent": "#b93e2e"
+        },
+        "spineColor": "#e8dcc0",
+        "front": "covers/shelf-13.jpg"
+      }
+    },
+    {
+      "id": "shelf-14",
+      "title": "The Call of the Wild",
+      "authors": [
+        "Jack London"
+      ],
+      "isbn13": "9780000010148",
+      "pages": 172,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 2016,
+      "originalYear": 1903,
+      "status": "read",
+      "dateRead": "2025-09-14",
+      "dateStarted": "2025-09-07",
+      "dateAdded": "2025-08-24",
+      "rating": 3.75,
+      "readCount": 2,
+      "description": "A house dog is stolen and sold into the Klondike gold rush.",
+      "publisher": "Example Classics",
+      "genre": "ADVENTURE",
+      "assets": {
+        "palette": {
+          "background": "#284139",
+          "text": "#ece4d0",
+          "accent": "#d9b26f"
+        },
+        "spineColor": "#284139",
+        "front": "covers/shelf-14.jpg"
+      }
+    },
+    {
+      "id": "shelf-15",
+      "title": "Treasure Island",
+      "authors": [
+        "Robert Louis Stevenson"
+      ],
+      "isbn13": "9780000010155",
+      "pages": 311,
+      "binding": "Paperback",
+      "yearPublished": 2023,
+      "originalYear": 1883,
+      "status": "read",
+      "dateRead": "2025-08-22",
+      "dateStarted": "2025-08-10",
+      "dateAdded": "2025-07-27",
+      "rating": 4.25,
+      "review": "Long John Silver is the best villain who is also a friend.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A boy finds a map in a dead pirate's sea chest.",
+      "publisher": "Example Classics",
+      "genre": "ADVENTURE",
+      "assets": {
+        "palette": {
+          "background": "#5a3d5c",
+          "text": "#f1e9dc",
+          "accent": "#cfa96b"
+        },
+        "spineColor": "#5a3d5c",
+        "front": "covers/shelf-15.jpg"
+      }
+    },
+    {
+      "id": "shelf-16",
+      "title": "Jane Eyre",
+      "authors": [
+        "Charlotte Brontë"
+      ],
+      "isbn13": "9780000010162",
+      "pages": 532,
+      "binding": "Paperback",
+      "yearPublished": 2005,
+      "originalYear": 1847,
+      "status": "read",
+      "dateRead": "2025-08-01",
+      "dateStarted": "2025-07-11",
+      "dateAdded": "2025-06-27",
+      "rating": 4.75,
+      "review": "The attic. Of course the attic.",
+      "reviewHasSpoiler": true,
+      "readCount": 1,
+      "description": "An orphan becomes a governess at Thornfield Hall and hears laughter at night.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#a7754d",
+          "text": "#1f1b16",
+          "accent": "#f4ead5"
+        },
+        "spineColor": "#a7754d",
+        "front": "covers/shelf-16.jpg"
+      }
+    },
+    {
+      "id": "shelf-17",
+      "title": "The Jungle Book",
+      "authors": [
+        "Rudyard Kipling"
+      ],
+      "isbn13": "9780000010179",
+      "pages": 277,
+      "binding": "Hardcover",
+      "yearPublished": 2012,
+      "originalYear": 1894,
+      "status": "read",
+      "dateRead": "2025-07-04",
+      "dateStarted": "2025-06-23",
+      "dateAdded": "2025-06-09",
+      "rating": 3.5,
+      "readCount": 1,
+      "description": "A boy raised by wolves learns the Law of the Jungle.",
+      "publisher": "Example Classics",
+      "genre": "CHILDREN",
+      "assets": {
+        "palette": {
+          "background": "#2f4858",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#2f4858",
+        "front": "covers/shelf-17.jpg"
+      }
+    },
+    {
+      "id": "shelf-18",
+      "title": "Around the World in Eighty Days",
+      "authors": [
+        "Jules Verne"
+      ],
+      "isbn13": "9780000010186",
+      "pages": 248,
+      "binding": "Paperback",
+      "yearPublished": 2019,
+      "originalYear": 1872,
+      "status": "read",
+      "dateRead": "2025-06-15",
+      "dateStarted": "2025-06-05",
+      "dateAdded": "2025-05-22",
+      "rating": 4,
+      "review": "A travel brochure with a stopwatch.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Phileas Fogg bets his fortune that he can circle the globe in eighty days.",
+      "publisher": "Example Classics",
+      "genre": "ADVENTURE",
+      "assets": {
+        "palette": {
+          "background": "#7a2e26",
+          "text": "#f3e9d8",
+          "accent": "#e3c27a"
+        },
+        "spineColor": "#7a2e26",
+        "front": "covers/shelf-18.jpg"
+      }
+    },
+    {
+      "id": "shelf-19",
+      "title": "The Metamorphosis",
+      "authors": [
+        "Franz Kafka"
+      ],
+      "isbn13": "9780000010193",
+      "pages": 84,
+      "binding": "Paperback",
+      "yearPublished": 2001,
+      "originalYear": 1915,
+      "status": "read",
+      "dateRead": "2025-05-27",
+      "dateStarted": "2025-05-24",
+      "dateAdded": "2025-05-10",
+      "rating": 4.25,
+      "review": "The family is the horror.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Gregor Samsa wakes up one morning as an enormous insect.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#3d5a3a",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#3d5a3a",
+        "front": "covers/shelf-19.jpg"
+      }
+    },
+    {
+      "id": "shelf-20",
+      "title": "Great Expectations",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "isbn13": "9780000010209",
+      "pages": 544,
+      "binding": "Paperback",
+      "yearPublished": 2008,
+      "originalYear": 1861,
+      "status": "read",
+      "dateRead": "2025-05-03",
+      "dateStarted": "2025-04-11",
+      "dateAdded": "2025-03-28",
+      "rating": 4,
+      "readCount": 1,
+      "description": "An orphan blacksmith's boy is given money by a secret benefactor.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#1f3a5f",
+          "text": "#efe7d6",
+          "accent": "#c9a227"
+        },
+        "spineColor": "#1f3a5f",
+        "front": "covers/shelf-20.jpg"
+      }
+    },
+    {
+      "id": "shelf-21",
+      "title": "The Importance of Being Earnest",
+      "authors": [
+        "Oscar Wilde"
+      ],
+      "isbn13": "9780000010216",
+      "pages": 76,
+      "binding": "Paperback",
+      "yearPublished": 2015,
+      "originalYear": 1895,
+      "status": "read",
+      "dateRead": "2025-04-12",
+      "dateStarted": "2025-04-09",
+      "dateAdded": "2025-03-26",
+      "rating": 4.75,
+      "review": "Read it aloud.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Two young men invent people to escape their obligations.",
+      "publisher": "Example Classics",
+      "genre": "DRAMA",
+      "assets": {
+        "palette": {
+          "background": "#5b4a3a",
+          "text": "#f2ead9",
+          "accent": "#c58b4c"
+        },
+        "spineColor": "#5b4a3a",
+        "front": "covers/shelf-21.jpg"
+      }
+    },
+    {
+      "id": "shelf-22",
+      "title": "Heart of Darkness",
+      "authors": [
+        "Joseph Conrad"
+      ],
+      "isbn13": "9780000010223",
+      "pages": 96,
+      "binding": "Paperback",
+      "yearPublished": 2022,
+      "originalYear": 1899,
+      "status": "read",
+      "dateRead": "2025-03-20",
+      "dateStarted": "2025-03-16",
+      "dateAdded": "2025-03-02",
+      "rating": 3,
+      "review": "Dense fog, on purpose.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A steamer captain goes up the Congo to find a trader named Kurtz.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#8c6d3f",
+          "text": "#1f1d1a",
+          "accent": "#5c1f16"
+        },
+        "spineColor": "#8c6d3f",
+        "front": "covers/shelf-22.jpg"
+      }
+    },
+    {
+      "id": "shelf-23",
+      "title": "Alice's Adventures in Wonderland",
+      "authors": [
+        "Lewis Carroll"
+      ],
+      "isbn13": "9780000010230",
+      "pages": 176,
+      "binding": "Hardcover",
+      "yearPublished": 2004,
+      "originalYear": 1865,
+      "status": "read",
+      "dateRead": "2025-02-28",
+      "dateStarted": "2025-02-21",
+      "dateAdded": "2025-02-07",
+      "rating": 4.5,
+      "review": "Still the best logic puzzles in fiction.",
+      "reviewHasSpoiler": false,
+      "readCount": 2,
+      "description": "A girl follows a white rabbit down a hole.",
+      "publisher": "Example Classics",
+      "genre": "CHILDREN",
+      "assets": {
+        "palette": {
+          "background": "#2c2c2a",
+          "text": "#f5f2eb",
+          "accent": "#b93e2e"
+        },
+        "spineColor": "#2c2c2a",
+        "front": "covers/shelf-23.jpg"
+      }
+    },
+    {
+      "id": "shelf-24",
+      "title": "Through the Looking-Glass",
+      "authors": [
+        "Lewis Carroll"
+      ],
+      "isbn13": "9780000010247",
+      "pages": 208,
+      "binding": "Hardcover",
+      "yearPublished": 2011,
+      "originalYear": 1871,
+      "status": "read",
+      "dateRead": "2025-02-09",
+      "dateStarted": "2025-02-01",
+      "dateAdded": "2025-01-18",
+      "rating": 4,
+      "readCount": 1,
+      "description": "Alice steps through a mirror into a world laid out like a chessboard.",
+      "publisher": "Example Classics",
+      "genre": "CHILDREN",
+      "assets": {
+        "palette": {
+          "background": "#4b5d67",
+          "text": "#f0ebe0",
+          "accent": "#e0a458"
+        },
+        "spineColor": "#4b5d67",
+        "front": "covers/shelf-24.jpg"
+      }
+    },
+    {
+      "id": "shelf-25",
+      "title": "The Scarlet Letter",
+      "authors": [
+        "Nathaniel Hawthorne"
+      ],
+      "isbn13": "9780000010254",
+      "pages": 272,
+      "binding": "Paperback",
+      "yearPublished": 2018,
+      "originalYear": 1850,
+      "status": "read",
+      "dateRead": "2025-01-18",
+      "dateStarted": "2025-01-07",
+      "dateAdded": "2024-12-24",
+      "rating": 2.75,
+      "review": "Admired more than enjoyed.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "In Puritan Boston a woman is made to wear a red letter A.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#6a2c4f",
+          "text": "#f6ecdf",
+          "accent": "#d9a5b3"
+        },
+        "spineColor": "#6a2c4f",
+        "front": "covers/shelf-25.jpg"
+      }
+    },
+    {
+      "id": "shelf-26",
+      "title": "Emma",
+      "authors": [
+        "Jane Austen"
+      ],
+      "isbn13": "9780000010261",
+      "pages": 474,
+      "binding": "Paperback",
+      "yearPublished": 2000,
+      "originalYear": 1815,
+      "status": "read",
+      "dateRead": "2024-12-22",
+      "dateStarted": "2024-12-03",
+      "dateAdded": "2024-11-19",
+      "rating": 4.25,
+      "review": "Emma is wrong about everything, charmingly.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A rich young woman matchmakes for her friends with unfortunate results.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#c9b98f",
+          "text": "#2c2c2a",
+          "accent": "#7a2e26"
+        },
+        "spineColor": "#c9b98f",
+        "front": "covers/shelf-26.jpg"
+      }
+    },
+    {
+      "id": "shelf-27",
+      "title": "A Christmas Carol",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "isbn13": "9780000010278",
+      "pages": 104,
+      "binding": "Hardcover",
+      "yearPublished": 2007,
+      "originalYear": 1843,
+      "status": "read",
+      "dateRead": "2024-12-14",
+      "dateStarted": "2024-12-10",
+      "dateAdded": "2024-11-26",
+      "rating": 4.5,
+      "review": "Every December.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A miser is visited by three spirits on Christmas Eve.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#365f63",
+          "text": "#f3eee2",
+          "accent": "#e6c068"
+        },
+        "spineColor": "#365f63",
+        "front": "covers/shelf-27.jpg"
+      }
+    },
+    {
+      "id": "shelf-28",
+      "title": "The Time Machine",
+      "authors": [
+        "H. G. Wells"
+      ],
+      "isbn13": "9780000010285",
+      "pages": 118,
+      "binding": "Paperback",
+      "yearPublished": 2014,
+      "originalYear": 1895,
+      "status": "read",
+      "dateRead": "2024-11-02",
+      "dateStarted": "2024-10-28",
+      "dateAdded": "2024-10-14",
+      "rating": 3.75,
+      "readCount": 1,
+      "description": "A Victorian inventor travels to the year 802,701.",
+      "publisher": "Example Classics",
+      "genre": "SCIENCE FICTION",
+      "assets": {
+        "palette": {
+          "background": "#9b3d2e",
+          "text": "#f7efe1",
+          "accent": "#2c2c2a"
+        },
+        "spineColor": "#9b3d2e",
+        "front": "covers/shelf-28.jpg"
+      }
+    },
+    {
+      "id": "shelf-29",
+      "title": "Frankenstein",
+      "authors": [
+        "Mary Shelley"
+      ],
+      "isbn13": "9780000010292",
+      "pages": 280,
+      "binding": "Hardcover",
+      "yearPublished": 2021,
+      "originalYear": 1818,
+      "status": "read",
+      "dateRead": "2024-10-19",
+      "dateStarted": "2024-10-08",
+      "dateAdded": "2024-09-24",
+      "rating": 4.75,
+      "review": "The creature is the most human character in it.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A young scientist builds a living being and then abandons it.",
+      "publisher": "Example Classics",
+      "genre": "HORROR",
+      "assets": {
+        "palette": {
+          "background": "#e8dcc0",
+          "text": "#2c2c2a",
+          "accent": "#b93e2e"
+        },
+        "spineColor": "#e8dcc0",
+        "front": "covers/shelf-29.jpg"
+      }
+    },
+    {
+      "id": "shelf-30",
+      "title": "The Secret Garden",
+      "authors": [
+        "Frances Hodgson Burnett"
+      ],
+      "isbn13": "9780000010308",
+      "pages": 331,
+      "binding": "Paperback",
+      "yearPublished": 2003,
+      "originalYear": 1911,
+      "status": "read",
+      "dateRead": "2024-09-07",
+      "dateStarted": "2024-08-25",
+      "dateAdded": "2024-08-11",
+      "rating": 4,
+      "readCount": 1,
+      "description": "A spoiled orphan finds a locked garden on her uncle's Yorkshire estate.",
+      "publisher": "Example Classics",
+      "genre": "CHILDREN",
+      "assets": {
+        "palette": {
+          "background": "#284139",
+          "text": "#ece4d0",
+          "accent": "#d9b26f"
+        },
+        "spineColor": "#284139",
+        "front": "covers/shelf-30.jpg"
+      }
+    },
+    {
+      "id": "shelf-31",
+      "title": "Moby-Dick",
+      "authors": [
+        "Herman Melville"
+      ],
+      "isbn13": "9780000010315",
+      "pages": 720,
+      "binding": "Paperback",
+      "yearPublished": 2010,
+      "originalYear": 1851,
+      "status": "read",
+      "dateRead": "2024-08-11",
+      "dateStarted": "2024-07-13",
+      "dateAdded": "2024-06-29",
+      "rating": 3.5,
+      "review": "The whale chapters are the point. I was wrong before.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Ishmael signs on with a captain who wants one particular whale.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#5a3d5c",
+          "text": "#f1e9dc",
+          "accent": "#cfa96b"
+        },
+        "spineColor": "#5a3d5c",
+        "front": "covers/shelf-31.jpg"
+      }
+    },
+    {
+      "id": "shelf-32",
+      "title": "The Wind in the Willows",
+      "authors": [
+        "Kenneth Grahame"
+      ],
+      "isbn13": "9780000010322",
+      "pages": 224,
+      "binding": "Hardcover",
+      "yearPublished": 2017,
+      "originalYear": 1908,
+      "status": "read",
+      "dateRead": "2024-07-06",
+      "dateStarted": "2024-06-27",
+      "dateAdded": "2024-06-13",
+      "rating": 4.25,
+      "review": "Poop-poop!",
+      "reviewHasSpoiler": false,
+      "readCount": 2,
+      "description": "Mole, Rat, Badger and the reckless Toad along the riverbank.",
+      "publisher": "Example Classics",
+      "genre": "CHILDREN",
+      "assets": {
+        "palette": {
+          "background": "#a7754d",
+          "text": "#1f1b16",
+          "accent": "#f4ead5"
+        },
+        "spineColor": "#a7754d",
+        "front": "covers/shelf-32.jpg"
+      }
+    },
+    {
+      "id": "shelf-33",
+      "title": "Sense and Sensibility",
+      "authors": [
+        "Jane Austen"
+      ],
+      "isbn13": "9780000010339",
+      "pages": 409,
+      "binding": "Paperback",
+      "yearPublished": 2024,
+      "originalYear": 1811,
+      "status": "read",
+      "dateRead": "2024-05-25",
+      "dateStarted": "2024-05-09",
+      "dateAdded": "2024-04-25",
+      "rating": 3.75,
+      "readCount": 1,
+      "description": "Two sisters, one sensible and one romantic, lose their home and fall in love.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#2f4858",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#2f4858",
+        "front": "covers/shelf-33.jpg"
+      }
+    },
+    {
+      "id": "shelf-34",
+      "title": "The Thirty-Nine Steps",
+      "authors": [
+        "John Buchan"
+      ],
+      "isbn13": "9780000010346",
+      "pages": 138,
+      "binding": "Mass Market Paperback",
+      "yearPublished": 2006,
+      "originalYear": 1915,
+      "status": "read",
+      "dateRead": "2024-04-13",
+      "dateStarted": "2024-04-07",
+      "dateAdded": "2024-03-24",
+      "rating": 3.5,
+      "review": "The ur-thriller: running across moors.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A bored Londoner finds a spy dead in his flat and runs for Scotland.",
+      "publisher": "Example Classics",
+      "genre": "THRILLER",
+      "assets": {
+        "palette": {
+          "background": "#7a2e26",
+          "text": "#f3e9d8",
+          "accent": "#e3c27a"
+        },
+        "spineColor": "#7a2e26",
+        "front": "covers/shelf-34.jpg"
+      }
+    },
+    {
+      "id": "shelf-35",
+      "title": "Middlemarch",
+      "authors": [
+        "George Eliot"
+      ],
+      "isbn13": "9780000010353",
+      "pages": 880,
+      "binding": "Paperback",
+      "yearPublished": 2013,
+      "originalYear": 1871,
+      "status": "read",
+      "dateRead": "2024-03-02",
+      "dateStarted": "2024-01-27",
+      "dateAdded": "2024-01-13",
+      "rating": 5,
+      "review": "The best novel about ordinary lives.",
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A provincial town, its marriages, its ambitions and its railway.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#3d5a3a",
+          "text": "#f5f2eb",
+          "accent": "#d4b06a"
+        },
+        "spineColor": "#3d5a3a",
+        "front": "covers/shelf-35.jpg"
+      }
+    },
+    {
+      "id": "shelf-36",
+      "title": "The Odyssey",
+      "authors": [
+        "Homer"
+      ],
+      "isbn13": "9780000010360",
+      "pages": 592,
+      "binding": "Hardcover",
+      "yearPublished": 2020,
+      "originalYear": -700,
+      "status": "read",
+      "dateRead": "2024-01-27",
+      "dateStarted": "2024-01-03",
+      "dateAdded": "2023-12-20",
+      "rating": 4.5,
+      "readCount": 1,
+      "description": "Ten years after Troy, one man is still trying to get home.",
+      "publisher": "Example Classics",
+      "genre": "POETRY",
+      "assets": {
+        "palette": {
+          "background": "#1f3a5f",
+          "text": "#efe7d6",
+          "accent": "#c9a227"
+        },
+        "spineColor": "#1f3a5f",
+        "front": "covers/shelf-36.jpg"
+      }
+    },
+    {
+      "id": "shelf-37",
+      "title": "War and Peace",
+      "authors": [
+        "Leo Tolstoy"
+      ],
+      "isbn13": "9780000010377",
+      "pages": 1296,
+      "binding": "Hardcover",
+      "yearPublished": 2002,
+      "originalYear": 1869,
+      "status": "to-read",
+      "dateAdded": "2026-03-15",
+      "rating": 0,
+      "readCount": 0,
+      "description": "Five aristocratic families through the Napoleonic wars.",
+      "publisher": "Example Classics",
+      "genre": "FICTION",
+      "assets": {
+        "palette": {
+          "background": "#5b4a3a",
+          "text": "#f2ead9",
+          "accent": "#c58b4c"
+        },
+        "spineColor": "#5b4a3a",
+        "front": "covers/shelf-37.jpg"
+      }
+    },
+    {
+      "id": "shelf-38",
+      "title": "Don Quixote",
+      "authors": [
+        "Miguel de Cervantes"
+      ],
+      "isbn13": "9780000010384",
+      "pages": 1072,
+      "binding": "Paperback",
+      "yearPublished": 2009,
+      "originalYear": 1605,
+      "status": "to-read",
+      "dateAdded": "2026-03-15",
+      "rating": 0,
+      "readCount": 0,
+      "description": "A gentleman reads too many romances and becomes a knight.",
+      "publisher": "Example Classics",
+      "genre": "CLASSICS",
+      "assets": {
+        "palette": {
+          "background": "#8c6d3f",
+          "text": "#1f1d1a",
+          "accent": "#5c1f16"
+        },
+        "spineColor": "#8c6d3f",
+        "front": "covers/shelf-38.jpg"
+      }
+    }
+  ]
+}

@@ -51,6 +51,10 @@ describe('Regal as a Nuxt layer', async () => {
   it('ships no Regal page, no demo and no server routes into the host', async () => {
     expect((await fetch('/')).status).toBe(404)
     expect((await fetch('/demo-library.json')).status).toBe(404)
+    // Nor the playground, its showcase shelf or its covers.
+    expect((await fetch('/playground')).status).toBe(404)
+    expect((await fetch('/showcase-library.json')).status).toBe(404)
+    expect((await fetch('/covers/shelf-01.jpg')).status).toBe(404)
     for (const route of ['/api/cover?isbn13=9780547928227', '/api/description?title=Dune', '/api/dev/choices', '/api/dev/editions?title=Dune']) {
       expect((await fetch(route)).status, route).toBe(404)
     }
