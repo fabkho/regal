@@ -4,7 +4,7 @@ The full reference for a host app: every setting, component, prop, token and slo
 
 Regal is a [Nuxt layer](https://nuxt.com/docs/guide/going-further/layers): another Nuxt 4 app extends it and shows a Library on one of its own pages (the portfolio's `/books`, Libellus' shelf). The host gets four components and their composables, nothing else: no Regal page, no server routes, no global CSS but three `@font-face`s, no page title, no dev panel, no demo data, no playground.
 
-- [Extend it](#extend-it) · [Config](#config-runtimeconfigpublicregal) · [Components](#components) · [Preloading](#preloading) · [Theming](#theming) · [Static data](#static-data)
+- [Extend it](#extend-it) · [Config](#config-runtimeconfigpublicregal) · [Components](#components) · [Loading errors and retry](#loading-errors-and-retry) · [Preloading](#preloading) · [Theming](#theming) · [Static data](#static-data)
 - [Loading it lazily](#loading-it-lazily) · [Service worker and PWA](#service-worker-and-pwa) · [CORS for the image host](#cors-for-the-image-host) · [Two hosts](#two-hosts)
 
 ## Extend it
@@ -93,6 +93,31 @@ The look is the decided one: re-sorts move by hand when up to 3 Books move, as a
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
 
+## Loading errors and retry
+
+A library file that can't be shown (offline, a 5xx, CORS, bad JSON, an invalid file) gives `RegalBooksStage` and `RegalBooksRow` an error card: why, the file's URL and the first problems, and a **Try again** button (the sidebar's one-line error has none: the Stage's card has it). The button is styled with the same tokens as the card's other controls (`--regal-accent`, `--regal-radius-control` …) and with `unstyled` only its place and text remain (a plain underlined button; `.file-error__retry`).
+
+**A failure is never kept as final.**
+
+- The next mount of a Regal component, or the next `preloadRegal()`, fetches the file again. A host that mounts the row again to retry (a `v-if`, a `:key`, a route change) needs nothing else.
+- A file that loaded and is valid stays for the page: remounts make no request.
+- A rejected, non-OK, non-JSON or invalid read is dropped as soon as it settles; requests in flight are shared (concurrent mounts, retries and a running `preloadRegal()` make one request).
+
+**`useRegalLibrary().retry()`** for a host's own button, in any component:
+
+```ts
+const { books, error, loading, retry } = useRegalLibrary()   // src optional, as for the components
+await retry()   // fetches the file again after a failure; resolves once the result is shown
+```
+
+| | |
+|---|---|
+| `retry(): Promise<void>` | After a failure: asks for the file again and shows the result (the Library, or the new error). A request already on its way is joined, never doubled. Does nothing while the Library is shown. |
+| `loading: Ref<boolean>` | A request for the file is on its way (browser only): disable the button. |
+| `error`, `books`, `source` … | The shared Library (the same refs as `useLibrary()`). |
+
+`useRegalLibrary()` also loads the file on mount, like the components (shared, one request); call it where a component of Regal is, or in a host component next to it. It does not need `useState('regal:library-loaded')` or any other of Regal's keys, which a host should not touch.
+
 ## Preloading
 
 A `RegalBooksRow` that mounts cold waits for the row's code (three.js, TresJS and Regal: ~230 KB brotli), the library file (fetched only once the row has mounted), the Spine images and fonts, and drawing the Spines. `preloadRegal()` does all of it ahead, while the owner is still on another screen, so the row shows its Spines on its first frame and goes straight into its intro:
@@ -107,7 +132,7 @@ requestIdleCallback(async () => {
 
 - **What it does.** Fetches and reads the library file into the page's cache (the row reads it there and shows the Library in its first render, no second fetch); fetches the row's code (`import()` of `RegalBooksRow`); draws the Spines and page edges of the Books the row opens on (the newest, a `year` row's January; as many as the card shows) into the page's face cache, exactly as the row would draw them. Only Spines whose colours the library file gives (`palette`, as Regal assets writes) are drawn ahead; others the row draws itself.
 - **Options.** `src` (default `librarySrc`; pass it when calling outside the app's context with a page-specific source), `limit` and `year` (the row's), `spines` (`'visible'`, a number from where the row opens, or `false`), `width` / `height` (the card's CSS px; default the viewport's width × 288, for which Books show and the Spines' resolution), `chunk` (`true`: `RegalBooksRow`'s chunk; a function: your own import, e.g. of the component that wraps the row, when it brings Regal's fonts with it; `false`: none).
-- **Safe anywhere.** It resolves when done and never rejects (whatever didn't warm, the row loads as before); a failed warm-up (offline) is tried again on the next call. Calls with the same options share one warm-up; everything is kept for the page (module level) and reused by every row and by a row mounted again. It does nothing on the server and needs no row on the page.
+- **Safe anywhere.** It resolves when done and never rejects (whatever didn't warm, the row loads as before); a failed warm-up (offline, a 5xx, a file that isn't valid) is dropped, not kept, and tried again on the next call. Calls with the same options share one warm-up; everything is kept for the page (module level) and reused by every row and by a row mounted again. It does nothing on the server and needs no row on the page.
 - **Where to call it.** As soon as the owner's row is a likely next step: on the screen before it, on idle (`requestIdleCallback`), or when its link comes into view. A dynamic `import()` keeps it out of the host's entry, and when the host bundles Regal into one chunk (a `codeSplitting` group), that import already fetches the chunk. The Spines are drawn only once the Spine fonts (Patua One, Antonio) are registered; a host that moves Regal's `@font-face` rules into its own chunk passes `chunk: () => import('~/components/MyRow.vue')`.
 
 The row marks its first look in the browser's performance timeline (`regal:library:shown`, `regal:row:first-frame`, `regal:row:spines-ready`, `regal:row:intro-start`, `regal:preload:done` …), for a host's own profiling. On a phone profile (4× CPU, Fast 4G; a production host that loads the row like Libellus), from the tap to the first frame with every Spine in view: 2.25 s before the row's first look was reworked, 1.24 s cold now, 0.27 s with `preloadRegal` on the screen before (the first frame drawn is full), 0.15 s for a row mounted again. The intro's 0.7 s follow.

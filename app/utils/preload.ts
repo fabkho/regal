@@ -60,14 +60,20 @@ export function preloadRegal(options: PreloadRegalOptions = {}): Promise<void> {
   const key = JSON.stringify([src, options.limit ?? null, options.year ?? null, options.spines ?? 'visible', options.width ?? null, options.height ?? null, typeof options.chunk === 'function' ? 'host' : options.chunk ?? true])
   let run = runs.get(key)
   if (!run) {
-    // A warm-up that failed (offline) is tried again on the next call.
-    run = warm(src, options).catch(() => void runs.delete(key))
+    // A warm-up that failed (offline, a 5xx, a file that isn't valid) is dropped, not kept:
+    // the next call tries again.
+    const started: Promise<void> = warm(src, options).then(
+      (loaded) => { if (!loaded && runs.get(key) === started) runs.delete(key) },
+      () => { if (runs.get(key) === started) runs.delete(key) },
+    )
+    run = started
     runs.set(key, run)
   }
   return run
 }
 
-async function warm(src: string, options: PreloadRegalOptions) {
+/** Resolves whether the library file loaded (and was valid). */
+async function warm(src: string, options: PreloadRegalOptions): Promise<boolean> {
   markRegal('preload:start')
   const page = window.location.href
   const chunk = options.chunk === false
@@ -82,6 +88,7 @@ async function warm(src: string, options: PreloadRegalOptions) {
     await drawAhead(result.library, src, page, options)
   }
   markRegal('preload:done')
+  return result.ok
 }
 
 /** The Spine fonts are registered and loaded (no @font-face for them: Spines can't be drawn as the row will). */
