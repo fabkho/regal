@@ -319,6 +319,81 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
+  /** Samples the row card every frame from the page's start: its intro state and how visible its labels and scroll bar are. */
+  const SAMPLE_ROW = () => {
+    const samples: { state: string, hold: boolean, labels: number, bar: number }[] = []
+    ;(window as unknown as { __rowSamples: typeof samples }).__rowSamples = samples
+    const tick = () => {
+      const row = document.querySelector('section.row-card')
+      if (row) {
+        const state = /row-card--intro-(waiting|playing|done)/.exec(row.className)?.[1] ?? ''
+        const opacity = (selector: string) => {
+          const element = row.querySelector(selector) ?? document.querySelector(selector)
+          return element ? Number.parseFloat(getComputedStyle(element).opacity) : -1
+        }
+        samples.push({ state, hold: row.classList.contains('row-card--intro-hold'), labels: opacity('.row-card__labels'), bar: opacity('.row-bar') })
+      }
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }
+
+  it('fades the dates, leader lines and scroll bar in once the Books\' intro is done', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(SAMPLE_ROW)
+    await page.goto(url('/shelf'), { waitUntil: 'networkidle' })
+    const row = page.locator('section.row-card')
+    await row.waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000 }).toContain('row-card--intro-done')
+    // Fully in a moment after the intro.
+    await expect.poll(() => page.locator('.row-card__labels').first().evaluate(element => Number.parseFloat(getComputedStyle(element).opacity)), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => page.locator('.row-bar').first().evaluate(element => Number.parseFloat(getComputedStyle(element).opacity)), { timeout: 5_000 }).toBe(1)
+    expect(await page.locator('.row-card__labels .row-label').count()).toBeGreaterThan(0)
+
+    const samples = await page.evaluate(() => (window as unknown as { __rowSamples: { state: string, hold: boolean, labels: number, bar: number }[] }).__rowSamples)
+    const early = samples.filter(sample => sample.hold)
+    // Held while it waits and while the Books settle: nothing of the labels shows.
+    expect(early.some(sample => sample.state === 'playing')).toBe(true)
+    for (const sample of early) {
+      expect(sample.labels, `labels while ${sample.state}`).toBeLessThanOrEqual(0.001)
+      expect(sample.bar, `scroll bar while ${sample.state}`).toBeLessThanOrEqual(0.001)
+    }
+    // Never released before the intro plays, and released by the time it is done.
+    expect(samples.filter(sample => sample.state === 'waiting').every(sample => sample.hold)).toBe(true)
+    expect(samples.filter(sample => sample.state === 'done').every(sample => !sample.hold)).toBe(true)
+    // They come in through a short fade (frames are too sparse under software GL to catch it half way).
+    for (const selector of ['.row-card__labels', '.row-bar']) {
+      const timing = await page.locator(selector).first().evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { property: style.transitionProperty, seconds: style.transitionDuration.split(',').map(value => Number.parseFloat(value)) }
+      })
+      expect(timing.property, selector).toContain('opacity')
+      expect(Math.max(...timing.seconds), selector).toBeGreaterThanOrEqual(0.15)
+      expect(Math.max(...timing.seconds), selector).toBeLessThanOrEqual(0.3)
+    }
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('shows the labels at once under Reduce Motion: no intro, no hold', async () => {
+    const errors: string[] = []
+    const page = await createPage(undefined, { reducedMotion: 'reduce' })
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(SAMPLE_ROW)
+    await page.goto(url('/shelf'), { waitUntil: 'networkidle' })
+    const row = page.locator('section.row-card')
+    await row.waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000 }).toContain('row-card--intro-done')
+    const samples = await page.evaluate(() => (window as unknown as { __rowSamples: { state: string, hold: boolean, labels: number, bar: number }[] }).__rowSamples)
+    expect(samples.some(sample => sample.state === 'playing')).toBe(false)
+    // No fade: as soon as the row is shown, the labels are whole.
+    expect(samples.filter(sample => !sample.hold).every(sample => sample.labels === 1 && sample.bar === 1)).toBe(true)
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
   it('shows a preloaded row with its Spines on its first frame', async () => {
     const errors: string[] = []
     const page = await createPage()

@@ -61,7 +61,7 @@ import type { RGB } from '#layers/regal/app/utils/covers/palette'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { createSpin, dragSpin, glideSpin, resetSpin, spinQuaternion, startSettle, stopGlide } from '#layers/regal/app/utils/books/spin'
 import type { Spin } from '#layers/regal/app/utils/books/spin'
-import { createRowIntro, introWindow, planRowIntro } from '#layers/regal/app/utils/row/intro'
+import { createRowIntro, INTRO_LABELS_OVERLAP, introWindow, planRowIntro } from '#layers/regal/app/utils/row/intro'
 import type { IntroOffset, RowIntroPlan, RowIntroState } from '#layers/regal/app/utils/row/intro'
 import { markRegal } from '#layers/regal/app/utils/stage/marks'
 import { rowEdges, rowSpines } from '#layers/regal/app/utils/row/faceCache'
@@ -953,7 +953,13 @@ function stepIntro() {
     markRegal('row:spines-ready')
   }
   const before: RowIntroState = intro.state
-  if (before === 'playing' && heldIntro() !== undefined) return
+  const held = heldIntro()
+  if (before === 'playing' && held !== undefined) {
+    // A frame strip holds the clock: the labels follow it all the same.
+    const due = held >= (introPlan?.duration ?? 0) - INTRO_LABELS_OVERLAP
+    if (ctx.introLabels.value !== due) ctx.introLabels.value = due
+    return
+  }
   const started = intro.step({ now: performance.now(), laidOut, spinesReady: spinesMarked, reduced: reduced.value, picked: !!pickedId.value })
   if (started) {
     introPlan = planRowIntro(props.poses, view)
@@ -967,6 +973,7 @@ function stepIntro() {
   }
   ctx.introProgress.value = intro.progress
   if (ctx.intro.value !== state) ctx.intro.value = state
+  if (ctx.introLabels.value !== intro.labelsIn) ctx.introLabels.value = intro.labelsIn
 }
 
 onBeforeRender(({ delta }) => {

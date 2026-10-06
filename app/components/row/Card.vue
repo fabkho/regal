@@ -88,6 +88,7 @@ const ctx: RowContext = {
   rotate: computed(() => props.rotate),
   intro: ref<RowIntroState>('waiting'),
   introProgress: { value: 0 },
+  introLabels: ref(false),
 }
 const pickedId = computed(() => pick.value.bookId)
 const pickedBook = computed(() => (pickedId.value ? booksById.value.get(pickedId.value) ?? null : null))
@@ -661,7 +662,7 @@ function scrub(value: number) {
   <section
     ref="root"
     class="row-card"
-    :class="{ 'row-card--picked': pickedId, 'row-card--wide': wide, [`row-card--intro-${ctx.intro.value}`]: true }"
+    :class="{ 'row-card--picked': pickedId, 'row-card--wide': wide, [`row-card--intro-${ctx.intro.value}`]: true, 'row-card--intro-hold': !ctx.introLabels.value }"
     :data-picked="pickedId ?? ''"
     :data-book-count="layout.poses.length"
     :aria-label="label"
@@ -1119,7 +1120,9 @@ function scrub(value: number) {
   overflow: hidden;
   pointer-events: none;
   /* Back in once the Book has landed (a host's motion tokens, else Libellus' standard). */
-  transition: opacity var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    opacity var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    transform var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 /* Out as a Book comes out (the host's exit, else Libellus'); in place all the while. */
@@ -1138,21 +1141,34 @@ function scrub(value: number) {
   }
 }
 
-/* The row's intro (utils/row/intro.ts): the dates, the focus label, the
-   scroll bar and the ‹ › wait unseen with the Books, then come in as the Books settle. */
-.row-card--intro-waiting .row-card__labels,
-.row-card--intro-waiting .row-bar {
+/* The row's intro (utils/row/intro.ts): the dates with their leader lines, the
+   focus label, the scroll bar and the ‹ › wait unseen while the Books settle
+   (they are in the first frames, before the Books have arrived, otherwise). */
+.row-card--intro-hold .row-card__labels,
+.row-card--intro-hold .row-bar {
   opacity: 0;
+  transform: translateY(3px);
   transition: none;
 }
 
-.row-card--intro-waiting .row-card__arrow {
+.row-card--intro-hold .row-card__arrow {
   visibility: hidden;
 }
 
-.row-card--intro-playing .row-card__labels,
-.row-card--intro-playing .row-bar {
-  transition: opacity 0.35s var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)) 0.3s;
+/* Then they fade in (opacity and a 3 px rise, the row's motion tokens) in the
+   intro's last moment (INTRO_LABELS_OVERLAP), at once when there is no intro.
+   The dates, leader lines and the focus label share the labels' layer; the
+   scroll bar gets the same fade. */
+.row-bar {
+  transition:
+    opacity var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    transform var(--duration-standard, 250ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-bar {
+    transition: none;
+  }
 }
 
 .row-label {

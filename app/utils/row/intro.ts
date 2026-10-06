@@ -46,6 +46,13 @@ const CASCADE = STACK.cascade / SPEED
 /** Share of its settle over which a Book pops in (the Stack's appear, settleIn). */
 const POP = 0.7
 
+/**
+ * The dates, their leader lines, the focus label and the scroll bar fade in
+ * (Card.vue, a short CSS fade) once the Books are home: this long before the
+ * intro ends (s), so the two overlap a little and read as one motion.
+ */
+export const INTRO_LABELS_OVERLAP = 0.1
+
 /** Longest the row waits, unseen, for the Spines in view (ms); past it, it plays anyway. */
 export const INTRO_WAIT = 2500
 
@@ -131,6 +138,12 @@ export interface RowIntroGate {
   readonly t: number
   /** 0..1 through the intro (1 once done). */
   readonly progress: number
+  /**
+   * The labels (dates with their leader lines, focus label, scroll bar) may fade in:
+   * the last INTRO_LABELS_OVERLAP of the intro on, and for good once it is done
+   * (also when there is none: Reduce Motion, a Book taken out first).
+   */
+  readonly labelsIn: boolean
   /** One frame: returns true when the intro starts on it (plan it then). */
   step: (frame: IntroFrame) => boolean
   /** How long the plan runs, once planned (s). */
@@ -157,6 +170,9 @@ export function createRowIntro(wait = INTRO_WAIT): RowIntroGate {
     },
     get progress() {
       return state === 'done' ? 1 : state === 'playing' && duration > 0 ? Math.min(1, t / duration) : 0
+    },
+    get labelsIn() {
+      return state === 'done' || (state === 'playing' && duration > 0 && t >= duration - INTRO_LABELS_OVERLAP)
     },
     step(frame) {
       if (state === 'waiting') {
