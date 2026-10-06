@@ -138,6 +138,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
         :limit="settings.limit"
         :year="settings.rowYear"
         :rotate="settings.rowRotate"
+        :intro="settings.rowIntro"
         :back-button="settings.backButton"
         :accessible-list="settings.accessibleList"
         :label="settings.label"

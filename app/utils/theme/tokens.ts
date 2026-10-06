@@ -40,6 +40,7 @@ export const REGAL_TOKENS = [
   'radius',
   'radius-control',
   'shadow',
+  'label-shadow',
   'backdrop',
   // Type
   'font-body',

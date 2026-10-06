@@ -279,7 +279,11 @@ describe('Regal as a Nuxt layer', async () => {
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(url('/labels'), { waitUntil: 'networkidle' })
     const rows = page.locator('section.row-card')
-    for (let index = 0; index < 3; index++) await rows.nth(index).locator('.row-focus').waitFor({ state: 'attached', timeout: 15_000 })
+    // A row's intro waits until it is on screen: bring each in turn.
+    for (let index = 0; index < 3; index++) {
+      await rows.nth(index).scrollIntoViewIfNeeded()
+      await rows.nth(index).locator('.row-focus').waitFor({ state: 'attached', timeout: 15_000 })
+    }
     await page.waitForTimeout(1500)
 
     /** The dates showing in a card (not stepped back, inside it), left to right, with their boxes relative to the card. */
@@ -429,6 +433,75 @@ describe('Regal as a Nuxt layer', async () => {
     // No fade: as soon as the row is shown, the labels are whole.
     expect(samples.filter(sample => !sample.hold).every(sample => sample.labels === 1 && sample.bar === 1)).toBe(true)
     expect(errors).toEqual([])
+    await page.close()
+  })
+
+  /** The row's intro state and what the marks say, from a page that loaded `route`. */
+  const introMarks = (page: Page) => page.evaluate(() => Object.fromEntries(['spines-ready', 'intro-start', 'intro-end']
+    .map(name => [name, performance.getEntriesByName(`regal:row:${name}`).map(mark => mark.startTime)])))
+
+  it('holds a row mounted below the fold at its intro\'s first frame and plays the intro when it scrolls in', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(SAMPLE_ROW)
+    await page.goto(url('/below'), { waitUntil: 'networkidle' })
+    const row = page.locator('section.row-card')
+    await row.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    // Mounted off screen: its Spines are drawn meanwhile, nothing plays, nothing shows.
+    await expect.poll(async () => (await introMarks(page))['spines-ready']!.length, { timeout: 15_000 }).toBe(1)
+    await page.waitForTimeout(3000)
+    expect(await row.evaluate(element => element.className)).toContain('row-card--intro-waiting')
+    expect((await introMarks(page))['intro-start']).toEqual([])
+    expect(await row.evaluate(element => element.classList.contains('row-card--intro-hold'))).toBe(true)
+
+    // Scrolled in, it plays once and the labels follow.
+    await row.scrollIntoViewIfNeeded()
+    await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000 }).toContain('row-card--intro-done')
+    const marks = await introMarks(page)
+    expect(marks['intro-start']).toHaveLength(1)
+    expect(marks['intro-end']).toHaveLength(1)
+    expect(marks['intro-end']![0]! - marks['intro-start']![0]!).toBeLessThan(1000)
+    await expect.poll(() => page.locator('.row-card__labels').first().evaluate(element => Number.parseFloat(getComputedStyle(element).opacity)), { timeout: 5_000 }).toBe(1)
+    await page.waitForTimeout(400)
+    expect(await inkShare(page, row)).toBeGreaterThan(0.1)
+    // Never a frame of Books out of place before: the labels stayed held until it played.
+    const samples = await page.evaluate(() => (window as unknown as { __rowSamples: { state: string, hold: boolean, labels: number }[] }).__rowSamples)
+    expect(samples.filter(sample => sample.state === 'waiting').every(sample => sample.hold && sample.labels <= 0.001)).toBe(true)
+    // Once: scrolling away and back doesn't play it again.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.waitForTimeout(300)
+    await row.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(500)
+    expect((await introMarks(page))['intro-start']).toHaveLength(1)
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('plays a below-the-fold row\'s intro on mount with intro="mount" and has none with intro="none"', async () => {
+    for (const mode of ['mount', 'none']) {
+      const errors: string[] = []
+      const page = await createPage()
+      page.on('pageerror', error => errors.push(error.message))
+      await page.goto(url(`/below?intro=${mode}`), { waitUntil: 'networkidle' })
+      const row = page.locator('section.row-card')
+      await row.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+      await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000, message: mode }).toContain('row-card--intro-done')
+      const marks = await introMarks(page)
+      expect(marks['intro-start'], mode).toHaveLength(mode === 'mount' ? 1 : 0)
+      expect(errors).toEqual([])
+      await page.close()
+    }
+  })
+
+  it('has no intro under Reduce Motion even below the fold: the Books and labels just show', async () => {
+    const page = await createPage(undefined, { reducedMotion: 'reduce' })
+    await page.goto(url('/below'), { waitUntil: 'networkidle' })
+    const row = page.locator('section.row-card')
+    await row.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000 }).toContain('row-card--intro-done')
+    expect((await introMarks(page))['intro-start']).toEqual([])
+    expect(await row.evaluate(element => element.classList.contains('row-card--intro-hold'))).toBe(false)
     await page.close()
   })
 

@@ -41,6 +41,7 @@ const sidebarList = setting('sidebarList')
 const filterBar = setting('filterBar')
 const inspect = setting('inspect')
 const rowRotate = setting('rowRotate')
+const rowIntro = setting('rowIntro')
 const backButton = setting('backButton')
 const rowSize = setting('rowSize')
 const theme = setting('theme')
@@ -249,6 +250,11 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
         v-model="rowRotate"
         label="rotate"
         :options="[{ value: 'free', label: 'Free' }, { value: 'turntable', label: 'Turntable' }]"
+      />
+      <ShowcaseChoice
+        v-model="rowIntro"
+        label="intro: when the Books come into place"
+        :options="[{ value: 'visible', label: 'Visible' }, { value: 'mount', label: 'Mount' }, { value: 'none', label: 'None' }]"
       />
       <ShowcaseChoice
         v-model="backButton"

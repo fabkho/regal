@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRowIntro, INTRO_LABELS_OVERLAP, INTRO_MAX, INTRO_WAIT, introWindow, planRowIntro } from '../../app/utils/row/intro'
+import { createRowIntro, INTRO_LABELS_OVERLAP, INTRO_MAX, INTRO_VISIBLE, INTRO_WAIT, introVisible, introWindow, planRowIntro } from '../../app/utils/row/intro'
 import type { IntroFrame, IntroOffset } from '../../app/utils/row/intro'
 
 // 60 Books 3 cm apart; the view shows x 1.0 … 1.4.
@@ -49,7 +49,7 @@ describe('row intro: the plan', () => {
 })
 
 describe('row intro: when it plays', () => {
-  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, reduced: false, picked: false, ...patch })
+  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, visible: true, reduced: false, picked: false, ...patch })
 
   it('waits for the Spines in view, then plays once and is done for good', () => {
     const intro = createRowIntro()
@@ -101,7 +101,7 @@ describe('row intro: when it plays', () => {
 })
 
 describe('row intro: when the labels come in', () => {
-  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, reduced: false, picked: false, ...patch })
+  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, visible: true, reduced: false, picked: false, ...patch })
 
   it('holds them while it waits and while the Books settle, then lets them in for its last moment', () => {
     const intro = createRowIntro()
@@ -151,5 +151,83 @@ describe('row intro: when the labels come in', () => {
     intro.step(frame(100, { spinesReady: false }))
     expect(intro.state).toBe('playing')
     expect(intro.labelsIn).toBe(false)
+  })
+})
+
+describe('row intro: waiting for the row to show', () => {
+  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, visible: true, reduced: false, picked: false, ...patch })
+
+  it('holds while the row is off screen, however ready it is, then plays once it shows', () => {
+    const intro = createRowIntro()
+    for (let now = 0; now < 60_000; now += 1000) expect(intro.step(frame(now, { visible: false }))).toBe(false)
+    expect(intro.state).toBe('waiting')
+    expect(intro.labelsIn).toBe(false)
+    expect(intro.progress).toBe(0)
+    expect(intro.step(frame(61_000))).toBe(true)
+    intro.setDuration(0.7)
+    expect(intro.state).toBe('playing')
+  })
+
+  it('counts the wait for the Spines from when the row shows, not from when it mounted', () => {
+    const intro = createRowIntro()
+    intro.step(frame(0, { visible: false, spinesReady: false }))
+    // Off screen for ages: the wait hasn't started.
+    expect(intro.step(frame(10_000, { visible: false, spinesReady: false }))).toBe(false)
+    expect(intro.step(frame(10_100, { spinesReady: false }))).toBe(false)
+    expect(intro.step(frame(10_100 + INTRO_WAIT - 1, { spinesReady: false }))).toBe(false)
+    expect(intro.step(frame(10_100 + INTRO_WAIT, { spinesReady: false }))).toBe(true)
+  })
+
+  it('restarts the wait when the row leaves before it ran out', () => {
+    const intro = createRowIntro(1000)
+    intro.step(frame(0, { spinesReady: false }))
+    intro.step(frame(900, { visible: false, spinesReady: false }))
+    expect(intro.step(frame(1200, { spinesReady: false }))).toBe(false)
+    expect(intro.step(frame(2200, { spinesReady: false }))).toBe(true)
+  })
+
+  it('plays at once when the row is visible from the start (as before)', () => {
+    const intro = createRowIntro()
+    expect(intro.step(frame(0))).toBe(true)
+  })
+
+  it('has none under Reduce Motion or intro="none", visible or not: done once its Spines are drawn', () => {
+    const intro = createRowIntro()
+    expect(intro.step(frame(0, { visible: false, reduced: true, spinesReady: false }))).toBe(false)
+    expect(intro.state).toBe('waiting')
+    expect(intro.step(frame(10, { visible: false, reduced: true }))).toBe(false)
+    expect(intro.state).toBe('done')
+    expect(intro.labelsIn).toBe(true)
+  })
+
+  it('skips it when a Book is taken out before the row ever showed', () => {
+    const intro = createRowIntro()
+    intro.step(frame(0, { visible: false }))
+    expect(intro.step(frame(10, { visible: false, picked: true }))).toBe(false)
+    expect(intro.state).toBe('done')
+  })
+
+  it('keeps playing when the row scrolls away mid-intro', () => {
+    const intro = createRowIntro()
+    intro.step(frame(0))
+    intro.setDuration(0.7)
+    intro.step(frame(300, { visible: false }))
+    expect(intro.state).toBe('playing')
+    intro.step(frame(800, { visible: false }))
+    expect(intro.state).toBe('done')
+  })
+})
+
+describe('row intro: when a card counts as visible', () => {
+  it('needs INTRO_VISIBLE of the card in the viewport', () => {
+    expect(introVisible(0, 0, 800)).toBe(false)
+    expect(introVisible(INTRO_VISIBLE - 0.01, 90, 800)).toBe(false)
+    expect(introVisible(INTRO_VISIBLE, 100, 800)).toBe(true)
+    expect(introVisible(1, 288, 800)).toBe(true)
+  })
+
+  it('counts a card taller than the window by the half of the window it fills', () => {
+    expect(introVisible(0.2, 500, 800)).toBe(true)
+    expect(introVisible(0.2, 300, 800)).toBe(false)
   })
 })

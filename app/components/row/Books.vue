@@ -960,7 +960,16 @@ function stepIntro() {
     if (ctx.introLabels.value !== due) ctx.introLabels.value = due
     return
   }
-  const started = intro.step({ now: performance.now(), laidOut, spinesReady: spinesMarked, reduced: reduced.value, picked: !!pickedId.value })
+  const mode = ctx.introMode.value
+  const started = intro.step({
+    now: performance.now(),
+    laidOut,
+    spinesReady: spinesMarked,
+    // On mount it doesn't wait for the row to show; none: the Books just show, as under Reduce Motion.
+    visible: mode === 'mount' || ctx.introVisible.value,
+    reduced: reduced.value || mode === 'none',
+    picked: !!pickedId.value,
+  })
   if (started) {
     introPlan = planRowIntro(props.poses, view)
     intro.setDuration(introPlan.duration)
@@ -991,6 +1000,9 @@ onBeforeRender(({ delta }) => {
   const ends: [number, number] = [props.poses[0]?.x ?? 0, props.poses.at(-1)?.x ?? 0]
   const target = focusLine(view.cameraX, view.bounds, ends)
   if (intro.state !== 'done' || !spinesMarked) stepIntro()
+  // Off screen nothing is drawn (RowScene): no frame's work for the Books either,
+  // unless the intro is under way (it keeps its clock). The Spines still draw above.
+  if (!ctx.visible.value && intro.state !== 'playing' && !(intro.state === 'waiting' && ctx.introMode.value === 'mount')) return
   const introducing = intro.state !== 'done'
   const introT = heldIntro() ?? intro.t
   const riffleOn = !blocked && !introducing && !(hoveredId && !view.scrollLed)

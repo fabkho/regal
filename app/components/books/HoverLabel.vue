@@ -66,7 +66,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', onMove))
   background: var(--_regal-surface);
   border: var(--_regal-border-width) solid var(--_regal-border);
   border-radius: var(--_regal-radius);
-  box-shadow: var(--_regal-shadow);
+  box-shadow: var(--_regal-label-shadow);
   backdrop-filter: var(--_regal-backdrop);
   pointer-events: none;
   white-space: nowrap;

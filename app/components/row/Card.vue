@@ -39,7 +39,8 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
-import type { RowIntroState } from '#layers/regal/app/utils/row/intro'
+import { introVisible } from '#layers/regal/app/utils/row/intro'
+import type { RowIntroMode, RowIntroState } from '#layers/regal/app/utils/row/intro'
 import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
@@ -61,7 +62,9 @@ const props = withDefaults(defineProps<{
   rotate?: 'free' | 'turntable'
   /** The Books as a visually hidden list of buttons beside the canvas (RegalBooksRow's `accessible-list`). */
   accessibleList?: boolean
-}>(), { inspect: 'card', start: 'newest', label: 'Books read', backButton: true, rotate: 'free', accessibleList: true })
+  /** When the intro plays: on first visibility (default), on mount, or never (utils/row/intro.ts). */
+  intro?: RowIntroMode
+}>(), { inspect: 'card', start: 'newest', label: 'Books read', backButton: true, rotate: 'free', accessibleList: true, intro: 'visible' })
 
 const oldestFirst = computed(() => [...props.books].reverse())
 const layout = computed(() => layoutRow(oldestFirst.value))
@@ -87,6 +90,8 @@ const ctx: RowContext = {
   floorShadow: { value: 1 },
   veil: { color: '#F5F2EB', opacity: VEIL_OPACITY_CARD, opacityFull: VEIL_OPACITY_FULL },
   visible: ref(true),
+  introMode: computed(() => props.intro),
+  introVisible: ref(false),
   rotate: computed(() => props.rotate),
   intro: ref<RowIntroState>('waiting'),
   introProgress: { value: 0 },
@@ -670,12 +675,18 @@ const roomy = computed(() => broken.value || wide.value)
 // --- Visibility ------------------------------------------------------------------------
 
 let observer: IntersectionObserver | null = null
+let introObserver: IntersectionObserver | null = null
 
 onMounted(() => {
   observer = new IntersectionObserver(([entry]) => {
     ctx.visible.value = !!entry?.isIntersecting
   }, { rootMargin: '100px' })
   if (root.value) observer.observe(root.value)
+  // The intro starts once enough of the card is on screen (no margin: what the owner sees).
+  introObserver = new IntersectionObserver(([entry]) => {
+    ctx.introVisible.value = !!entry?.isIntersecting && introVisible(entry.intersectionRatio, entry.intersectionRect.height, window.innerHeight)
+  }, { threshold: Array.from({ length: 21 }, (_, step) => step / 20) })
+  if (root.value) introObserver.observe(root.value)
   window.addEventListener('pointermove', onMouseMove, { passive: true })
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -688,6 +699,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   observer?.disconnect()
+  introObserver?.disconnect()
   stopGlide()
   window.removeEventListener('pointermove', onMouseMove)
   window.removeEventListener('pointerup', onPointerUp)
@@ -1172,7 +1184,7 @@ function scrub(value: number) {
   border: var(--_regal-border-width) solid var(--_regal-border);
   border-radius: var(--_regal-radius);
   background: var(--_regal-surface);
-  box-shadow: var(--_regal-shadow);
+  box-shadow: var(--_regal-label-shadow);
   backdrop-filter: var(--_regal-backdrop);
   color: var(--_regal-ink);
   font-size: var(--_regal-size-label);

@@ -14,6 +14,7 @@
 import type { Book } from '#layers/regal/shared/types/book'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
+import type { RowIntroMode } from '#layers/regal/app/utils/row/intro'
 import { rowBooks } from '#layers/regal/app/utils/row/layout'
 
 const props = withDefaults(defineProps<{
@@ -48,7 +49,15 @@ const props = withDefaults(defineProps<{
    * `false` for a host that renders its own.
    */
   accessibleList?: boolean
-}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free', accessibleList: true })
+  /**
+   * When the row's intro (the Books coming into place) plays: `'visible'` when
+   * the row first shows (at least a third of it in the viewport; a row mounted
+   * off screen holds its Books until then), `'mount'` as soon as its Spines are
+   * drawn, wherever it is, `'none'` never (the Books just show). Reduce Motion:
+   * never.
+   */
+  intro?: RowIntroMode
+}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free', accessibleList: true, intro: 'visible' })
 
 defineSlots<{
   /** The focus label's content (title and stars under the Book in focus). */
@@ -103,6 +112,7 @@ const { rootAttrs } = provideRegalUi({
       :back-button="props.backButton"
       :rotate="props.rotate"
       :accessible-list="props.accessibleList"
+      :intro="props.intro"
     />
     <p
       v-else-if="source"
