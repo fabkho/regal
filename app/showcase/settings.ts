@@ -13,6 +13,7 @@ export type TokenPreset = 'regal' | 'night' | 'soft'
 export type SlotDemo = 'none' | 'whole' | 'parts'
 export type RowSize = 'phone' | 'wide'
 export type Rotate = 'turntable' | 'free'
+export type RowIntro = 'visible' | 'mount' | 'none'
 export type Inspect = 'card' | 'viewport' | 'auto'
 
 export interface PlaygroundSettings {
@@ -35,6 +36,7 @@ export interface PlaygroundSettings {
   limit: number | null
   rowYear: number | null
   rowRotate: Rotate
+  rowIntro: RowIntro
   backButton: boolean
   label: string
   rowSize: RowSize
@@ -71,6 +73,7 @@ export const DEFAULT_SETTINGS: Readonly<PlaygroundSettings> = Object.freeze({
   limit: null,
   rowYear: null,
   rowRotate: 'free',
+  rowIntro: 'visible',
   backButton: true,
   label: '',
   rowSize: 'wide',
@@ -103,6 +106,7 @@ const KEYS: Record<keyof PlaygroundSettings, string> = {
   limit: 'limit',
   rowYear: 'ryear',
   rowRotate: 'rrotate',
+  rowIntro: 'rintro',
   backButton: 'back',
   label: 'label',
   rowSize: 'size',
@@ -170,6 +174,7 @@ export function readSettings(query: LocationQuery, choices: LibraryChoices = NO_
     limit: count(q('limit'), 1, 9999),
     rowYear: count(q('rowYear'), 1000, 9999),
     rowRotate: pick(q('rowRotate'), ['free', 'turntable'] as const, d.rowRotate),
+    rowIntro: pick(q('rowIntro'), ['visible', 'mount', 'none'] as const, d.rowIntro),
     backButton: flag(q('backButton'), d.backButton),
     label: text(q('label')) ?? d.label,
     rowSize: pick(q('rowSize'), ['phone', 'wide'] as const, d.rowSize),
@@ -332,6 +337,7 @@ export function templateSnippet(settings: PlaygroundSettings): string {
     if (settings.limit !== null) attrs.push(attr('limit', settings.limit))
     if (settings.rowYear !== null) attrs.push(attr('year', settings.rowYear))
     if (settings.rowRotate !== DEFAULT_SETTINGS.rowRotate) attrs.push(attr('rotate', settings.rowRotate))
+    if (settings.rowIntro !== DEFAULT_SETTINGS.rowIntro) attrs.push(attr('intro', settings.rowIntro))
     if (!settings.backButton) attrs.push(attr('back-button', false))
     if (!settings.accessibleList) attrs.push(attr('accessible-list', false))
     if (settings.label) attrs.push(attr('label', settings.label))

@@ -5,7 +5,7 @@ import type { Ref } from 'vue'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import type { LoadView } from '#layers/regal/app/utils/covers/loadWindow'
 import type { SpinMode } from '#layers/regal/app/utils/books/spin'
-import type { RowIntroState } from '#layers/regal/app/utils/row/intro'
+import type { RowIntroMode, RowIntroState } from '#layers/regal/app/utils/row/intro'
 
 /**
  * Where the camera is along the row, per frame. A LoadView along x: `focusY`
@@ -60,6 +60,10 @@ export interface RowContext {
   veil: { color: string, opacity: number, opacityFull: number }
   /** Render only while the row shows (an IntersectionObserver in RowCard). */
   visible: Ref<boolean>
+  /** When the intro plays (RegalBooksRow's `intro`, utils/row/intro.ts). */
+  introMode: Readonly<Ref<RowIntroMode>>
+  /** Enough of the card is in the viewport for the intro to start (`INTRO_VISIBLE`; RowCard's observer). */
+  introVisible: Ref<boolean>
   /** How a drag turns a Book taken out (RegalBooksRow's `rotate`, utils/books/spin.ts). */
   rotate: Readonly<Ref<SpinMode>>
   /**

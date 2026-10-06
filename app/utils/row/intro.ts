@@ -5,10 +5,12 @@
 // the newest land last. Pure: a plan, read per Book and per frame as offsets
 // from the Book's rest pose, and the gate that decides when it plays.
 //
-// It plays once per mount, and only once the Spines of the Books in view are
-// drawn (nothing shows before, so no texture pops in after it), at most
-// INTRO_WAIT after the row has its Books. Reduce Motion: no intro, the row
-// just shows once its Spines are drawn.
+// It plays once per mount, and only once the row shows (INTRO_VISIBLE of it in
+// the viewport; `intro="mount"` doesn't wait for that) and the Spines of the
+// Books in view are drawn (nothing shows before, so no texture pops in after
+// it), at most INTRO_WAIT after it shows. A row mounted off screen draws its
+// Spines meanwhile and holds its Books unseen until then. Reduce Motion (and
+// `intro="none"`): no intro, the row just shows once its Spines are drawn.
 
 /** What the intro does to one Book at one moment, on top of its rest pose. */
 export interface IntroOffset {
@@ -38,6 +40,24 @@ export interface RowIntroPlan {
 
 /** The Stack's settle-in (shuffle.ts): SWAP_SETTLE, SWAP_CASCADE, SETTLE_DROP. */
 const STACK = { settle: 0.45, cascade: 0.3, drop: 0.05 }
+/** The share of the card that has to be in the viewport for a row's intro to start (`intro="visible"`). */
+export const INTRO_VISIBLE = 0.35
+
+/**
+ * When a row's intro plays (RegalBooksRow `intro`): on first visibility
+ * (default), on mount (the row may be off screen; as the first versions did),
+ * or never (the Books just show).
+ */
+export type RowIntroMode = 'visible' | 'mount' | 'none'
+export const INTRO_MODES: readonly RowIntroMode[] = ['visible', 'mount', 'none']
+
+/** Whether a card showing `ratio` of itself (and `height` px of a `viewport` px tall window) counts as visible for the intro. */
+export function introVisible(ratio: number, height = 0, viewport = 0): boolean {
+  if (ratio >= INTRO_VISIBLE) return true
+  // A card taller than the window can't reach the ratio: half the window is enough.
+  return viewport > 0 && height >= viewport * 0.5
+}
+
 /** Longest the intro runs (s): the Stack's, a little quicker. */
 export const INTRO_MAX = 0.7
 const SPEED = (STACK.settle + STACK.cascade) / INTRO_MAX
@@ -126,7 +146,14 @@ export interface IntroFrame {
   laidOut: boolean
   /** Every Book in view wears its drawn Spine. */
   spinesReady: boolean
-  /** Reduce Motion. */
+  /**
+   * The row shows (enough of it is in the viewport, `INTRO_VISIBLE`): the intro
+   * starts only then, and the wait for the Spines counts only while it does.
+   * `true` for a row whose intro plays on mount; Reduce Motion and a Book
+   * taken out don't wait for it.
+   */
+  visible: boolean
+  /** Reduce Motion (or no intro at all: `intro="none"`). */
   reduced: boolean
   /** A Book is out (the rest of the intro is skipped). */
   picked: boolean
@@ -151,8 +178,9 @@ export interface RowIntroGate {
 }
 
 /**
- * When the intro plays: it waits until the row is laid out and its Spines in
- * view are drawn (or `wait` ms have passed), plays once, and is done for the
+ * When the intro plays: it waits until the row is laid out, shows (`visible`)
+ * and its Spines in view are drawn (or `wait` ms have passed since it showed),
+ * plays once, and is done for the
  * life of the row. Reduce Motion, or a Book taken out first: done at once.
  */
 export function createRowIntro(wait = INTRO_WAIT): RowIntroGate {
@@ -177,6 +205,11 @@ export function createRowIntro(wait = INTRO_WAIT): RowIntroGate {
     step(frame) {
       if (state === 'waiting') {
         if (!frame.laidOut) return false
+        // Off screen it holds: the wait for the Spines counts from when it shows.
+        if (!frame.visible && !frame.reduced && !frame.picked) {
+          askedAt = -1
+          return false
+        }
         if (askedAt < 0) askedAt = frame.now
         if (!frame.spinesReady && frame.now - askedAt < wait) return false
         if (frame.reduced || frame.picked) {

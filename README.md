@@ -90,7 +90,7 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_R
 | `RegalBooksStage` | The 3D Stack and the picked Book's details (a bottom sheet on stages ≤ 560 px). | `controls`, `rotate`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…` |
 | `RegalBooksSidebar` | Count, sort & filters, the Books as records, linked to the Stack. | `heading`, `count-label`, `filters`, `list`, `theme`, `unstyled` |
 | `RegalBooksFilters` | The same sort & filters as one bar, for a phone. | – |
-| `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
+| `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `intro` (`visible`/`mount`/`none`: the Books come into place when the row first shows), `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
 
 Both render a visually hidden list of the Books (a button each, taking it out) and open a Book as a real dialog; `accessible-list` turns the list off for a host with its own. Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
 
@@ -117,7 +117,7 @@ const { error, loading, retry } = useRegalLibrary()
 
 ### Theming
 
-Three levels, the same on the Stage and the row: **tokens** (`--regal-surface`, `--regal-ink`, `--regal-accent`, `--regal-radius`, `--regal-font-title` … on any wrapper), **`theme`** (`light`, `dark`, `auto`), and **slots** for your own markup, with **`unstyled`** for full control. The sidebar and filters read the paper-ink tokens (`--color-ink`, `--color-bg` …) with fallbacks. The row's backdrop behind a Book taken out is a token too: `--regal-veil-opacity` (broken out, `0.9`; `1` is solid), `--regal-veil-opacity-card` (`0.72`) and `--regal-veil-color` (default: the card's surface). Token table, slot props and examples: [Theming](docs/nuxt-layer.md#theming).
+Three levels, the same on the Stage and the row: **tokens** (`--regal-surface`, `--regal-ink`, `--regal-accent`, `--regal-radius`, `--regal-font-title` … on any wrapper), **`theme`** (`light`, `dark`, `auto`), and **slots** for your own markup, with **`unstyled`** for full control. The sidebar and filters read the paper-ink tokens (`--color-ink`, `--color-bg` …) with fallbacks. The hover and focus labels take their `box-shadow` from `--regal-shadow` unless `--regal-label-shadow` is set (`none` keeps the row's focus label flat over a scroll bar). The row's backdrop behind a Book taken out is a token too: `--regal-veil-opacity` (broken out, `0.9`; `1` is solid), `--regal-veil-opacity-card` (`0.72`) and `--regal-veil-color` (default: the card's surface). Token table, slot props and examples: [Theming](docs/nuxt-layer.md#theming).
 
 ## Producing the library file
 

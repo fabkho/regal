@@ -32,6 +32,8 @@
   --_regal-radius: var(--regal-radius, 0);
   --_regal-radius-control: var(--regal-radius-control, 0);
   --_regal-shadow: var(--regal-shadow, none);
+  /* The focus and hover labels' own: Regal's shadow unless a host says otherwise. */
+  --_regal-label-shadow: var(--regal-label-shadow, var(--_regal-shadow));
   --_regal-backdrop: var(--regal-backdrop, none);
 
   /* Type */
@@ -97,6 +99,7 @@
   --_regal-radius: initial;
   --_regal-radius-control: initial;
   --_regal-shadow: initial;
+  --_regal-label-shadow: initial;
   --_regal-backdrop: initial;
   --_regal-font-body: initial;
   --_regal-font-title: initial;
