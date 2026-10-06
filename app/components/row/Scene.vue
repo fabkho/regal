@@ -15,6 +15,8 @@ import type { Book } from '#layers/regal/shared/types/book'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { ROW_CAMERA, ROW_SHEET, ROW_SHEET_HEIGHT } from '#layers/regal/app/utils/row/layout'
 import type { RowLayout } from '#layers/regal/app/utils/row/layout'
+import { markRegal } from '#layers/regal/app/utils/stage/marks'
+import { rowSpineScale } from '#layers/regal/app/utils/row/faces'
 
 const props = defineProps<{
   layout: RowLayout
@@ -33,6 +35,10 @@ const floorMaterial = shallowRef<ShadowMaterial | null>(null)
 const veil = shallowRef<Mesh | null>(null)
 const veilForward = new Vector3()
 let veilColor = '#F5F2EB'
+
+const sheetGroup = shallowRef<Group | null>(null)
+markRegal('row:tres')
+let firstFrame = true
 
 const cam = computed(() => ROW_CAMERA)
 /** Camera distance to the target plane for the view height asked for. */
@@ -72,6 +78,14 @@ onBeforeRender(({ delta }) => {
     light.shadow.camera.updateProjectionMatrix()
   }
   camera3.updateMatrixWorld()
+  // The month sheets wait with the Books for the intro, then grow up from the floor with it.
+  const sheetsOf = sheetGroup.value
+  if (sheetsOf) {
+    const intro = props.ctx.intro.value
+    const grow = intro === 'playing' ? Math.min(1, Math.max(0, (props.ctx.introProgress.value - 0.6) / 0.4)) : intro === 'done' ? 1 : 0
+    sheetsOf.visible = grow > 0.01
+    sheetsOf.scale.y = Math.max(0.01, grow * grow * (3 - 2 * grow))
+  }
   // The lights travel with the view so every part of the row is lit the same.
   if (rig.value) rig.value.position.x = x
   // The floor shadow fades with the row behind a picked Book; the dark theme has none (ctx.floorShadow).
@@ -201,6 +215,10 @@ render((notify) => {
   if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value))) return
   if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
   else renderer.render(scene.value, camera3)
+  if (firstFrame) {
+    firstFrame = false
+    markRegal('row:first-frame')
+  }
   notify()
   gate.drawn()
 })
@@ -231,16 +249,8 @@ watch(keyLight, (light) => {
 
 // --- Month markers in 3D (the labels are HTML, RowCard) -------------------------------
 
-/**
- * Spine LOD: the Stack draws Spine art 1024 px tall; a card shows a Book a
- * couple of hundred CSS px tall. Drawn at what the card needs (× DPR, a
- * little to spare), in steps so a resize doesn't redraw.
- */
-const spineScale = computed(() => {
-  const pxPerMetre = (sizes.height.value || 300) / ROW_CAMERA.viewHeight
-  const needed = 0.24 * pxPerMetre * Math.min(window.devicePixelRatio || 1, quality.value.maxDpr) * 1.2
-  return [0.375, 0.5, 0.75, 1].find(step => step * 1024 >= needed) ?? 1
-})
+/** Spine LOD (utils/row/faces.ts): drawn at what the card needs, not the Stack's 1024 px. */
+const spineScale = computed(() => rowSpineScale(sizes.height.value, Math.min(window.devicePixelRatio || 1, quality.value.maxDpr)))
 
 /** A hairline ink sheet before each month. */
 const sheets = computed(() => props.layout.markers.map(marker => ({
@@ -285,20 +295,22 @@ const sheets = computed(() => props.layout.markers.map(marker => ({
     />
   </TresGroup>
 
-  <TresMesh
-    v-for="box in sheets"
-    :key="box.key"
-    :position="box.position"
-    :scale="box.scale"
-    cast-shadow
-    receive-shadow
-  >
-    <TresBoxGeometry :args="[1, 1, 1]" />
-    <TresMeshStandardMaterial
-      color="#2C2C2A"
-      :roughness="0.9"
-    />
-  </TresMesh>
+  <TresGroup ref="sheetGroup">
+    <TresMesh
+      v-for="box in sheets"
+      :key="box.key"
+      :position="box.position"
+      :scale="box.scale"
+      cast-shadow
+      receive-shadow
+    >
+      <TresBoxGeometry :args="[1, 1, 1]" />
+      <TresMeshStandardMaterial
+        color="#2C2C2A"
+        :roughness="0.9"
+      />
+    </TresMesh>
+  </TresGroup>
 
   <RowBooks
     :poses="layout.poses"

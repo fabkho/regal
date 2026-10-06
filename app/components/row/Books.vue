@@ -9,8 +9,13 @@
 //   front edge, as when pulled out with a finger on the head;
 // - its own Pick (RowContext), inspected in the card or in the viewport
 //   (RowCard); a Book put back leaves from where it was shown;
-// - Spine canvases drawn at what the card shows (LOD), fronts loaded only
-//   when a Book is taken out (the row never shows them).
+// - Spine canvases drawn at what the card shows (LOD), nothing drawn at
+//   setup (a Book wears its colour until its Spine is drawn), drawn faces
+//   kept for the page (utils/row/faceCache.ts: a row mounted again, or one
+//   preloadRegal drew ahead for, wears them from its first frame); fronts
+//   loaded only when a Book is taken out (the row never shows them);
+// - its intro (utils/row/intro.ts): unseen until the Spines in view are
+//   drawn, then the Books settle in like the Stack's pile, once per mount.
 // No re-sort animation: a row's Books only come and go with the library file.
 import {
   BoxGeometry,
@@ -29,12 +34,10 @@ import type { Group, Material, Mesh, PerspectiveCamera, PointLight, Texture } fr
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
 import type { Book } from '#layers/regal/shared/types/book'
-import { hashString } from '#layers/regal/app/utils/bookcase/layout'
 import type { BookPose } from '#layers/regal/app/utils/books/pose'
 import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
 import { loadCover, loadFullCover, prefetchFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { decodeImage, fetchImage, loadPicture } from '#layers/regal/app/utils/covers/images'
 import type { Picture } from '#layers/regal/app/utils/covers/images'
@@ -53,11 +56,16 @@ import { approach, focusLine, liftFor, RIFFLE, targetAmount } from '#layers/rega
 import type { Lift } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { createGlintSettle, GLINT_DELAY, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
+import { fromHex } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { createSpin, dragSpin, glideSpin, resetSpin, spinQuaternion, startSettle, stopGlide } from '#layers/regal/app/utils/books/spin'
 import type { Spin } from '#layers/regal/app/utils/books/spin'
+import { createRowIntro, introWindow, planRowIntro } from '#layers/regal/app/utils/row/intro'
+import type { IntroOffset, RowIntroPlan, RowIntroState } from '#layers/regal/app/utils/row/intro'
+import { markRegal } from '#layers/regal/app/utils/stage/marks'
+import { rowEdges, rowSpines } from '#layers/regal/app/utils/row/faceCache'
+import { ART_HEIGHT, rowFaceInput, rowFaceKeys } from '#layers/regal/app/utils/row/faces'
 
 const props = defineProps<{
   poses: BookPose[]
@@ -118,6 +126,8 @@ interface BookMaterials {
   description?: string | null
   loaded: LoadedCover | null
   ready: boolean
+  /** Its Spine and page edges came drawn from the page's cache: nothing to load or draw. */
+  cached: boolean
   fullCover: string | null
   backPrep: BackPrep | null
   aborted: AbortController
@@ -180,10 +190,15 @@ function faceTexture(canvas: HTMLCanvasElement) {
 
 const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
 
-function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
+/**
+ * The page edges: drawn ones from the page's cache (a row mounted again), or
+ * plain paper at their final size until the Book's colours are known
+ * (applyCover draws them then, in the draw queue, the Books in view first).
+ */
+function pageEdgesFor(pose: BookPose, cached: HTMLCanvasElement | undefined): BookMaterials['edges'] {
   const book = booksById.value.get(pose.bookId)
   const plan = pageEdgePlan(book ?? { id: pose.bookId, pages: null, binding: null }, pose.thickness, pose.depth)
-  const canvas = drawPageEdges(plan, board, pose.bookId)
+  const canvas = cached ?? plainPaper(plan)
   const head = faceTexture(canvas)
   const tail = head.clone()
   tail.repeat.set(1, -1)
@@ -201,6 +216,16 @@ function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
     envMapIntensity: 0.3,
   })
   return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
+}
+
+function plainPaper(plan: PageEdgePlan): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.width = plan.width
+  element.height = plan.height
+  const context = element.getContext('2d')!
+  context.fillStyle = `rgb(${plan.paper.map(channel => Math.round(channel)).join(' ')})`
+  context.fillRect(0, 0, plan.width, plan.height)
+  return element
 }
 
 function setFace(entry: BookMaterials, face: 'spine' | 'back', image: HTMLCanvasElement) {
@@ -227,26 +252,13 @@ function redrawPageEdges(entry: BookMaterials, board: RGB, bookId: string) {
 function faceInput(pose: BookPose, entry: BookMaterials | null = null): FaceInput | null {
   const book = booksById.value.get(pose.bookId)
   if (!book) return null
-  const background = fromHex(pose.color)
-  const text = readableOn(background)
-  const set = entry?.set
-  return {
-    book,
-    thickness: pose.thickness,
-    height: pose.height,
-    depth: pose.depth,
-    palette: set?.palette ?? entry?.loaded?.palette ?? { background, text, accent: text },
-    cover: entry?.loaded?.image,
-    seed: hashString(book.id),
-    description: entry?.description ?? null,
+  return rowFaceInput(book, pose, {
+    set: entry?.set,
+    loaded: entry?.loaded,
+    description: entry?.description,
     spineArt: entry?.art.spine,
     backArt: entry?.art.back,
-    quotes: set?.entry.quotes,
-    genre: set?.entry.genre,
-    publisher: set?.entry.publisher,
-    backIsPhoto: isPhotoFace(set?.entry, 'back'),
-    spineIsPhoto: isPhotoFace(set?.entry, 'spine'),
-  }
+  })
 }
 
 function plainBack(pose: BookPose): HTMLCanvasElement {
@@ -259,18 +271,29 @@ function plainBack(pose: BookPose): HTMLCanvasElement {
   return element
 }
 
+/** Where this Book's drawn faces are kept in the page's cache (utils/row/faceCache.ts). */
+function faceKeys(pose: BookPose, set: AssetFaces | null | undefined): { spine: string, edges: string } {
+  const book = booksById.value.get(pose.bookId) ?? { id: pose.bookId, title: '', author: null, seriesTitle: null }
+  return rowFaceKeys(book, pose, set, props.spineScale)
+}
+
 function materialsFor(pose: BookPose): Material[] {
   let entry = materialsByBook.get(pose.bookId)
   if (!entry) {
-    const input = faceInput(pose)
+    // Drawn before (a row mounted again): the Book wears its faces from the first frame.
+    const keys = faceKeys(pose, facesOf(pose.bookId))
+    const drawnSpine = rowSpines.get(keys.spine)
+    const drawnEdges = drawnSpine ? rowEdges.get(keys.edges) : undefined
+    const cached = !!(drawnSpine && drawnEdges)
     const cover = cloth(pose.color)
-    const spineTexture = faceTexture(input ? spineCanvas(input) : document.createElement('canvas'))
+    // Otherwise its colour until its Spine is drawn (applyCover; the intro waits for it).
+    const spineTexture = faceTexture(cached ? drawnSpine! : plainBack(pose))
     const backTexture = faceTexture(plainBack(pose))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    const edges = pageEdgesFor(pose, fromHex(pose.color))
+    const edges = pageEdgesFor(pose, cached ? drawnEdges : undefined)
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: cached, cached, fullCover: null, backPrep: null, aborted: new AbortController(), faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -285,8 +308,6 @@ function motionFor(bookId: string): Motion {
   return motion
 }
 
-const ART_HEIGHT = 1024
-
 /** Dresses a Book as its faces arrive, most visible first (as Meshes.vue). */
 async function applyCover(pose: BookPose) {
   const book = booksById.value.get(pose.bookId)
@@ -296,6 +317,7 @@ async function applyCover(pose: BookPose) {
   const entry = materialsByBook.get(pose.bookId)
   if (!entry || entry.aborted.signal.aborted) return
   entry.set = set
+  if (entry.cached) return
 
   const fonts = spineFontsReady()
   // The row shows Spines only: a front loads now only when the Spine's colours must come from it.
@@ -326,6 +348,7 @@ async function applyCover(pose: BookPose) {
     const drawn = await draw((entry) => {
       if (art) entry.art.spine = art
       if (!set?.spineColor && art) redrawPageEdges(entry, averageColor(art), pose.bookId)
+      else if (!set?.spineColor && !set?.palette) redrawPageEdges(entry, fromHex(pose.color), pose.bookId)
       drawFace(pose, entry, 'spine')
       entry.ready = !frontShows()
     })
@@ -341,6 +364,10 @@ async function applyCover(pose: BookPose) {
       drawFace(pose, entry, 'spine')
     }
     entry.ready = true
+    // Kept for the page: a row mounted again wears them at once.
+    const keys = faceKeys(pose, set)
+    rowSpines.set(keys.spine, entry.spineTexture.image as HTMLCanvasElement)
+    rowEdges.set(keys.edges, entry.edges.canvas)
   })
 }
 
@@ -353,19 +380,9 @@ function drawFace(pose: BookPose, entry: BookMaterials, face: 'spine' | 'back') 
   if (input) setFace(entry, face, face === 'spine' ? spineCanvas(input) : drawBack(input))
 }
 
-/** The Spine drawn as in the Stack, then scaled down to what the row shows (LOD). */
+/** The Spine as in the Stack, drawn at what the row shows (LOD). */
 function spineCanvas(input: FaceInput): HTMLCanvasElement {
-  const full = drawSpine(input)
-  const scale = props.spineScale
-  if (scale >= 0.99) return full
-  const small = document.createElement('canvas')
-  small.width = Math.max(8, Math.round(full.width * scale))
-  small.height = Math.max(8, Math.round(full.height * scale))
-  const context = small.getContext('2d')!
-  context.imageSmoothingQuality = 'high'
-  context.drawImage(full, 0, 0, small.width, small.height)
-  full.width = 0
-  return small
+  return drawSpine({ ...input, resolution: Math.min(1, props.spineScale) })
 }
 
 function disposeEntry(entry: BookMaterials) {
@@ -902,6 +919,56 @@ function nearestIndex(x: number): number {
   return best
 }
 
+// --- Intro ----------------------------------------------------------------------------
+// The row's intro (utils/row/intro.ts): nothing shows until the Spines of the
+// Books in view are drawn (or INTRO_WAIT has passed), then the Books settle
+// in like the Stack's pile, once per mount. Reduce Motion: they just show.
+
+const intro = createRowIntro()
+let introPlan: RowIntroPlan | null = null
+let spinesMarked = false
+const introOffset: IntroOffset = { dx: 0, scale: 1 }
+
+/** Every Book in view wears its Spine. */
+function spinesInViewReady(): boolean {
+  if (!props.poses.length || !(view.halfView > 0)) return false
+  return introWindow(props.poses, view).every(index => materialsByBook.get(props.poses[index]!.bookId)?.ready)
+}
+
+/**
+ * Seconds into the intro. Dev only: a frame strip holds it at
+ * `window.__regalIntroAt` (the intro then never ends on its own).
+ */
+function heldIntro(): number | undefined {
+  if (!import.meta.dev) return undefined
+  const held = (window as unknown as { __regalIntroAt?: number }).__regalIntroAt
+  return typeof held === 'number' ? held : undefined
+}
+
+/** Steps the intro: when it starts, how far it is. */
+function stepIntro() {
+  const laidOut = props.poses.length > 0 && sizes.width.value > 0 && view.halfView > 0
+  if (!spinesMarked && laidOut && spinesInViewReady()) {
+    spinesMarked = true
+    markRegal('row:spines-ready')
+  }
+  const before: RowIntroState = intro.state
+  if (before === 'playing' && heldIntro() !== undefined) return
+  const started = intro.step({ now: performance.now(), laidOut, spinesReady: spinesMarked, reduced: reduced.value, picked: !!pickedId.value })
+  if (started) {
+    introPlan = planRowIntro(props.poses, view)
+    intro.setDuration(introPlan.duration)
+    markRegal('row:intro-start')
+  }
+  const state: RowIntroState = intro.state
+  if (state === 'done') {
+    if (before === 'playing') markRegal('row:intro-end')
+    introPlan = null
+  }
+  ctx.introProgress.value = intro.progress
+  if (ctx.intro.value !== state) ctx.intro.value = state
+}
+
 onBeforeRender(({ delta }) => {
   const seconds = delta ?? 0.016
   drawBackWhenDue()
@@ -913,20 +980,24 @@ onBeforeRender(({ delta }) => {
   // As the Stack (useScrollHighlight): the riffle runs while the scroll leads;
   // a resting mouse takes over with hover until the row is scrolled again.
   const pointerId = view.scrollLed ? null : hoveredId
-  const riffleOn = !blocked && !(hoveredId && !view.scrollLed)
   // The focus line: the middle of the view, sliding on to the end Books at either end.
   const ends: [number, number] = [props.poses[0]?.x ?? 0, props.poses.at(-1)?.x ?? 0]
   const target = focusLine(view.cameraX, view.bounds, ends)
+  if (intro.state !== 'done' || !spinesMarked) stepIntro()
+  const introducing = intro.state !== 'done'
+  const introT = heldIntro() ?? intro.t
+  const riffleOn = !blocked && !introducing && !(hoveredId && !view.scrollLed)
   focusIndex = riffleOn ? nearestIndex(target) : -1
   const focusId = focusIndex >= 0 ? props.poses[focusIndex]!.bookId : null
   // The label shows the Book in focus, or the one under the mouse.
   const labelled = riffleOn ? focusId : (blocked ? null : pointerId)
-  if (ctx.focused.value !== labelled && !blocked) ctx.focused.value = labelled
+  if (ctx.focused.value !== labelled && !blocked && !introducing) ctx.focused.value = labelled
   const settled = settledGlint(glintSettle, { focusedId: focusId, speed: view.speed, gap: 0, blocked }, seconds, GLINT_DELAY)
   if (settled && !still && !hoveredId) glint(settled)
 
   let glintBook: { mesh: Mesh, pose: BookPose, motion: Motion } | null = null
-  for (const pose of props.poses) {
+  for (let index = 0; index < props.poses.length; index++) {
+    const pose = props.poses[index]!
     const mesh = meshes.get(pose.bookId)
     if (!mesh) continue
     const motion = motionFor(pose.bookId)
@@ -954,6 +1025,15 @@ onBeforeRender(({ delta }) => {
       basePosition.z += HOVER.out * motion.hover
       baseQuaternion.premultiply(tiltQuaternion.setFromAxisAngle(Y_AXIS, -HOVER.turn * motion.hover))
     }
+    // The intro: unseen while it waits, then on its way into place.
+    let size = 1
+    if (introducing) {
+      const offset = introPlan ? introPlan.at(index, introT, introOffset) : null
+      size = offset ? offset.scale : 0
+      if (offset) basePosition.x += offset.dx
+    }
+    mesh.visible = size > 0.001
+    mesh.scale.set(pose.thickness * size, pose.height * size, pose.depth * size)
 
     const pick = motion.pick.value
     // On its way out, in or back, the picked Book is drawn over a broken-out viewport too (RowScene).

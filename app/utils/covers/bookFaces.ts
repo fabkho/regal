@@ -62,6 +62,8 @@ export interface FaceInput {
   backIsPhoto?: boolean
   /** The Spine art is a photo of the real Book: draw it as is, it carries its own text. */
   spineIsPhoto?: boolean
+  /** drawSpine at this share of its full size (a row's card needs fewer pixels; default 1). */
+  resolution?: number
 }
 
 type Art = CanvasImageSource & { width: number, height: number }
@@ -128,8 +130,8 @@ export function spineTextColor([r, g, b]: RGB): RGB {
 export function drawSpine(input: FaceInput): HTMLCanvasElement {
   const art = input.spineArt
   // Artwork gets twice the resolution; `k` scales every size below.
-  const k = art ? 2 : 1
-  const height = SPINE_HEIGHT_PX * k
+  const k = (art ? 2 : 1) * (input.resolution ?? 1)
+  const height = Math.round(SPINE_HEIGHT_PX * k)
   const width = Math.round(Math.min(200 * k, Math.max(28 * k, height * input.thickness / input.height)))
   const { element, context } = canvas(width, height)
 
@@ -682,7 +684,7 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   const art = input.backArt
   // Artwork gets twice the resolution; `k` scales every size below.
   const k = art ? 2 : 1
-  const height = SPINE_HEIGHT_PX * k
+  const height = Math.round(SPINE_HEIGHT_PX * k)
   const width = Math.round(height * input.depth / input.height)
   const { element, context } = canvas(width, height)
 

@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "generatedAt": "2026-05-01T06:00:00Z",
+  "owner": "Fixture Reader",
+  "generator": "hand-written fixture (synthetic): library.json's Books with Spine colours",
+  "books": [
+    {
+      "id": "fx-001",
+      "title": "The Paper Lighthouse",
+      "seriesTitle": "Inkwell Tides, #1",
+      "authors": [
+        "Ada Quillfeather"
+      ],
+      "pages": 412,
+      "binding": "Paperback",
+      "yearPublished": 2023,
+      "originalYear": 2023,
+      "status": "read",
+      "dateRead": "2024-03-02",
+      "dateAdded": "2024-01-01",
+      "rating": 4.5,
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "A keeper of a lighthouse made of folded paper waits out the longest storm of the century.",
+      "assets": {
+        "front": "fx-001/front.webp",
+        "spine": "fx-001/spine.webp",
+        "back": "fx-001/back.webp",
+        "source": "ai",
+        "palette": {
+          "background": "#2c3e50",
+          "text": "#f4efe6",
+          "accent": "#c0392b"
+        },
+        "spineColor": "#34495e"
+      }
+    },
+    {
+      "id": "fx-002",
+      "title": "Rivers of Graphite",
+      "seriesTitle": "Inkwell Tides, #2",
+      "authors": [
+        "Ada Quillfeather"
+      ],
+      "pages": 388,
+      "binding": "Paperback",
+      "yearPublished": 2023,
+      "originalYear": 2023,
+      "status": "read",
+      "dateRead": "2024-06-18",
+      "dateAdded": "2024-01-01",
+      "rating": 4,
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "The tide recedes and leaves behind a map drawn in pencil, smudged by every hand that touched it.",
+      "assets": {
+        "front": "fx-002/front.webp",
+        "spine": "fx-002/spine.webp",
+        "back": "fx-002/back.webp",
+        "source": "ai",
+        "palette": {
+          "background": "#7a2e1f",
+          "text": "#fbf3e4",
+          "accent": "#e0b04a"
+        },
+        "spineColor": "#6b2a1c"
+      }
+    },
+    {
+      "id": "fx-003",
+      "title": "A Grammar of Small Moons",
+      "authors": [
+        "Tomas Verdello"
+      ],
+      "pages": 256,
+      "binding": "Hardcover",
+      "yearPublished": 2023,
+      "originalYear": 2023,
+      "status": "read",
+      "dateRead": "2025-01-09",
+      "dateAdded": "2024-01-01",
+      "rating": 5,
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "Seven moons, each with its own language, and one translator who refuses to pick a favourite.",
+      "assets": {
+        "front": "fx-003/front.webp",
+        "spine": "fx-003/spine.webp",
+        "back": "fx-003/back.webp",
+        "source": "ai",
+        "palette": {
+          "background": "#1f4d3a",
+          "text": "#eef5ec",
+          "accent": "#d9a441"
+        },
+        "spineColor": "#24533f"
+      }
+    },
+    {
+      "id": "fx-004",
+      "title": "Brick Red Afternoon",
+      "authors": [
+        "Lune Hartwick"
+      ],
+      "pages": 198,
+      "binding": "Paperback",
+      "yearPublished": 2023,
+      "originalYear": 2023,
+      "status": "read",
+      "dateRead": "2025-08-21",
+      "dateAdded": "2024-01-01",
+      "rating": 3.5,
+      "reviewHasSpoiler": false,
+      "readCount": 1,
+      "description": "An afternoon in a town where every wall is painted the same shade of red, and nobody remembers why.",
+      "assets": {
+        "front": "fx-004/front.webp",
+        "spine": "fx-004/spine.webp",
+        "back": "fx-004/back.webp",
+        "source": "ai",
+        "palette": {
+          "background": "#3b2f5c",
+          "text": "#f1ecf8",
+          "accent": "#e07a5f"
+        },
+        "spineColor": "#43366a"
+      }
+    }
+  ]
+}

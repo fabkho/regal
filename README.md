@@ -106,6 +106,8 @@ export default defineNuxtConfig({
   - `theme`, `unstyled` and the `#tooltip` / `#detail…` slots, as on `RegalBooksStage` ([Theming](#theming)): the card, its focus label and details, also broken out.
 
   It has its own Pick (not shared with `RegalBooksStage` and the sidebar), so it can sit on any page beside them. Spines are drawn at the size the card shows them and a front loads only when its Book is taken out; the canvas renders only when something moves and only while the row is on screen.
+
+  **Its intro.** A row shows nothing (just its card) until the Spines of the Books in view are drawn, so no Spine pops in afterwards. Then its Books come into place the way the Stack's pile does, turned for a row: each pops in a little to the right of its place and slides home, cascading from the left, the newest last (0.7 s). The month sheets grow, the dates, the focus label and the scroll bar fade in as they settle. It plays once per mount, never again for new Books or a resize, and is skipped once a Book is taken out; with Reduce Motion there is none, the row simply shows. It waits at most 2.5 s for its Spines, then plays anyway. Drawn Spines are kept for the page, so the row mounted again (the page entered again) shows them on its first frame; [`preloadRegal`](#preloading) gets a row's first mount there too.
 - **`RegalBooksFilters`**: the same sort & filters as one bar for a phone, to sit above `RegalBooksStage`: a line with the current choices ("Date read · Year · All years · All ratings") that opens a panel over the page. The bar is `--regal-filter-bar-height` tall (default `2.8rem`), so the host can size the stage below it in CSS; give it a `z-index` above the 3D when it is sticky. The portfolio shows it under 1025 px and hides the sidebar's filters there.
 
 On a tall, narrow stage (a phone) the pile starts with its top Book at about 80 % of the stage's height instead of mid-view (`app/utils/stack/camera.ts`); wide stages are unchanged.
@@ -117,6 +119,25 @@ The look is the decided one: re-sorts move by hand when up to 3 Books move, as a
 **Styling.** The tooltip, the detail panel and `RegalBooksRow`'s card have their own tokens, `--regal-*` ([Theming](#theming)). The rest (the sidebar, the filters, the stage's notes) use the paper-ink tokens with fallbacks, e.g. `var(--color-ink, #2C2C2A)`, so they look right with or without them. A host that defines the same tokens (`--color-bg`, `--color-ink`, `--color-ink-muted`, `--color-ink-faint`, `--color-line`, `--color-accent`, `--color-accent-tint`, `--font-mono`, `--font-serif`, `--text-2xs` … `--text-2xl`) restyles them; set them on a wrapper to change only Regal. The `--regal-*` defaults of the light theme read them too, so a host that already maps them keeps that look. Regal registers the IBM Plex Mono, Patua One and Antonio `@font-face`s (no other global CSS).
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
+
+### Preloading
+
+A `RegalBooksRow` that mounts cold waits for the row's code (three.js, TresJS and Regal: ~230 KB brotli), the library file (fetched only once the row has mounted), the Spine images and fonts, and drawing the Spines. `preloadRegal()` does all of it ahead, while the owner is still on another screen, so the row shows its Spines on its first frame and goes straight into its intro:
+
+```ts
+// Where the row is likely next (the Home or app start of the signed-in owner), on idle:
+requestIdleCallback(async () => {
+  const { preloadRegal } = await import('#layers/regal/app/utils/preload')
+  await preloadRegal({ limit: 80 })            // the row's own `limit` / `year`
+})
+```
+
+- **What it does.** Fetches and reads the library file into the page's cache (the row reads it there and shows the Library in its first render, no second fetch); fetches the row's code (`import()` of `RegalBooksRow`); draws the Spines and page edges of the Books the row opens on (the newest, a `year` row's January; as many as the card shows) into the page's face cache, exactly as the row would draw them. Only Spines whose colours the library file gives (`palette`, as Regal assets writes) are drawn ahead; others the row draws itself.
+- **Options.** `src` (default `librarySrc`; pass it when calling outside the app's context with a page-specific source), `limit` and `year` (the row's), `spines` (`'visible'`, a number from where the row opens, or `false`), `width` / `height` (the card's CSS px; default the viewport's width × 288, for which Books show and the Spines' resolution), `chunk` (`true`: `RegalBooksRow`'s chunk; a function: your own import, e.g. of the component that wraps the row, when it brings Regal's fonts with it; `false`: none).
+- **Safe anywhere.** It resolves when done and never rejects (whatever didn't warm, the row loads as before); a failed warm-up (offline) is tried again on the next call. Calls with the same options share one warm-up; everything is kept for the page (module level) and reused by every row and by a row mounted again. It does nothing on the server and needs no row on the page.
+- **Where to call it.** As soon as the owner's row is a likely next step: on the screen before it, on idle (`requestIdleCallback`), or when its link comes into view. A dynamic `import()` keeps it out of the host's entry, and when the host bundles Regal into one chunk (a `codeSplitting` group), that import already fetches the chunk. The Spines are drawn only once the Spine fonts (Patua One, Antonio) are registered; a host that moves Regal's `@font-face` rules into its own chunk passes `chunk: () => import('~/components/MyRow.vue')`.
+
+The row marks its first look in the browser's performance timeline (`regal:library:shown`, `regal:row:first-frame`, `regal:row:spines-ready`, `regal:row:intro-start`, `regal:preload:done` …), for a host's own profiling. On a phone profile (4× CPU, Fast 4G; a production host that loads the row like Libellus), from the tap to the first frame with every Spine in view: 2.25 s before the row's first look was reworked, 1.24 s cold now, 0.27 s with `preloadRegal` on the screen before (the first frame drawn is full), 0.15 s for a row mounted again. The intro's 0.7 s follow.
 
 ### Theming
 
