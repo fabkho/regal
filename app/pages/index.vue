@@ -28,6 +28,12 @@ useRegalLibrary(visitorSrc, { server: !visitorSrc.value })
       <p class="page__tagline">
         Your reading, as a bookcase.
       </p>
+      <NuxtLink
+        to="/playground"
+        class="page__link"
+      >
+        Playground: every setting of the layer →
+      </NuxtLink>
     </header>
 
     <main
@@ -71,6 +77,13 @@ useRegalLibrary(visitorSrc, { server: !visitorSrc.value })
   margin: 0;
   color: var(--color-ink-muted);
   font-size: var(--text-sm);
+}
+
+.page__link {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .page__main {
