@@ -4,7 +4,7 @@
 // A card; on narrow stages (a phone) a bottom sheet (utils/books/sheet.ts),
 // placed by the stage on the viewport's bottom edge. Its look is the host's
 // theme (the `--regal-*` tokens), its content can be the host's slots
-// (README: "Theming"); the frame, the swap, the sheet and the morph stay Regal's.
+// (docs/nuxt-layer.md: "Theming"); the frame, the swap, the sheet and the morph stay Regal's.
 import { ratingText } from '#layers/regal/app/utils/books/rating'
 
 const props = withDefaults(defineProps<{

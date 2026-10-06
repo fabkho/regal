@@ -1,4 +1,4 @@
-// Theming of RegalBooksRow (README: "Theming"): the same `theme` / `unstyled`
+// Theming of RegalBooksRow (docs/nuxt-layer.md: "Theming"): the same `theme` / `unstyled`
 // props and slots as RegalBooksStage, through to the card, its focus label
 // (the tooltip) and the details (the detail panel). The 3D (TresCanvas) is
 // stubbed, so this runs without WebGL; a Book is taken out through the card's

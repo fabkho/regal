@@ -3,7 +3,7 @@ import type { RegalScheme, RegalTheme } from '#layers/regal/app/utils/theme/toke
 import { nearestHostTheme, normalizeTheme, REGAL_TOKENS, resolveScheme } from '#layers/regal/app/utils/theme/tokens'
 
 // The host's say over Regal's DOM UI around the 3D: theme, `unstyled` and the
-// slots for the tooltip and the Book detail panel (README: "Theming").
+// slots for the tooltip and the Book detail panel (docs/nuxt-layer.md: "Theming").
 // RegalBooksStage / RegalBooksSidebar / RegalBooksRow provide it from their
 // props and slots; the surfaces (BooksHoverLabel, BooksFocusLabel,
 // BooksLabelMorph, BooksDetails, RowCard's focus label and details) read it,

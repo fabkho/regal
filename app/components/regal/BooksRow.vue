@@ -5,7 +5,7 @@
 // size from the host (it fills its box; min-height 18rem). A library file
 // that can't be shown gets an error card instead of the 3D.
 //
-// Theming (README: "Theming"): the same as RegalBooksStage. The card, its
+// Theming (docs/nuxt-layer.md: "Theming"): the same as RegalBooksStage. The card, its
 // labels and buttons, the focus label (the tooltip) and the details (the
 // detail panel) read the `--regal-*` tokens, also where they move to <body>
 // on break-out; `theme` picks the light/dark set or follows the host,

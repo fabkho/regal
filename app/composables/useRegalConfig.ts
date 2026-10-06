@@ -1,13 +1,13 @@
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 import { normalizeTheme } from '#layers/regal/app/utils/theme/tokens'
 
-/** Regal's settings, from `runtimeConfig.public.regal` (see nuxt.config.ts and the README). */
+/** Regal's settings, from `runtimeConfig.public.regal` (see nuxt.config.ts and docs/nuxt-layer.md). */
 export interface RegalConfig {
   /** URL of the Regal library file to show (docs/library-file.md); absolute or relative to the page. */
   librarySrc: string
   /** Short vibrations when a Book is taken out or put back and while a finger scrolls the Stack (where the phone can); false turns them off. */
   haptics: boolean
-  /** The tooltip's and the Book detail panel's colour scheme where a component doesn't set `theme` (README: "Theming"). */
+  /** The tooltip's and the Book detail panel's colour scheme where a component doesn't set `theme` (docs/nuxt-layer.md: "Theming"). */
   theme: RegalTheme
 }
 

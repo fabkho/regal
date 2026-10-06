@@ -1,5 +1,5 @@
 // preloadRegal: a host warms what RegalBooksRow waits for on its first look,
-// before the row mounts (README: "Preloading"). It fetches and reads the
+// before the row mounts (docs/nuxt-layer.md: "Preloading"). It fetches and reads the
 // library file (the page's cache useRegalLibrary reads first), fetches the
 // row's code (the chunk RegalBooksRow, three.js and TresJS live in), and
 // draws the Spines and page edges of the Books the row opens on into the
@@ -51,7 +51,7 @@ const runs = new Map<string, Promise<void>>()
 /**
  * Warms Regal for a RegalBooksRow that will mount later. Resolves once done;
  * never rejects (whatever didn't warm, the row loads as it would have). Call
- * it where the owner's row is likely next, on idle (README: "Preloading").
+ * it where the owner's row is likely next, on idle (docs/nuxt-layer.md: "Preloading").
  */
 export function preloadRegal(options: PreloadRegalOptions = {}): Promise<void> {
   if (import.meta.server || typeof window === 'undefined') return Promise.resolve()

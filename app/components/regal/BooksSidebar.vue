@@ -3,7 +3,7 @@
 // sidebar: count of read Books, the Stack's sort & filters and the Books as
 // records (hover lifts a Book in RegalBooksStage, click takes it out). The
 // picked Book's detail panel in it takes `theme`, `unstyled` and the #detail
-// slots like RegalBooksStage's (README: "Theming").
+// slots like RegalBooksStage's (docs/nuxt-layer.md: "Theming").
 import type { Book } from '#layers/regal/shared/types/book'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'

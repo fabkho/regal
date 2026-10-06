@@ -7,7 +7,7 @@ import { LIBELLUS } from '#layers/regal/app/dev/row-scrollbar/data'
 const props = defineProps<{ scheme: 'dark' | 'light', width: number, height?: number }>()
 
 const palette = computed(() => LIBELLUS[props.scheme])
-/** What a host sets on the row (README: Theming): Libellus' roles under Regal's tokens. */
+/** What a host sets on the row (docs/nuxt-layer.md: Theming): Libellus' roles under Regal's tokens. */
 const tokens = computed(() => ({
   '--regal-surface': palette.value.surface,
   '--regal-surface-raised': palette.value.surface,

@@ -25,7 +25,7 @@
 //   a sheet (narrow) or a card (wide), and lands back in the row;
 // - 'auto': the viewport on narrow screens (≤ 560 px, a phone), the card elsewhere.
 //
-// Theming (RegalBooksRow's theme, unstyled and slots; README: "Theming"): the
+// Theming (RegalBooksRow's theme, unstyled and slots; docs/nuxt-layer.md: "Theming"): the
 // card, its dates and buttons, the focus label (the tooltip) and the details
 // (the detail panel) read the `--_regal-*` tokens. What moves to <body> on
 // break-out (the canvas box with its labels, Back, the details) is a `.regal`
@@ -553,7 +553,7 @@ const { handlers: grabber } = useSheetDrag({
 const ui = useRegalUi()
 /**
  * Public tokens the row reads as they are: those with its own (smaller)
- * defaults instead of the theme's, the broken-out sheet's (README: "The
+ * defaults instead of the theme's, the broken-out sheet's (docs/nuxt-layer.md: "The
  * row's sheet") and its z-index. They are carried to <body> along with the
  * resolved ones when set.
  */
@@ -1352,7 +1352,7 @@ function scrub(value: number) {
 
 /*
  * Broken out, narrow: a sheet on the viewport's bottom edge (as RegalBooksStage's).
- * The host can make it its own (README: "The row's sheet"): --regal-sheet-*
+ * The host can make it its own (docs/nuxt-layer.md: "The row's sheet"): --regal-sheet-*
  * tokens for its frame, padding (0: a #detail slot fills it edge to edge),
  * width and the grabber; unset, today's look.
  */

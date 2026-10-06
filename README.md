@@ -135,9 +135,11 @@ Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuz
 
 ## Contributing
 
-Issues and pull requests are welcome.
+Regal is a personal project and doesn't take outside contributions: pull requests are limited to collaborators. You're welcome to fork it under the licence below. Report security problems privately (next section).
 
-- Before a PR: `pnpm lint`, `pnpm test:unit`, `pnpm typecheck` and `pnpm check:privacy` (CI runs the same, and the pipeline's tests). The e2e suite is local only.
+Notes for working on it:
+
+- Before a commit: `pnpm lint`, `pnpm test:unit`, `pnpm typecheck` and `pnpm check:privacy` (CI runs the same, and the pipeline's tests). The e2e suite is local only.
 - **Never commit real reading data**: no Goodreads export, no personal library file, no reviews or notes of a real person. Fixtures are synthetic (`Ada Example`, invented ISBNs).
 - **Never commit publisher images**: covers, Spines and backs found by Regal assets, or screenshots showing them. Screenshots come from the synthetic showcase shelf (`node scripts/showcase/shots.mjs <site>`).
 - The layer must stay host-safe: anything for Regal's own site goes in the standalone-only module in `nuxt.config.ts`; see [AGENTS.md](AGENTS.md) for the conventions and [CONTEXT.md](CONTEXT.md) for the vocabulary (Book, Stack, Pick, Spine …).
@@ -148,7 +150,6 @@ Regal renders a library file in the browser and runs no server code in a host. R
 
 ## Licence and credits
 
-<!-- Licence: to be decided by the owner before the repository goes public (#61). -->
-The licence is not chosen yet ([#61](https://github.com/fabkho/regal/issues/61)).
+The code is [MIT](LICENSE) licensed. Exceptions, each under its own licence: the bookcase model (`public/models/bookcase.glb`, CC BY 4.0, Lorenzo Drago) and the IBM Plex Mono subset (`app/assets/fonts/`, SIL Open Font License 1.1, [`OFL.txt`](app/assets/fonts/OFL.txt)); details in [CREDITS.md](CREDITS.md).
 
-Book titles, covers and blurbs that appear in a library file you load belong to their publishers and authors; Regal ships none. The demo and showcase libraries (`demo/`) are synthetic and illustrative: well-known titles with invented ratings, dates, reviews and ISBNs; the showcase's covers are drawn for it, no publisher's art. The bookcase model is CC BY 4.0 (Lorenzo Drago); more in [CREDITS.md](CREDITS.md).
+Book titles, covers and blurbs that appear in a library file you load belong to their publishers and authors; Regal ships none. The demo and showcase libraries (`demo/`) are synthetic and illustrative: well-known titles with invented ratings, dates, reviews and ISBNs; the showcase's covers are drawn for it, no publisher's art.

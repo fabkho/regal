@@ -1,5 +1,5 @@
 /*
- * Regal's theme tokens (README: "Theming"). Only `.regal` elements get them:
+ * Regal's theme tokens (docs/nuxt-layer.md: "Theming"). Only `.regal` elements get them:
  * the root of RegalBooksStage / RegalBooksSidebar / RegalBooksRow and every
  * surface of the tooltip and the Book detail panel (some live in <body>, see
  * composables/useRegalUi.ts), so nothing leaks into the host's page.

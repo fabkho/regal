@@ -3,7 +3,7 @@
 // sideways is handled here instead (RowCard, touch-action pan-y). Why: Chrome
 // turns a native touch scroll into a `pointercancel`, which never counts as a
 // user activation, so `navigator.vibrate` stays blocked for the scroll ticks
-// until the first tap in the document (README: "Haptics"). A drag the page
+// until the first tap in the document (docs/nuxt-layer.md: "Haptics"). A drag the page
 // handles itself ends in a real `pointerup`, which does count: from the
 // first swipe on, the fling after it ticks, as the Stack's does.
 //

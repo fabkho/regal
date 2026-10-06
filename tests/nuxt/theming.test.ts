@@ -1,4 +1,4 @@
-// Theming of the tooltip and the Book detail panel (README: "Theming"):
+// Theming of the tooltip and the Book detail panel (docs/nuxt-layer.md: "Theming"):
 // RegalBooksStage's `theme` / `unstyled` props, the runtime config's theme and
 // the host's slots, through to the surfaces. The 3D (LibraryStage) is stubbed
 // with what renders the surfaces, so this runs without WebGL.
