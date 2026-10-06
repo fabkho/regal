@@ -1,5 +1,5 @@
 // ISBN helpers the front lookup needs (moved out of the Goodreads matcher,
-// which stays with the frozen build on main).
+// which stays with the v1 asset build, at the tag `portfolio-v1`).
 
 /** ISBN-13 of an ISBN-10 or ISBN-13 (hyphens and spaces ignored); null for anything else. */
 export function toIsbn13(value: string | null | undefined): string | null {
