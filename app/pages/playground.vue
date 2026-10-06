@@ -6,8 +6,10 @@
 // (runtimeConfig.public.regal) as the code a host writes. `?frame=1` is the
 // preview alone, for the phone frame (an iframe of this page).
 //
-// This page owns the Library: the showcase shelf, the demo, a URL or a file
-// the visitor drops (read in the tab, never uploaded or kept). Hosts don't get
+// This page owns the Library: the site's live shelf (when the build names one,
+// REGAL_SITE_SHELF_SRC: loaded from where it is published), the showcase
+// shelf, the demo, a URL or a file the visitor drops (read in the tab, never
+// uploaded or kept). Hosts don't get
 // this page or its components (nuxt.config.ts).
 import type { LibraryReadResult } from '#layers/regal/app/utils/library/libraryFile'
 import { readLibraryFile, unreachableFileError } from '#layers/regal/app/utils/library/libraryFile'
@@ -17,16 +19,20 @@ import { readSettings, writeSettings } from '#layers/regal/app/showcase/settings
 
 const route = useRoute()
 const router = useRouter()
-const settings = computed(() => readSettings(route.query))
+/** The site's real shelf, if the build names one (nuxt.config.ts, regalSite). */
+const site = useRuntimeConfig().public.regalSite as { shelfSrc: string, shelfName: string } | undefined
+const choices = { live: Boolean(site?.shelfSrc) }
+const settings = computed(() => readSettings(route.query, choices))
 const frame = computed(() => route.query.frame === '1')
 
 function update(patch: Partial<PlaygroundSettings>) {
-  router.replace({ query: writeSettings({ ...settings.value, ...patch }, route.query) })
+  router.replace({ query: writeSettings({ ...settings.value, ...patch }, route.query, choices) })
 }
 
 /** The site's base path ('/regal/' on GitHub Pages): the library files are served under it. */
 const base = useRuntimeConfig().app.baseURL.replace(/\/*$/, '/')
 const FILES = {
+  live: { src: site?.shelfSrc ?? '' },
   shelf: { src: `${base}showcase-library.json` },
   demo: { src: `${base}demo-library.json` },
 }
@@ -79,7 +85,9 @@ async function readDropped(file: File) {
   sendToFrame()
 }
 
-onMounted(load)
+// After hydration: the route has its query by then (a prerendered page hydrates
+// with the query-less route first), so a linked library isn't preceded by the default.
+onNuxtReady(() => void load())
 watch(() => [settings.value.library, settings.value.src], () => void load())
 
 // The phone frame is another page: a dropped file goes to it by message.
@@ -113,7 +121,10 @@ const libraryNote = computed(() => {
   const read = library.books.value.filter(book => book.status === 'read').length
   return `${owner ? `${owner}'s library` : 'A library'}: ${library.books.value.length} Books, ${read} read.`
 })
-const hostSrc = computed(() => (settings.value.library === 'url' ? settings.value.src : '/books/library.json'))
+const hostSrc = computed(() => {
+  const { library: picked, src } = settings.value
+  return picked === 'url' ? src : picked === 'live' ? FILES.live.src : '/books/library.json'
+})
 
 useHead({
   title: 'Regal — playground',
@@ -202,6 +213,7 @@ useHead({
             :library-note="libraryNote"
             :library-failed="Boolean(library.error.value)"
             :file-name="dropped?.name ?? null"
+            :live-name="choices.live ? site!.shelfName : null"
             @update="update"
             @file="readDropped"
           />
@@ -209,7 +221,8 @@ useHead({
       </main>
 
       <footer class="pg__foot">
-        <span>The showcase shelf and the demo are synthetic: public-domain titles, invented ratings, dates and reviews; every face is drawn.</span>
+        <span v-if="settings.library === 'live'">{{ site?.shelfName }}: a real library file, loaded from where it is published. Its covers and blurbs belong to their publishers and authors; its Spines and backs are generated from the covers.</span>
+        <span v-else>The showcase shelf and the demo are synthetic: public-domain titles, invented ratings, dates and reviews; every face is drawn.</span>
         <span>
           Bookcase model:
           <a

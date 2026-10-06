@@ -31,7 +31,7 @@ Regal is also a Nuxt layer (README: "Use Regal as a Nuxt layer", full reference 
 - In `app/`, import shared code as `~~/shared/...` (layer-aware), never `#shared/...` (that is the host's).
 - Runtime packages go in `dependencies` (hosts install the layer with `{ install: true }`).
 - Look decisions: `DECIDED_LOOK` in `useDevChoices.ts`, read through `useLook()`.
-- The playground (`/playground`, the showcase on GitHub Pages) and the dev pages are standalone-only like the dev panel: `app/pages/` and `app/components/showcase/` are stripped from hosts in `regalApp`; `app/showcase/` is not auto-imported. Its data is synthetic (`demo/showcase-library.json`, covers from `scripts/showcase/covers.mjs`); README screenshots come from it (`scripts/showcase/shots.mjs`), never from a real library or publisher art.
+- The playground (`/playground`, the showcase on GitHub Pages) and the dev pages are standalone-only like the dev panel: `app/pages/` and `app/components/showcase/` are stripped from hosts in `regalApp`; `app/showcase/` is not auto-imported. Its data is synthetic (`demo/showcase-library.json`, covers from `scripts/showcase/covers.mjs`); README screenshots come from it (`scripts/showcase/shots.mjs`), never from a real library or publisher art. The deployed site also offers the owner's real shelf, by URL only (`REGAL_SITE_SHELF_SRC` in `pages.yml`): it is loaded in the browser from R2, never copied into the repo or the build (with it set, `/` and `/row` render client-only so the prerender can't bake it in).
 - `tests/e2e/layer-host.test.ts` builds `tests/fixtures/layer-host/` (synthetic data only).
 
 ## Dependencies

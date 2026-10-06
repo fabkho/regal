@@ -8,7 +8,7 @@ import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 
 export type PlaygroundComponent = 'stage' | 'row'
-export type PlaygroundLibrary = 'shelf' | 'demo' | 'url' | 'file'
+export type PlaygroundLibrary = 'live' | 'shelf' | 'demo' | 'url' | 'file'
 export type TokenPreset = 'regal' | 'night' | 'soft'
 export type SlotDemo = 'none' | 'whole' | 'parts'
 export type RowSize = 'phone' | 'wide'
@@ -45,7 +45,7 @@ export interface PlaygroundSettings {
   accent: string | null
   radius: number | null
   slots: SlotDemo
-  /** The library file: the showcase shelf, the demo, a URL (`src`) or a dropped file. */
+  /** The library file: the site's live shelf (when configured), the showcase shelf, the demo, a URL (`src`) or a dropped file. */
   library: PlaygroundLibrary
   src: string
   /** Host config only (runtimeConfig.public.regal.haptics): changes the code shown. */
@@ -132,12 +132,24 @@ function count(value: unknown, min: number, max: number): number | null {
 }
 const COLOUR = /^#[0-9a-f]{6}$/i
 
+/**
+ * Which library files the site offers. `live`: the site has a real shelf
+ * (REGAL_SITE_SHELF_SRC, Regal's own site only), which is then the default;
+ * without one the synthetic showcase shelf is.
+ */
+export interface LibraryChoices {
+  live: boolean
+}
+const NO_LIVE: LibraryChoices = { live: false }
+const defaultLibrary = (choices: LibraryChoices): PlaygroundLibrary => (choices.live ? 'live' : DEFAULT_SETTINGS.library)
+
 /** The settings a URL query describes (anything unknown or invalid: the default). */
-export function readSettings(query: LocationQuery): PlaygroundSettings {
+export function readSettings(query: LocationQuery, choices: LibraryChoices = NO_LIVE): PlaygroundSettings {
   const d = DEFAULT_SETTINGS
   const q = (key: keyof PlaygroundSettings) => query[KEYS[key]]
   const src = text(q('src'))?.trim() ?? ''
-  const library = src ? 'url' : pick(q('library'), ['shelf', 'demo', 'file'] as const, d.library)
+  const offered: readonly PlaygroundLibrary[] = choices.live ? ['live', 'shelf', 'demo', 'file'] : ['shelf', 'demo', 'file']
+  const library = src ? 'url' : pick(q('library'), offered, defaultLibrary(choices))
   const accent = text(q('accent'))
   return {
     component: pick(q('component'), ['stage', 'row'] as const, d.component),
@@ -174,11 +186,11 @@ export function readSettings(query: LocationQuery): PlaygroundSettings {
  * `query` with `settings` written into it: defaults left out, every other key
  * (the Stack's sort/year/min/group, anything else) kept.
  */
-export function writeSettings(settings: PlaygroundSettings, query: LocationQuery = {}): LocationQueryRaw {
+export function writeSettings(settings: PlaygroundSettings, query: LocationQuery = {}, choices: LibraryChoices = NO_LIVE): LocationQueryRaw {
   const next: LocationQueryRaw = { ...query }
   for (const key of Object.keys(KEYS) as (keyof PlaygroundSettings)[]) {
     const value = settings[key]
-    const fallback = DEFAULT_SETTINGS[key]
+    const fallback = key === 'library' ? defaultLibrary(choices) : DEFAULT_SETTINGS[key]
     const name = KEYS[key]
     if (key === 'library') {
       next[name] = value === fallback || value === 'url' ? undefined : String(value)

@@ -54,11 +54,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Static: every page prerendered, the demo library files and the
-      # bookcase model under the base path. No secrets, no real data.
+      # bookcase model under the base path. No secrets, and no real data in
+      # the build: the owner's shelf (REGAL_SITE_SHELF_SRC) is only named
+      # here; the browser loads it and its images from where they are
+      # published, whose CORS policy must allow this site's origin.
+      # Repository variables override both; an empty REGAL_SITE_SHELF_SRC
+      # variable can't switch it off, so delete the line for the demo.
       - name: Generate
         run: pnpm generate
         env:
           NUXT_APP_BASE_URL: ${{ vars.REGAL_SITE_BASE_URL || format('{0}/', steps.pages.outputs.base_path) }}
+          REGAL_SITE_SHELF_SRC: ${{ vars.REGAL_SITE_SHELF_SRC || 'https://books.fabkho.dev/v2/library.json' }}
+          REGAL_SITE_SHELF_NAME: ${{ vars.REGAL_SITE_SHELF_NAME || 'Fabian''s shelf' }}
 
       - name: Upload
         uses: actions/upload-pages-artifact@v5

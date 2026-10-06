@@ -28,6 +28,16 @@ describe('playground settings', () => {
     expect(settings).toMatchObject({ library: 'url', src: 'https://example.com/library.json' })
   })
 
+  it('defaults to the site\'s live shelf when it has one, and only offers it then', () => {
+    const live = { live: true }
+    expect(readSettings({}, live).library).toBe('live')
+    expect(writeSettings(readSettings({}, live), {}, live).lib).toBeUndefined()
+    expect(writeSettings({ ...readSettings({}, live), library: 'shelf' }, {}, live).lib).toBe('shelf')
+    expect(readSettings({ lib: 'shelf' }, live).library).toBe('shelf')
+    expect(readSettings({ lib: 'live' }).library).toBe('shelf')
+    expect(readSettings({ lib: 'live', src: 'https://example.com/library.json' }, live).library).toBe('url')
+  })
+
   it('shows the host code for what is set', () => {
     const row = { ...DEFAULT_SETTINGS, component: 'row', inspect: 'viewport', rowYear: 2025, backButton: false } as const
     expect(templateSnippet(row)).toContain('inspect="viewport"')
