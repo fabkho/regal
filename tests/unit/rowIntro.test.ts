@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRowIntro, INTRO_MAX, INTRO_WAIT, introWindow, planRowIntro } from '../../app/utils/row/intro'
+import { createRowIntro, INTRO_LABELS_OVERLAP, INTRO_MAX, INTRO_WAIT, introWindow, planRowIntro } from '../../app/utils/row/intro'
 import type { IntroFrame, IntroOffset } from '../../app/utils/row/intro'
 
 // 60 Books 3 cm apart; the view shows x 1.0 … 1.4.
@@ -97,5 +97,59 @@ describe('row intro: when it plays', () => {
     intro.setDuration(0.7)
     intro.step(frame(100, { picked: true }))
     expect(intro.state).toBe('done')
+  })
+})
+
+describe('row intro: when the labels come in', () => {
+  const frame = (now: number, patch: Partial<IntroFrame> = {}): IntroFrame => ({ now, laidOut: true, spinesReady: true, reduced: false, picked: false, ...patch })
+
+  it('holds them while it waits and while the Books settle, then lets them in for its last moment', () => {
+    const intro = createRowIntro()
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(0, { laidOut: false }))
+    intro.step(frame(16, { spinesReady: false }))
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(1000))
+    intro.setDuration(0.7)
+    expect(intro.state).toBe('playing')
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(1000 + 300))
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(1000 + (0.7 - INTRO_LABELS_OVERLAP) * 1000 - 1))
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(1000 + (0.7 - INTRO_LABELS_OVERLAP) * 1000))
+    expect(intro.state).toBe('playing')
+    expect(intro.labelsIn).toBe(true)
+    intro.step(frame(2000))
+    expect(intro.state).toBe('done')
+    expect(intro.labelsIn).toBe(true)
+  })
+
+  it('overlaps the end a little, not more than the intro itself', () => {
+    expect(INTRO_LABELS_OVERLAP).toBeGreaterThan(0)
+    expect(INTRO_LABELS_OVERLAP).toBeLessThanOrEqual(0.15)
+    expect(INTRO_LABELS_OVERLAP).toBeLessThan(INTRO_MAX)
+  })
+
+  it('shows them at once with no intro: Reduce Motion, or a Book taken out first', () => {
+    const reduced = createRowIntro()
+    reduced.step(frame(0, { reduced: true }))
+    expect(reduced.state).toBe('done')
+    expect(reduced.labelsIn).toBe(true)
+
+    const picked = createRowIntro()
+    picked.step(frame(0))
+    picked.setDuration(0.7)
+    picked.step(frame(100, { picked: true }))
+    expect(picked.labelsIn).toBe(true)
+  })
+
+  it('stays held when it starts after the Spines wait ran out, until the plan is in', () => {
+    const intro = createRowIntro(100)
+    intro.step(frame(0, { spinesReady: false }))
+    expect(intro.labelsIn).toBe(false)
+    intro.step(frame(100, { spinesReady: false }))
+    expect(intro.state).toBe('playing')
+    expect(intro.labelsIn).toBe(false)
   })
 })

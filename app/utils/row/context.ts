@@ -65,6 +65,12 @@ export interface RowContext {
   intro: Ref<RowIntroState>
   /** 0..1 through the intro (RowScene grows the month sheets with it). */
   introProgress: { value: number }
+  /**
+   * The labels (dates and leader lines, focus label, scroll bar) are due: false
+   * while the row waits and the Books settle, true for the intro's last moment
+   * on (and at once with no intro). RowCard fades them in on it.
+   */
+  introLabels: Ref<boolean>
 }
 
 export function createRowView(): RowView {
