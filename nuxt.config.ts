@@ -8,8 +8,8 @@ const isTest = process.env.NODE_ENV === 'test'
 /** This repo. Also its location when another app `extends` it as a Nuxt layer. */
 const regalDir = dirname(fileURLToPath(import.meta.url))
 
-/** Where Regal's own site serves the demo library file (from demo/). */
-const DEMO_LIBRARY_SRC = '/demo-library.json'
+/** The demo library file's name; Regal's own site serves it from demo/, under `app.baseURL`. */
+const DEMO_LIBRARY_FILE = 'demo-library.json'
 
 /**
  * Regal is a standalone app and a Nuxt layer at once. Everything that belongs
@@ -53,11 +53,23 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
 
   // The site is a viewer: it shows the demo library file (synthetic, a copy of
   // tests/fixtures/library-file/demo.json) unless librarySrc says otherwise.
-  // Served from demo/, not public/, which hosts would serve too.
+  // Served from demo/, not public/, which hosts would serve too. Under the
+  // site's base path (`app.baseURL`, NUXT_APP_BASE_URL: '/regal/' on GitHub
+  // Pages), so the static build works from a subpath as from a domain root.
   nuxt.options.nitro.publicAssets ??= []
   nuxt.options.nitro.publicAssets.push({ dir: join(regalDir, 'demo'), baseURL: '/', maxAge: 0 })
   const regalConfig = nuxt.options.runtimeConfig.public.regal as { librarySrc: string }
-  regalConfig.librarySrc ||= DEMO_LIBRARY_SRC
+  regalConfig.librarySrc ||= `${nuxt.options.app.baseURL.replace(/\/*$/, '/')}${DEMO_LIBRARY_FILE}`
+
+  // The dev pages (/dev/…) are for `nuxt dev` only: never in a build or a
+  // static generate (their middleware 404s there anyway).
+  if (!nuxt.options.dev) {
+    nuxt.hook('pages:extend', (pages) => {
+      for (let index = pages.length - 1; index >= 0; index--) {
+        if (pages[index]!.file?.startsWith(join(regalDir, 'app/pages/dev'))) pages.splice(index, 1)
+      }
+    })
+  }
 
   // Dev only (design-round prototype pages, /dev/row-scrollbar): the published
   // shelf through this origin, as books.fabkho.dev allows CORS for a few origins
