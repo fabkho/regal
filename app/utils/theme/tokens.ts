@@ -2,7 +2,7 @@
 // and scroll focus labels) and the Book detail panel (the card, the phone's
 // bottom sheet), and RegalBooksRow's card around its 3D. Hosts set the public `--regal-*` custom properties; Regal's
 // components read the resolved `--_regal-*` ones, which `.regal` derives from
-// them (app/assets/css/regal-theme.css). README: "Theming".
+// them (app/assets/css/regal-theme.css). docs/nuxt-layer.md: "Theming".
 
 /** What a host asks for: Regal's own light look, the dark set, or follow the host/OS. */
 export type RegalTheme = 'light' | 'dark' | 'auto'
@@ -21,7 +21,7 @@ export function normalizeTheme(value: unknown, fallback: RegalTheme = DEFAULT_TH
 
 /**
  * The public tokens (without the `--regal-` prefix), each also read by Regal as
- * `--_regal-<name>`. Order: the README's token table.
+ * `--_regal-<name>`. Order: the token table in docs/nuxt-layer.md.
  */
 export const REGAL_TOKENS = [
   // Colours
@@ -69,7 +69,7 @@ export type RegalToken = typeof REGAL_TOKENS[number]
  * RegalBooksRow's broken-out phone sheet (without the `--regal-` prefix): its
  * container, for a host that puts its own markup in it (#detail). Read as they
  * are, with today's look as their fallbacks (row/Card.vue), and carried to
- * <body> with the sheet. README: "The row's sheet".
+ * <body> with the sheet. docs/nuxt-layer.md: "The row's sheet".
  */
 export const ROW_SHEET_TOKENS = [
   'sheet-radius',

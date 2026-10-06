@@ -4,7 +4,7 @@ import { FLOOR_SHADOW_MAX, floorShadowStrength, hostThemeOf, nearestHostTheme, n
 import { parseRgb } from '#layers/regal/app/utils/theme/color'
 
 const css = readFileSync(new URL('../../app/assets/css/regal-theme.css', import.meta.url), 'utf8')
-const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')
+const reference = readFileSync(new URL('../../docs/nuxt-layer.md', import.meta.url), 'utf8')
 
 /** The declarations of the first rule whose selector is exactly `selector`. */
 function block(selector: string) {
@@ -88,15 +88,15 @@ describe('token contract', () => {
     }
   })
 
-  it('the README documents every token', () => {
-    for (const name of REGAL_TOKENS) expect(readme, name).toContain(`\`--regal-${name}\``)
+  it('the layer reference documents every token', () => {
+    for (const name of REGAL_TOKENS) expect(reference, name).toContain(`\`--regal-${name}\``)
   })
 
   it('the row\'s card and sheet tokens are read by the row and documented', () => {
     const card = readFileSync(new URL('../../app/components/row/Card.vue', import.meta.url), 'utf8')
     for (const name of [...ROW_SHEET_TOKENS, 'row-border', 'row-radius', 'row-background', 'row-z-index']) {
       expect(card, name).toContain(`var(--regal-${name},`)
-      expect(readme, name).toContain(`| \`--regal-${name}\` |`)
+      expect(reference, name).toContain(`| \`--regal-${name}\` |`)
     }
   })
 })

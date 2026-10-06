@@ -10,7 +10,7 @@ pnpm --dir pipeline test        # offline: lookups, Gemini and the uploader stub
 pnpm --dir pipeline typecheck
 ```
 
-Options, steps and the daily chain: the root [README](../README.md#producing-the-library-file); the flags are also listed at the top of [`src/cli.ts`](src/cli.ts).
+Options, steps and the daily chain: [docs/producing.md](../docs/producing.md); the flags are also listed at the top of [`src/cli.ts`](src/cli.ts).
 
 | File | |
 |---|---|

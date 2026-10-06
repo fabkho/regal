@@ -6,7 +6,7 @@
 // sparsely instead of buzzing. Only where the Vibration API exists (Android
 // Chrome; iOS Safari has none), only with the user's gesture (Chrome ignores
 // it otherwise anyway), never with reduced motion, and a host page can turn
-// it off (runtimeConfig.public.regal.haptics, README). Pure, so it's
+// it off (runtimeConfig.public.regal.haptics, docs/nuxt-layer.md). Pure, so it's
 // unit-testable; composables/useBookHaptics.ts applies it.
 
 export type Pulse = 'out' | 'back' | 'tick'

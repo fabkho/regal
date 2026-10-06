@@ -1,5 +1,5 @@
 // Converter: today's published data (the reading-tracker JSON `library.json`
-// plus the asset `manifest.json`, see the README's "Static data") → one Regal
+// plus the asset `manifest.json`, see docs/nuxt-layer.md, "Static data") → one Regal
 // library file (docs/library-file.md). Pure; the CLI is convert.ts.
 //
 // It reads both the way the display does today, so the converted file shows

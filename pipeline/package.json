@@ -1,6 +1,7 @@
 {
   "name": "regal-assets",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Regal assets: a Regal library file in, the same file with its Books' images and colours out (plus the images), published to R2.",
   "scripts": {

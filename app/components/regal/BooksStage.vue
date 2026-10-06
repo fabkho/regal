@@ -4,7 +4,7 @@
 // hover with RegalBooksSidebar. Give it a size (height) from the host. A
 // library file that can't be shown gets an error card instead of the 3D.
 //
-// Theming (README: "Theming"): the tooltip and the detail panel read the
+// Theming (docs/nuxt-layer.md: "Theming"): the tooltip and the detail panel read the
 // `--regal-*` tokens, `theme` picks the light/dark set or follows the host,
 // `unstyled` leaves only structure and layout, and the slots below replace
 // their content (Regal keeps placing, opening, closing and animating them).

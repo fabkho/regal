@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Dev only (/dev/theming): RegalBooksStage and RegalBooksRow the way a host
-// themes them (README: "Theming"), with the same props and slots.
+// themes them (docs/nuxt-layer.md: "Theming"), with the same props and slots.
 // ?look=default|dark|auto|tokens|slots|parts|unstyled, ?show=both|stage|row,
 // ?inspect=card|viewport (the row); the switches keep them in the URL. Hover
 // a Book for the tooltip, click it for the detail panel; a narrow window
