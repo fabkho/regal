@@ -235,8 +235,9 @@ useHead({
   display: block;
 }
 
+/* A definite height, so the stage fills the frame and the sidebar's records scroll. */
 .pg__frame-preview {
-  min-height: 100dvh;
+  height: 100dvh;
 }
 
 .pg__head {
@@ -391,6 +392,14 @@ useHead({
 
   .pg__nav {
     margin-left: 0;
+  }
+}
+
+/* A phone (and the phone frame): the page scrolls, the sidebar under the stage. */
+@media (max-width: 700px) {
+  .pg__frame-preview {
+    height: auto;
+    min-height: 100dvh;
   }
 }
 </style>
