@@ -9,7 +9,8 @@ import { WOOD_MATERIAL } from '#layers/regal/app/utils/bookcase/scene'
 const props = withDefaults(defineProps<{ x?: number }>(), { x: 0 })
 const emit = defineEmits<{ loaded: [] }>()
 
-const { state: gltf } = useGLTF('/models/bookcase.glb')
+// public/models, under the site's base path (app.baseURL: '/regal/' on GitHub Pages).
+const { state: gltf } = useGLTF(`${useRuntimeConfig().app.baseURL.replace(/\/*$/, '')}/models/bookcase.glb`)
 
 const isMesh = (object: Object3D): object is Mesh => (object as Mesh).isMesh === true
 
