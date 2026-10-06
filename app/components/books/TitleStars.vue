@@ -4,7 +4,7 @@
 // label, the Stack's scroll focus label and the row's focus label. Inside a
 // `.regal` surface (its tokens: the number is muted ink at the label's size).
 import type { Book } from '#layers/regal/shared/types/book'
-import { ratingText } from '#layers/regal/app/utils/books/rating'
+import { ratingStarsText, ratingText } from '#layers/regal/app/utils/books/rating'
 
 defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
 </script>
@@ -17,7 +17,7 @@ defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
   >
     <span
       class="title-stars__stars"
-      :aria-label="`Rated ${ratingText(book.rating)} out of 5`"
+      aria-hidden="true"
     >★★★★★<span
       class="title-stars__fill"
       :style="{ width: `${book.rating / 5 * 100}%` }"
@@ -26,6 +26,7 @@ defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
       class="title-stars__value"
       aria-hidden="true"
     >{{ ratingText(book.rating) }}</span>
+    <span class="regal-visually-hidden">{{ ratingStarsText(book.rating) }}</span>
   </span>
   <span
     v-else
@@ -77,3 +78,5 @@ defineProps<{ book: Pick<Book, 'title' | 'rating'> }>()
   letter-spacing: 0;
 }
 </style>
+
+<style scoped src="../../assets/css/regal-visually-hidden.css"></style>

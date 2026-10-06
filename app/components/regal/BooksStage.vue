@@ -25,7 +25,14 @@ const props = withDefaults(defineProps<{
    * axes like a trackball, gliding on after a release (RegalBooksRow's default).
    */
   rotate?: 'free' | 'turntable'
-}>(), { controls: false, theme: undefined, unstyled: false, rotate: 'turntable' })
+  /**
+   * The Books for assistive technology: a visually hidden list beside the canvas
+   * (title, author, month finished, rating in words), each a button that takes
+   * the Book out like a tap. `false` for a host that renders its own. It follows
+   * the Stack's sort and filters.
+   */
+  accessibleList?: boolean
+}>(), { controls: false, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true })
 
 defineSlots<{
   /** The tooltip's content (hover and scroll focus label). */
@@ -65,6 +72,7 @@ const { rootAttrs } = provideRegalUi({
       show-details
       :show-controls="props.controls"
       :rotate="props.rotate"
+      :accessible-list="props.accessibleList"
     />
   </div>
 </template>

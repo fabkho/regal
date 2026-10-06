@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
-import { $fetch, createPage, fetch, setup, url } from '@nuxt/test-utils/e2e'
+import AxeBuilder from '@axe-core/playwright'
+import { $fetch, createPage, fetch, getBrowser, setup, url } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 
 // Regal as a Nuxt layer: tests/fixtures/layer-host extends the repo root and
@@ -26,6 +27,39 @@ async function inkShare(page: Awaited<ReturnType<typeof createPage>>, card: Retu
     return dark / (pixels.length / 4)
   }, png.toString('base64'))
 }
+
+type Page = Awaited<ReturnType<typeof createPage>>
+
+/** A page in a context of its own: axe opens its own pages in the page's context, which `createPage`'s (made by `browser.newPage()`) doesn't allow. */
+async function createAxePage() {
+  const context = await (await getBrowser()).newContext()
+  return context.newPage()
+}
+
+/** The serious and critical axe violations of the page as it is now (WCAG 2.x A/AA and best practices), one line each. */
+async function seriousViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
+    // The page's language is the host's (Regal sets none, see "leaves the host's global styles alone").
+    .disableRules(['html-has-lang'])
+    .analyze()
+  return results.violations
+    .filter(violation => violation.impact === 'serious' || violation.impact === 'critical')
+    .map(violation => `${violation.id} (${violation.impact}): ${violation.nodes.map(node => node.target.join(' ')).join(' | ')}`)
+}
+
+/** What has focus: its tag, role, data-book-id and class, for the keyboard flows. */
+const focused = (page: Page) => page.evaluate(() => {
+  const element = document.activeElement
+  return {
+    tag: element?.tagName.toLowerCase() ?? '',
+    role: element?.getAttribute('role') ?? '',
+    bookId: element?.getAttribute('data-book-id') ?? '',
+    list: !!element?.classList.contains('regal-book-list__button'),
+    // Inside the dialog or the row's Back, the ends of a modal's Tab trap.
+    inDialog: !!element?.closest('[role="dialog"], .row-card__back, .row-card__back-slot'),
+  }
+})
 
 describe('Regal as a Nuxt layer', async () => {
   await setup({
@@ -89,10 +123,10 @@ describe('Regal as a Nuxt layer', async () => {
     const sidebar = page.locator('.regal-books-sidebar')
     expect(await sidebar.locator('.records__item').count()).toBe(5)
     await sidebar.getByRole('button', { name: /^A Grammar of Small Moons/ }).click()
-    const details = page.getByRole('article', { name: 'A Grammar of Small Moons details' })
+    const details = page.getByRole('dialog', { name: 'A Grammar of Small Moons' })
     await details.waitFor({ state: 'visible', timeout: 10_000 })
     expect(await stage.getAttribute('data-picked')).toBe('fx-003')
-    expect(await page.locator('.regal-books-stage').locator('article.details').count()).toBe(1)
+    expect(await page.locator('.regal-books-stage').locator('.details[role="dialog"]').count()).toBe(1)
 
     // The host's own sorting reaches the 3D.
     await sidebar.getByRole('button', { name: 'Rating', exact: true }).click()
@@ -123,7 +157,7 @@ describe('Regal as a Nuxt layer', async () => {
     await first.locator('.row-card__scroller').focus()
     await page.keyboard.press('Enter')
     await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
-    expect(await first.locator('article.row-card__details').count()).toBe(1)
+    expect(await first.locator('.row-card__details').count()).toBe(1)
     expect(await page.locator('.row-card__view--out').count()).toBe(0)
     await page.keyboard.press('Escape')
     await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
@@ -154,7 +188,7 @@ describe('Regal as a Nuxt layer', async () => {
     expect(await page.locator('.row-card__labels--hidden').count()).toBeGreaterThan(0)
     expect(await dates()).toEqual(datesAtRest)
     expect(await page.locator('body > .row-card__view--out canvas').count()).toBe(1)
-    expect(await page.locator('body > article.row-card__details').count()).toBe(1)
+    expect(await page.locator('body > .row-card__details').count()).toBe(1)
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
     await page.keyboard.press('Escape')
     await expect.poll(() => page.locator('.row-card__view--out').count(), { timeout: 5_000 }).toBe(0)
@@ -482,6 +516,166 @@ describe('Regal as a Nuxt layer', async () => {
     expect(remounted.seen.requests).toBe(3)
     expect(remounted.errors).toEqual([])
     await remounted.page.close()
+  })
+
+  it('lists the Books beside the row and the Stack, for assistive tech, and respects what they show', async () => {
+    const page = await createPage()
+    await page.goto(url('/profile'), { waitUntil: 'networkidle' })
+    const rows = page.locator('section.row-card')
+    await rows.first().locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    // The row's scroller has a role for its name; the list follows `year`.
+    expect(await rows.first().locator('.row-card__scroller').getAttribute('role')).toBe('region')
+    expect(await rows.nth(0).locator('.regal-book-list button').count()).toBe(5)
+    expect(await rows.nth(1).locator('.regal-book-list button').count()).toBe(2)
+    const names = await rows.nth(0).locator('.regal-book-list button').allTextContents()
+    expect(names.some(name => /^The Paper Lighthouse, .+, finished [A-Z][a-z]+ \d{4}(, [\d.]+ of 5 stars)?$/.test(name.trim()))).toBe(true)
+    // The focus label's stars are drawn only; the rating is a hidden text.
+    await rows.first().locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    expect(await rows.first().locator('.row-focus .title-stars__stars').getAttribute('aria-hidden')).toBe('true')
+    expect(await rows.first().locator('.row-focus .regal-visually-hidden').textContent()).toMatch(/^[\d.]+ of 5 stars$/)
+    await page.close()
+
+    const stack = await createPage()
+    await stack.goto(url('/books'), { waitUntil: 'networkidle' })
+    await stack.locator('section[aria-label="Book stack"]').locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await stack.locator('.regal-books-stage .regal-book-list button').count()).toBe(5)
+    // The Stack's filters reach the list.
+    await stack.locator('.regal-books-sidebar').getByRole('button', { name: '2025', exact: true }).click()
+    await expect.poll(() => stack.locator('.regal-books-stage .regal-book-list button').count(), { timeout: 5_000 }).toBe(2)
+    await stack.close()
+
+    // Off for a host with its own list.
+    const own = await createPage()
+    await own.goto(url('/nolist'), { waitUntil: 'networkidle' })
+    await own.locator('section.row-card canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await own.locator('.regal-book-list').count()).toBe(0)
+    await own.close()
+  })
+
+  it('has no serious or critical axe violations on the Row and Stage pages, at rest or with a Book out', async () => {
+    const page = await createAxePage()
+    await page.goto(url('/profile'), { waitUntil: 'networkidle' })
+    const rows = page.locator('section.row-card')
+    await rows.first().locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    await rows.first().locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+    expect(await seriousViolations(page), 'the row page at rest').toEqual([])
+
+    // Kept in the card.
+    await rows.first().locator('.regal-book-list button').first().focus()
+    await page.keyboard.press('Enter')
+    await rows.first().getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 })
+    await page.waitForTimeout(1200)
+    expect(await seriousViolations(page), 'the row page with a Book out in the card').toEqual([])
+    await page.keyboard.press('Escape')
+    await expect.poll(() => rows.first().getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+    await expect.poll(() => rows.first().getByRole('dialog').count(), { timeout: 5_000 }).toBe(0)
+
+    // Broken out: the canvas box is out of the accessibility tree, the dialog is all there is.
+    await rows.nth(1).locator('.regal-book-list button').first().focus()
+    await page.keyboard.press('Enter')
+    await page.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 })
+    await page.waitForTimeout(1200)
+    expect(await seriousViolations(page), 'the row page broken out').toEqual([])
+    await page.context().close()
+
+    const stack = await createAxePage()
+    await stack.goto(url('/books'), { waitUntil: 'networkidle' })
+    const stage = stack.locator('section[aria-label="Book stack"]')
+    await stage.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => stage.getAttribute('data-book-count'), { timeout: 10_000 }).toBe('5')
+    expect(await seriousViolations(stack), 'the stage page at rest').toEqual([])
+    await stage.locator('.regal-book-list button').first().focus()
+    await stack.keyboard.press('Enter')
+    await stack.getByRole('dialog').waitFor({ state: 'visible', timeout: 10_000 })
+    await stack.waitForTimeout(1200)
+    expect(await seriousViolations(stack), 'the stage page with a Book out').toEqual([])
+    await stack.context().close()
+  })
+
+  it('takes a Book out from the list with the keyboard, puts focus in the dialog and gives it back', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/profile'), { waitUntil: 'networkidle' })
+    const rows = page.locator('section.row-card')
+    await rows.first().locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    await rows.first().locator('.row-focus').waitFor({ state: 'attached', timeout: 10_000 })
+
+    // Kept in the card: Tab from the scroller to the list, Enter, focus in the dialog, Escape back to that button.
+    const first = rows.nth(0)
+    await first.locator('.row-card__scroller').focus()
+    await page.keyboard.press('Tab')
+    const button = await focused(page)
+    expect(button.list).toBe(true)
+    await page.keyboard.press('ArrowDown')
+    const next = await focused(page)
+    expect(next.list).toBe(true)
+    expect(next.bookId).not.toBe(button.bookId)
+    await page.keyboard.press('Enter')
+    await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).toBe(next.bookId)
+    const dialog = first.getByRole('dialog')
+    await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+    expect(await dialog.getAttribute('aria-modal')).toBeNull()
+    await expect.poll(async () => (await focused(page)).role, { timeout: 5_000 }).toBe('dialog')
+    await page.keyboard.press('Escape')
+    await expect.poll(() => first.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+    await expect.poll(() => focused(page), { timeout: 5_000 }).toMatchObject({ list: true, bookId: next.bookId })
+
+    // Broken out: a modal. Its canvas is out of the tree, Tab stays in the dialog and Back, Escape gives focus back.
+    const second = rows.nth(1)
+    await second.locator('.row-card__scroller').focus()
+    await page.keyboard.press('Tab')
+    const start = await focused(page)
+    expect(start.list).toBe(true)
+    await page.keyboard.press('Enter')
+    await expect.poll(() => second.getAttribute('data-picked'), { timeout: 5_000 }).toBe(start.bookId)
+    const modal = page.locator('body > .row-card__details')
+    await modal.waitFor({ state: 'visible', timeout: 10_000 })
+    expect(await modal.getAttribute('role')).toBe('dialog')
+    expect(await modal.getAttribute('aria-modal')).toBe('true')
+    expect(await modal.getAttribute('aria-labelledby')).toBeTruthy()
+    expect(await page.locator('.row-card__view--out').getAttribute('aria-hidden')).toBe('true')
+    await expect.poll(async () => (await focused(page)).role, { timeout: 5_000 }).toBe('dialog')
+    for (let step = 0; step < 6; step++) {
+      await page.keyboard.press('Tab')
+      expect((await focused(page)).inDialog, `Tab ${step + 1}`).toBe(true)
+    }
+    for (let step = 0; step < 6; step++) {
+      await page.keyboard.press('Shift+Tab')
+      expect((await focused(page)).inDialog, `Shift+Tab ${step + 1}`).toBe(true)
+    }
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.locator('.row-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    await expect.poll(() => focused(page), { timeout: 5_000 }).toMatchObject({ list: true, bookId: start.bookId })
+
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('does the same on the Stage: a list button takes the Book out, focus goes into the card and back', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/books'), { waitUntil: 'networkidle' })
+    const stage = page.locator('section[aria-label="Book stack"]')
+    await stage.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => stage.getAttribute('data-book-count'), { timeout: 10_000 }).toBe('5')
+
+    const buttons = stage.locator('.regal-book-list button')
+    await buttons.nth(1).focus()
+    expect((await focused(page)).list).toBe(true)
+    const bookId = (await focused(page)).bookId
+    await page.keyboard.press('Enter')
+    await expect.poll(() => stage.getAttribute('data-picked'), { timeout: 5_000 }).toBe(bookId)
+    const dialog = page.getByRole('dialog')
+    await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+    await expect.poll(async () => (await focused(page)).role, { timeout: 10_000 }).toBe('dialog')
+    await page.keyboard.press('Escape')
+    await expect.poll(() => stage.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+    await expect.poll(() => focused(page), { timeout: 5_000 }).toMatchObject({ list: true, bookId })
+
+    expect(errors).toEqual([])
+    await page.close()
   })
 
   it('leaves the host\'s global styles alone', async () => {

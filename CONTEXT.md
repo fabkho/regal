@@ -32,5 +32,6 @@ Use these terms in code, issues and commits.
 | **Tooltip** | The small label with a Book's title and stars: beside the pointer on hover (hover label), beside the focused Book while scrolling the Stack (scroll focus label), under the Book in focus in `RegalBooksRow` (its focus label). |
 | **Detail panel** | The picked Book's details next to it in **Inspect**: a card, on narrow stages a bottom sheet; in `RegalBooksRow` the details under or beside the Book (broken out: the sheet or a card). |
 | **Theme tokens** | The `--regal-*` CSS custom properties hosts set to restyle the **Tooltip**, the **Detail panel** and `RegalBooksRow`'s card (its frame alone: `--regal-row-*`; its broken-out sheet: `--regal-sheet-*`); with `theme` (light/dark/auto), slots and `unstyled` (`docs/nuxt-layer.md`, "Theming"). |
+| **Book list** | The visually hidden, accessible list of the visible **Books** beside a canvas (`RegalBooksRow`, `RegalBooksStage`; `accessible-list`): a button each (title, author, month finished, rating in words) that takes the Book out like a tap. The **Detail panel** of a Book taken out is a dialog. |
 | **Return** | Animation putting an inspected Book back into its Placement. |
 | **Demo library** | The synthetic **Regal library file** Regal's own site shows (`demo/demo-library.json`, a copy of `tests/fixtures/library-file/demo.json`). |

@@ -125,11 +125,13 @@ describe('RegalBooksRow focus label: the rating\'s number', () => {
     const wrapper = await mountRow()
     await focusBook(wrapper)
     const rating = wrapper.find('.row-focus .title-stars__rating')
-    expect(rating.find('.title-stars__stars').attributes('aria-label')).toBe('Rated 4.25 out of 5')
+    // The drawn stars and the number are out of the accessibility tree; one hidden text says it in words.
+    expect(rating.find('.title-stars__stars').attributes('aria-hidden')).toBe('true')
+    expect(rating.find('.regal-visually-hidden').text()).toBe('4.25 of 5 stars')
     expect(rating.find('.title-stars__value').text()).toBe('4.25')
     // After the stars: the stars come first.
     expect(rating.element.firstElementChild?.classList.contains('title-stars__stars')).toBe(true)
-    // Read once, by the stars' label.
+    // Read once, by the hidden text.
     expect(rating.find('.title-stars__value').attributes('aria-hidden')).toBe('true')
   })
 
@@ -259,5 +261,61 @@ describe('RegalBooksRow Back', () => {
     expect(slot.find('.host-back').text()).toBe(`${BOOK.title} false`)
     await slot.find('.host-back').trigger('click')
     expect(card.pick.bookId).toBeNull()
+  })
+})
+
+describe('RegalBooksRow for assistive technology', () => {
+  const SECOND: Book = { ...BOOK, id: 'fx-row-2', title: 'Another Row Book', author: null, rating: 0, dateRead: null, status: 'currently-reading' }
+
+  it('names the scroller as a region (a label needs a role)', async () => {
+    const wrapper = await mountRow()
+    const scroller = wrapper.find('.row-card__scroller')
+    expect(scroller.attributes('role')).toBe('region')
+    expect(scroller.attributes('aria-label')).toBe('1 books, scroll sideways')
+  })
+
+  it('lists the Books as buttons: title, author, month finished, rating in words', async () => {
+    useState<Book[]>('library:books').value = [BOOK, SECOND]
+    const wrapper = await mountRow()
+    const items = wrapper.findAll('.regal-book-list li button')
+    // In the row's own order: what is being read now first, then the newest read.
+    expect(items.map(item => item.text())).toEqual([
+      'Another Row Book, reading now',
+      'A Synthetic Row Book, Ada Example, finished March 2025, 4 of 5 stars',
+    ])
+    expect(wrapper.find('.regal-book-list').attributes('role')).toBe('list')
+    // One Tab stop for the whole list.
+    expect(items.map(item => item.attributes('tabindex'))).toEqual(['0', '-1'])
+  })
+
+  it('takes the Book out when its button is pressed, into a labelled dialog', async () => {
+    const wrapper = await mountRow()
+    await wrapper.find('.regal-book-list button').trigger('click')
+    await nextTick()
+    await nextTick()
+    const card = wrapper.findComponent(RowCard).vm as unknown as CardState
+    expect(card.pick.bookId).toBe(BOOK.id)
+    const dialog = wrapper.find('.row-card__details')
+    expect(dialog.attributes('role')).toBe('dialog')
+    expect(dialog.attributes('tabindex')).toBe('-1')
+    // In the card it is not modal; the title names it.
+    expect(dialog.attributes('aria-modal')).toBeUndefined()
+    const title = wrapper.find('.row-card__book-title')
+    expect(dialog.attributes('aria-labelledby')).toBe(title.attributes('id'))
+    expect(dialog.attributes('aria-label')).toBeUndefined()
+  })
+
+  it('is left out with accessible-list off', async () => {
+    const wrapper = await mountRow({ props: { accessibleList: false } })
+    expect(wrapper.find('.regal-book-list').exists()).toBe(false)
+    expect(wrapper.find('.row-card__scroller').exists()).toBe(true)
+  })
+
+  it('names the dialog by its own label when the host replaces the title', async () => {
+    const wrapper = await mountRow({ slots: { 'detail-header': () => h('p', 'Mine') } })
+    await pickBook(wrapper)
+    const dialog = wrapper.find('.row-card__details')
+    expect(dialog.attributes('aria-labelledby')).toBeUndefined()
+    expect(dialog.attributes('aria-label')).toBe('A Synthetic Row Book details')
   })
 })

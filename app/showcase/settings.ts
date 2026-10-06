@@ -17,6 +17,8 @@ export type Inspect = 'card' | 'viewport' | 'auto'
 
 export interface PlaygroundSettings {
   component: PlaygroundComponent
+  /** The visually hidden Book list of RegalBooksStage and RegalBooksRow (`accessible-list`). */
+  accessibleList: boolean
   /** RegalBooksStage */
   controls: boolean
   stageRotate: Rotate
@@ -56,6 +58,7 @@ export interface PlaygroundSettings {
 
 export const DEFAULT_SETTINGS: Readonly<PlaygroundSettings> = Object.freeze({
   component: 'stage',
+  accessibleList: true,
   controls: false,
   stageRotate: 'turntable',
   sidebar: true,
@@ -87,6 +90,7 @@ export const DEFAULT_SETTINGS: Readonly<PlaygroundSettings> = Object.freeze({
 /** Query key of each setting. `src` and the Stack's own keys (sort, year, min, group) are the viewer's. */
 const KEYS: Record<keyof PlaygroundSettings, string> = {
   component: 'c',
+  accessibleList: 'alist',
   controls: 'controls',
   stageRotate: 'rotate',
   sidebar: 'sidebar',
@@ -153,6 +157,7 @@ export function readSettings(query: LocationQuery, choices: LibraryChoices = NO_
   const accent = text(q('accent'))
   return {
     component: pick(q('component'), ['stage', 'row'] as const, d.component),
+    accessibleList: flag(q('accessibleList'), d.accessibleList),
     controls: flag(q('controls'), d.controls),
     stageRotate: pick(q('stageRotate'), ['turntable', 'free'] as const, d.stageRotate),
     sidebar: flag(q('sidebar'), d.sidebar),
@@ -328,6 +333,7 @@ export function templateSnippet(settings: PlaygroundSettings): string {
     if (settings.rowYear !== null) attrs.push(attr('year', settings.rowYear))
     if (settings.rowRotate !== DEFAULT_SETTINGS.rowRotate) attrs.push(attr('rotate', settings.rowRotate))
     if (!settings.backButton) attrs.push(attr('back-button', false))
+    if (!settings.accessibleList) attrs.push(attr('accessible-list', false))
     if (settings.label) attrs.push(attr('label', settings.label))
     attrs.push(...themeAttrs(settings))
     parts.push(tag('RegalBooksRow', attrs, slotLines(settings)))
@@ -336,6 +342,7 @@ export function templateSnippet(settings: PlaygroundSettings): string {
     if (settings.filterBar) parts.push(tag('RegalBooksFilters', ['class="books-filters"']))
     const attrs = ['class="books-stage"']
     if (settings.controls) attrs.push(attr('controls', true))
+    if (!settings.accessibleList) attrs.push(attr('accessible-list', false))
     if (settings.stageRotate !== DEFAULT_SETTINGS.stageRotate) attrs.push(attr('rotate', settings.stageRotate))
     attrs.push(...themeAttrs(settings))
     parts.push(tag('RegalBooksStage', attrs, slotLines(settings)))

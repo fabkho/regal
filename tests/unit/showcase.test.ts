@@ -45,6 +45,10 @@ describe('playground settings', () => {
     expect(templateSnippet(row)).toContain(':back-button="false"')
     const stage = { ...DEFAULT_SETTINGS, controls: true, filterBar: true, sidebarList: false }
     expect(templateSnippet(stage)).toMatch(/<RegalBooksFilters[\s\S]*<RegalBooksStage[^>]*controls[\s\S]*<RegalBooksSidebar :list="false" \/>/)
+    // The hidden Book list is on unless a host turns it off.
+    expect(templateSnippet({ ...DEFAULT_SETTINGS, component: 'row' })).not.toContain('accessible-list')
+    expect(templateSnippet({ ...DEFAULT_SETTINGS, component: 'row', accessibleList: false })).toContain(':accessible-list="false"')
+    expect(templateSnippet({ ...DEFAULT_SETTINGS, accessibleList: false })).toContain(':accessible-list="false"')
     expect(configSnippet({ ...DEFAULT_SETTINGS, haptics: false }, '/books/library.json')).toContain('haptics: false')
     expect(styleSnippet({ ...DEFAULT_SETTINGS, tokens: 'soft', accent: '#123456' })).toContain('--regal-accent: #123456;')
     expect(tokensOf({ tokens: 'regal', accent: null, radius: 6 })).toEqual({ '--regal-radius': '6px' })

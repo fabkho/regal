@@ -38,6 +38,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
       <RegalBooksStage
         class="preview__stage"
         :controls="settings.controls"
+        :accessible-list="settings.accessibleList"
         :rotate="settings.stageRotate"
         :theme="settings.theme"
         :unstyled="settings.unstyled"
@@ -138,6 +139,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
         :year="settings.rowYear"
         :rotate="settings.rowRotate"
         :back-button="settings.backButton"
+        :accessible-list="settings.accessibleList"
         :label="settings.label"
         :theme="settings.theme"
         :unstyled="settings.unstyled"

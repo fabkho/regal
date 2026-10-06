@@ -110,7 +110,8 @@ function cloneCard(card: HTMLElement): HTMLElement {
       if (/-(?:enter|leave)-(?:from|active|to)$/.test(name)) element.classList.remove(name)
     }
   })
-  clone.removeAttribute('aria-live')
+  // A still picture: none of the dialog's attributes.
+  for (const name of ['aria-live', 'role', 'aria-labelledby', 'aria-label', 'tabindex']) clone.removeAttribute(name)
   Object.assign(clone.style, {
     position: 'static',
     inset: 'auto',

@@ -24,7 +24,9 @@ const props = withDefaults(defineProps<{
   stackOnly?: boolean
   /** How a drag turns a picked Book (utils/books/spin.ts). */
   rotate?: 'free' | 'turntable'
-}>(), { showControls: true, showDetails: true, stackOnly: false, rotate: 'turntable' })
+  /** The Books as a visually hidden list beside the canvas, each a button that takes the Book out (RegalBooksStage's `accessible-list`). */
+  accessibleList?: boolean
+}>(), { showControls: true, showDetails: true, stackOnly: false, rotate: 'turntable', accessibleList: false })
 
 const route = useRoute()
 const router = useRouter()
@@ -37,7 +39,7 @@ const debugPick = computed(() => debug.value.includes('pick'))
 const debugLoads = computed(() => debug.value.includes('loads'))
 
 const { books, assets, source, error } = useLibrary()
-const { pickedId, putAway } = useBookPick()
+const { pickedId, pick, putAway } = useBookPick()
 // Short vibrations: a Book taken out or put back, a tiny tick per Book while a finger scrolls (utils/books/haptics.ts).
 useBookHaptics()
 const mode = useViewMode()
@@ -96,6 +98,8 @@ const quality = useRenderQuality()
 const stageDpr = useStageDpr()
 /** The stage element: a details card put back as a label lands inside it. */
 const stageElement = ref<HTMLElement | null>(null)
+/** The Books for assistive tech, as they are shown: the Stack's filtered and sorted ones, or the whole Bookcase. */
+const listedBooks = computed(() => (mode.value === 'stack' ? stackBooks.value : books.value))
 /** The band over the top of the stage (the view switch, the Stack controls). */
 const topElement = ref<HTMLElement | null>(null)
 const showStackControls = computed(() => props.showControls && mode.value === 'stack' && books.value.length > 0)
@@ -154,6 +158,7 @@ watch(books, (list) => {
     :data-book-count="poses.length"
     :data-bookcase-count="shelves.bookcaseCount"
     :data-picked="pickedId ?? ''"
+    tabindex="-1"
   >
     <!-- A library file that can't be shown: why, instead of an empty shelf. -->
     <LibraryFileError
@@ -259,6 +264,13 @@ watch(books, (list) => {
       />
     </div>
 
+    <!-- The Books for assistive tech, beside the canvas (after the controls, before the details). -->
+    <BooksAccessibleList
+      v-if="props.accessibleList && !error"
+      :books="listedBooks"
+      @pick="book => pick(book.id)"
+    />
+
     <p
       v-if="source && !error && !books.length"
       class="stage__status stage__status--overlay"
@@ -294,6 +306,7 @@ watch(books, (list) => {
         :class="{ 'stage__details--sheet': sheet }"
         :sheet="sheet"
         :max-height="sheetHeight"
+        :return-focus="stageElement"
       />
     </Teleport>
 

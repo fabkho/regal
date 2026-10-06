@@ -6,3 +6,8 @@
 export function ratingText(rating: number): string {
   return String(Math.round(rating * 100) / 100)
 }
+
+/** The rating in words, for assistive tech instead of the drawn stars: "4.25 of 5 stars". */
+export function ratingStarsText(rating: number): string {
+  return `${ratingText(rating)} of 5 stars`
+}

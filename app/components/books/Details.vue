@@ -5,24 +5,29 @@
 // placed by the stage on the viewport's bottom edge. Its look is the host's
 // theme (the `--regal-*` tokens), its content can be the host's slots
 // (docs/nuxt-layer.md: "Theming"); the frame, the swap, the sheet and the morph stay Regal's.
-import { ratingText } from '#layers/regal/app/utils/books/rating'
+import { ratingStarsText, ratingText } from '#layers/regal/app/utils/books/rating'
 
 const props = withDefaults(defineProps<{
   /** Show as a bottom sheet (narrow stages) instead of the card. */
   sheet?: boolean
   /** The sheet's most height, px (utils/books/sheet.ts sheetMaxHeight). */
   maxHeight?: number
-}>(), { sheet: false, maxHeight: 0 })
+  /** Where focus goes when the card closes and what opened it is gone (the stage). */
+  returnFocus?: HTMLElement | null
+}>(), { sheet: false, maxHeight: 0, returnFocus: null })
 
 const { books } = useLibrary()
 const { pickedId, face, flip, putAway } = useBookPick()
 
 const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
+const titleId = useId()
 
 // The host's theme and slots (#detail, #detail-header, #detail-meta,
 // #detail-about, #detail-actions; composables/useRegalUi.ts). The sheet lives
 // in <body>: the root's tokens come along.
 const ui = useRegalUi()
+/** The host's own head (#detail, #detail-header) has no title of Regal's to name the dialog by. */
+const customTitle = computed(() => ui.hasSlot('detail') || ui.hasSlot('detail-header'))
 const surface = useRegalSurface(() => props.sheet)
 
 // The card grows out of the Book's label and shrinks back into it
@@ -35,6 +40,9 @@ const root = ref<HTMLElement | null>(null)
 const body = ref<HTMLElement | null>(null)
 const content = ref<HTMLElement | null>(null)
 useLabelMorphCard(() => root.value)
+// A real dialog (not modal: the Stack behind it stays in use): focus goes in when a Book comes out,
+// Escape (the 3D's own) closes it, and focus goes back to what opened it.
+useDialogFocus({ open: () => !!book.value, dialog: root, modal: () => false, fallback: () => props.returnFocus })
 const reducedMotion = usePreferredReducedMotion()
 
 const { shown } = useCardSwap({
@@ -177,7 +185,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
     @after-enter="onEntered"
     @enter-cancelled="onEntered"
   >
-    <article
+    <div
       v-if="book"
       ref="root"
       v-bind="surface"
@@ -188,8 +196,10 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
         'details--dragging': dragging,
         'details--more-below': moreBelow,
       }"
-      aria-live="polite"
-      :aria-label="`${book.title} details`"
+      role="dialog"
+      tabindex="-1"
+      :aria-labelledby="customTitle ? undefined : titleId"
+      :aria-label="customTitle ? `${book.title} details` : undefined"
     >
       <!-- The sheet's grip: drag it down to put the Book back. -->
       <div
@@ -234,7 +244,10 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
                 >
                   {{ shown.seriesTitle }}
                 </p>
-                <h2 class="details__title">
+                <h2
+                  :id="titleId"
+                  class="details__title"
+                >
                   {{ shown.title }}
                 </h2>
                 <p
@@ -247,7 +260,6 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
                 <p
                   v-if="shown.rating"
                   class="details__rating"
-                  :aria-label="`Rated ${shown.rating} out of 5`"
                 >
                   <span
                     class="details__stars"
@@ -256,7 +268,11 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
                     class="details__stars-fill"
                     :style="{ width: `${shown.rating / 5 * 100}%` }"
                   >★★★★★</span></span>
-                  <span class="details__rating-value">{{ ratingText(shown.rating) }}</span>
+                  <span
+                    class="details__rating-value"
+                    aria-hidden="true"
+                  >{{ ratingText(shown.rating) }}</span>
+                  <span class="regal-visually-hidden">{{ ratingStarsText(shown.rating) }}</span>
                 </p>
 
                 <div
@@ -359,7 +375,7 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
           </template>
         </div>
       </div>
-    </article>
+    </div>
   </Transition>
 </template>
 
@@ -376,6 +392,11 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
   font-family: var(--_regal-font-body);
   font-size: var(--_regal-size-base);
   line-height: 1.4;
+}
+
+/* The dialog takes focus as a whole (so its name is read), it is not a control: no ring around it. */
+.details:focus {
+  outline: none;
 }
 
 /* Laid out (so the morph can measure it) but not shown until the box arrives. */
@@ -731,3 +752,5 @@ function goodreadsUrl(current: { id: string, isbn13: string | null, title: strin
 </style>
 
 <style src="../../assets/css/regal-theme.css"></style>
+
+<style scoped src="../../assets/css/regal-visually-hidden.css"></style>
