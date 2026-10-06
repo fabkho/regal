@@ -33,6 +33,7 @@ function setting<K extends keyof PlaygroundSettings>(key: K) {
 
 const component = setting('component')
 const controls = setting('controls')
+const accessibleList = setting('accessibleList')
 const stageRotate = setting('stageRotate')
 const sidebar = setting('sidebar')
 const sidebarFilters = setting('sidebarFilters')
@@ -130,6 +131,11 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
         v-model="controls"
         label="Sort & filter chips over the 3D"
         code="controls"
+      />
+      <ShowcaseToggle
+        v-model="accessibleList"
+        label="Hidden Book list for screen readers"
+        code="accessible-list"
       />
       <ShowcaseChoice
         v-model="stageRotate"
@@ -247,6 +253,11 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
       <ShowcaseChoice
         v-model="backButton"
         label="back-button"
+        :options="onOff"
+      />
+      <ShowcaseChoice
+        v-model="accessibleList"
+        label="accessible-list: hidden Book list"
         :options="onOff"
       />
       <label class="panel__field">

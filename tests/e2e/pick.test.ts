@@ -20,7 +20,7 @@ describe('picking Books and switching views', async () => {
 
     const stage = page.locator('section.stage')
     await page.getByRole('button', { name: /^Frankenstein/ }).click()
-    const details = page.getByRole('article', { name: 'Frankenstein details' })
+    const details = page.getByRole('dialog', { name: 'Frankenstein' })
     await details.waitFor({ state: 'visible', timeout: 10_000 })
     expect(await stage.getAttribute('data-picked')).toBe('demo-02')
     expect(await details.textContent()).toContain('Mary Shelley')
@@ -48,9 +48,9 @@ describe('picking Books and switching views', async () => {
     await expect.poll(() => page.url(), { timeout: 5_000 }).toContain('view=stack')
 
     await page.getByRole('button', { name: /^Good Omens/ }).click()
-    await page.getByRole('article', { name: 'Good Omens details' }).waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByRole('dialog', { name: 'Good Omens' }).waitFor({ state: 'visible', timeout: 10_000 })
     await page.getByRole('button', { name: /put back/i }).click()
-    await page.getByRole('article', { name: 'Good Omens details' }).waitFor({ state: 'detached', timeout: 10_000 })
+    await page.getByRole('dialog', { name: 'Good Omens' }).waitFor({ state: 'detached', timeout: 10_000 })
     await page.close()
   })
 

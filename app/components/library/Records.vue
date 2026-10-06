@@ -2,6 +2,7 @@
 // The Stack's Books as plain text records (same order and filters as the 3D
 // Stack). Hovering a record lifts its Book in 3D; clicking takes it out.
 // Year / month headers match the Stack's date separators.
+import { ratingStarsText } from '#layers/regal/app/utils/books/rating'
 import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
 
 const { books } = useLibrary()
@@ -54,11 +55,15 @@ const formatDate = (iso: string | null) => (iso
         <span
           v-if="book.rating"
           class="records__stars"
-          :aria-label="`Rated ${book.rating} out of 5`"
+          aria-hidden="true"
         >★★★★★<span
           class="records__stars-fill"
           :style="{ width: `${book.rating / 5 * 100}%` }"
         >★★★★★</span></span>
+        <span
+          v-if="book.rating"
+          class="regal-visually-hidden"
+        >{{ ratingStarsText(book.rating) }}</span>
       </button>
     </template>
   </div>
@@ -122,6 +127,12 @@ const formatDate = (iso: string | null) => (iso
   font-size: var(--text-xs, 0.7rem);
 }
 
+/* On the picked or hovered record's tint the muted ink falls below 4.5:1. */
+.records__item:hover .records__meta,
+.records__item[aria-pressed='true'] .records__meta {
+  color: var(--color-ink, #2C2C2A);
+}
+
 .records__stars {
   position: relative;
   justify-self: start;
@@ -137,3 +148,5 @@ const formatDate = (iso: string | null) => (iso
   color: var(--color-accent, #B93E2E);
 }
 </style>
+
+<style scoped src="../../assets/css/regal-visually-hidden.css"></style>

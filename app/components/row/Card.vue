@@ -59,7 +59,9 @@ const props = withDefaults(defineProps<{
   backButton?: boolean
   /** Turning a Book taken out: about both axes (a trackball) or the Stage's turntable. */
   rotate?: 'free' | 'turntable'
-}>(), { inspect: 'card', start: 'newest', label: 'Books read', backButton: true, rotate: 'free' })
+  /** The Books as a visually hidden list of buttons beside the canvas (RegalBooksRow's `accessible-list`). */
+  accessibleList?: boolean
+}>(), { inspect: 'card', start: 'newest', label: 'Books read', backButton: true, rotate: 'free', accessibleList: true })
 
 const oldestFirst = computed(() => [...props.books].reverse())
 const layout = computed(() => layoutRow(oldestFirst.value))
@@ -330,6 +332,30 @@ function onTouch(event: TouchEvent) {
   else if (!touching && !touchDrag && !flingFrame) touchScrolling.value = false
 }
 
+/**
+ * Brings a Book to the card's middle, where the Book in focus is (the camera
+ * follows the scroll): the Book list's focus shows it, taking it out starts
+ * from there (instantly, the 3D has to find it where it stands).
+ */
+function centreBook(bookId: string, smooth: boolean) {
+  const element = scroller.value
+  const pose = layout.value.poses.find(candidate => candidate.bookId === bookId)
+  if (!element || !pose) return
+  noteReader()
+  const left = (pose.x - cameraStart.value) * pxPerMetre.value
+  if (smooth && reducedMotion.value !== 'reduce') element.scrollTo({ left, behavior: 'smooth' })
+  else {
+    element.scrollLeft = left
+    syncCamera()
+  }
+}
+
+/** The Book list's button: the same as Enter on the Book in focus, for any Book. */
+function pickFromList(book: Book) {
+  if (!pickedId.value) centreBook(book.id, false)
+  pick.value = { bookId: book.id, face: 'front' }
+}
+
 function scrollStep(direction: number) {
   noteReader()
   scroller.value?.scrollBy({ left: direction * width.value * 0.7, behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth' })
@@ -514,6 +540,19 @@ watch(pickedId, (id, previous) => {
   }
 })
 
+// The details as a dialog (RegalBooksRow's details, in the card or broken out): focus goes into it,
+// stays in it while it is modal (broken out, with Back), and goes back to the Book's list button
+// (or the scroller, the row's Tab stop) when the Book is put away.
+const backElement = ref<HTMLElement | null>(null)
+const titleId = useId()
+useDialogFocus({
+  open: () => !!pickedBook.value,
+  dialog: caption,
+  also: () => [backElement.value],
+  modal: () => broken.value,
+  fallback: () => scroller.value,
+})
+
 /** Touch on the canvas: up/down scrolls the page, sideways the row (its own drag) or a picked Book; broken out, it has the screen. */
 const touchAction = computed(() => (broken.value && pickedId.value ? 'none' : 'pan-y'))
 
@@ -551,6 +590,8 @@ const { handlers: grabber } = useSheetDrag({
 // --- Theme ------------------------------------------------------------------------------
 
 const ui = useRegalUi()
+/** The host's own head (#detail, #detail-header) has no title of Regal's to name the dialog by. */
+const customTitle = computed(() => ui.hasSlot('detail') || ui.hasSlot('detail-header'))
 /**
  * Public tokens the row reads as they are: those with its own (smaller)
  * defaults instead of the theme's, the broken-out sheet's (docs/nuxt-layer.md: "The
@@ -689,6 +730,7 @@ function scrub(value: number) {
       ref="scroller"
       class="row-card__scroller"
       tabindex="0"
+      role="region"
       :aria-label="`${books.length} books, scroll sideways`"
       @scroll.passive="onScroll"
       @scrollend="onScrollEnd"
@@ -719,6 +761,7 @@ function scrub(value: number) {
               v-bind="surface"
               class="row-card__view"
               :class="{ 'row-card__view--out': broken }"
+              :aria-hidden="broken && pickedId ? 'true' : undefined"
             >
               <ClientOnly>
                 <TresCanvas
@@ -783,6 +826,14 @@ function scrub(value: number) {
       </div>
     </div>
 
+    <!-- The Books for assistive tech: the canvas names none of them. -->
+    <BooksAccessibleList
+      v-if="props.accessibleList"
+      :books="books"
+      @pick="pickFromList"
+      @focus="book => centreBook(book.id, true)"
+    />
+
     <RowScrollbar
       v-if="scrolls && !pickedId"
       :progress="progress"
@@ -831,6 +882,7 @@ function scrub(value: number) {
       <!-- The host's own Back (#back), placed where Regal's goes. -->
       <div
         v-if="pickedBook && ui.hasSlot('back')"
+        ref="backElement"
         v-bind="surface"
         class="row-card__back-slot"
         :class="{ 'row-card__back-slot--out': broken }"
@@ -842,6 +894,7 @@ function scrub(value: number) {
       </div>
       <button
         v-else-if="pickedId && props.backButton"
+        ref="backElement"
         v-bind="surface"
         type="button"
         class="row-card__back"
@@ -852,7 +905,7 @@ function scrub(value: number) {
       </button>
 
       <Transition name="row-fade">
-        <article
+        <div
           v-if="pickedBook"
           ref="caption"
           v-bind="surface"
@@ -862,7 +915,11 @@ function scrub(value: number) {
             'row-card__details--sheet': sheet,
             'row-card__details--card': broken && !sheet,
           }"
-          :aria-label="`${pickedBook.title} details`"
+          role="dialog"
+          tabindex="-1"
+          :aria-modal="broken ? 'true' : undefined"
+          :aria-labelledby="customTitle ? undefined : titleId"
+          :aria-label="customTitle ? `${pickedBook.title} details` : undefined"
         >
           <div
             v-if="sheet"
@@ -887,7 +944,10 @@ function scrub(value: number) {
               name="detail-header"
               :scope="{ book: pickedBook }"
             >
-              <p class="row-card__book-title">
+              <p
+                :id="titleId"
+                class="row-card__book-title"
+              >
                 {{ pickedBook.title }}
               </p>
               <div
@@ -958,7 +1018,7 @@ function scrub(value: number) {
               · drag or flick to turn
             </p>
           </template>
-        </article>
+        </div>
       </Transition>
     </Teleport>
   </section>
@@ -1429,6 +1489,11 @@ function scrub(value: number) {
   backdrop-filter: var(--_regal-backdrop);
   overflow-y: auto;
   font-size: var(--_regal-size-body);
+}
+
+/* The dialog takes focus as a whole (so its name is read), it is not a control: no ring around it. */
+.row-card__details:focus {
+  outline: none;
 }
 
 .row-card__book-stars {

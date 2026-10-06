@@ -41,7 +41,14 @@ const props = withDefaults(defineProps<{
    * it left/right and tips it a little (the Stage's).
    */
   rotate?: 'free' | 'turntable'
-}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free' })
+  /**
+   * The Books for assistive technology: a visually hidden list beside the canvas
+   * (title, author, month finished, rating in words), each a button that takes the
+   * Book out like a tap; it shows the same Books as the row (`limit`, `year`).
+   * `false` for a host that renders its own.
+   */
+  accessibleList?: boolean
+}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free', accessibleList: true })
 
 defineSlots<{
   /** The focus label's content (title and stars under the Book in focus). */
@@ -95,6 +102,7 @@ const { rootAttrs } = provideRegalUi({
       :label="ariaLabel"
       :back-button="props.backButton"
       :rotate="props.rotate"
+      :accessible-list="props.accessibleList"
     />
     <p
       v-else-if="source"
