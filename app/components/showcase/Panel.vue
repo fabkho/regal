@@ -15,6 +15,8 @@ const props = defineProps<{
   libraryNote: string
   libraryFailed: boolean
   fileName: string | null
+  /** The site's real shelf, if it has one (its label), offered first. */
+  liveName: string | null
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<PlaygroundSettings>]
@@ -343,6 +345,7 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
         :model-value="settings.library"
         label="librarySrc"
         :options="[
+          ...(liveName ? [{ value: 'live' as const, label: liveName }] : []),
           { value: 'shelf', label: 'Showcase shelf' },
           { value: 'demo', label: 'Demo' },
           { value: 'url', label: 'URL' },

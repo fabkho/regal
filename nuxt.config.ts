@@ -53,14 +53,30 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
   ]
 
   // The site is a viewer: it shows the demo library file (synthetic, a copy of
-  // tests/fixtures/library-file/demo.json) unless librarySrc says otherwise.
+  // tests/fixtures/library-file/demo.json) unless librarySrc says otherwise,
+  // or the site's real shelf when the build names one (REGAL_SITE_SHELF_SRC,
+  // the owner's published library file: GitHub Pages sets it in pages.yml).
+  // It is loaded from where it is published, never copied into the build, and
+  // the playground then offers it first (runtimeConfig.public.regalSite).
   // Served from demo/, not public/, which hosts would serve too. Under the
   // site's base path (`app.baseURL`, NUXT_APP_BASE_URL: '/regal/' on GitHub
   // Pages), so the static build works from a subpath as from a domain root.
   nuxt.options.nitro.publicAssets ??= []
   nuxt.options.nitro.publicAssets.push({ dir: join(regalDir, 'demo'), baseURL: '/', maxAge: 0 })
   const regalConfig = nuxt.options.runtimeConfig.public.regal as { librarySrc: string }
-  regalConfig.librarySrc ||= `${nuxt.options.app.baseURL.replace(/\/*$/, '/')}${DEMO_LIBRARY_FILE}`
+  const shelfSrc = process.env.REGAL_SITE_SHELF_SRC?.trim() ?? ''
+  nuxt.options.runtimeConfig.public.regalSite = { shelfSrc, shelfName: process.env.REGAL_SITE_SHELF_NAME?.trim() || 'Live shelf' }
+  regalConfig.librarySrc ||= shelfSrc || `${nuxt.options.app.baseURL.replace(/\/*$/, '/')}${DEMO_LIBRARY_FILE}`
+  // Rendered in the browser only then: a prerender would fetch the shelf and
+  // bake its records (blurbs, reviews) into the static HTML, copied to the
+  // site's host and frozen at the deploy, while the shelf changes daily.
+  // The crawler can't find the other pages from a browser-only index: named.
+  if (shelfSrc) {
+    const rules = (nuxt.options.routeRules ??= {})
+    for (const path of ['/', '/row']) rules[path] = { ...rules[path], ssr: false }
+    nuxt.options.nitro.prerender ??= {}
+    nuxt.options.nitro.prerender.routes = [...(nuxt.options.nitro.prerender.routes ?? []), '/', '/row', '/playground']
+  }
 
   // The dev pages (/dev/…) are for `nuxt dev` only: never in a build or a
   // static generate (their middleware 404s there anyway).

@@ -4,7 +4,7 @@
 
 A reading library as a 3D stack of books, for your own site. Pull a Book out, turn it around, read what you thought of it.
 
-**[Playground](https://fabkho.github.io/regal/playground)** (every setting, live) · **[Demo](https://fabkho.github.io/regal/)** (on GitHub Pages; `pnpm dev` runs both locally) · [Nuxt layer reference](docs/nuxt-layer.md) · [Library file format](docs/library-file.md) · [Producing and publishing](docs/producing.md)
+**[Playground](https://fabkho.github.io/regal/playground)** (every setting, live) · **[Demo](https://fabkho.github.io/regal/)** (my real shelf, on GitHub Pages; `pnpm dev` runs both locally with synthetic data) · [Nuxt layer reference](docs/nuxt-layer.md) · [Library file format](docs/library-file.md) · [Producing and publishing](docs/producing.md)
 
 ![The Stack with a Book taken out, beside the sidebar with sort, filters and the records](docs/assets/stack.jpg)
 
@@ -127,7 +127,7 @@ pnpm generate          # the static site; NUXT_APP_BASE_URL=/regal/ for a subpat
 
 The site is a viewer of one library file (`librarySrc`, default the synthetic demo) and `?src=<url>` views any other; a `?src=` file is loaded by the browser only, so it must allow cross-origin requests from the site. `/playground` is the showcase. Both, and the dev pages, stay out of an app that extends the layer.
 
-The showcase is deployed to GitHub Pages from `main` by [`pages.yml`](.github/workflows/pages.yml) (a static `nuxt generate` under `/regal/`).
+The showcase is deployed to GitHub Pages from `main` by [`pages.yml`](.github/workflows/pages.yml) (a static `nuxt generate` under `/regal/`). There it shows the owner's real shelf: `REGAL_SITE_SHELF_SRC` (and `REGAL_SITE_SHELF_NAME`) at build time make a published library file the site's default and the playground's first choice. The browser loads it from where it's published (its CORS policy must allow the site's origin); the viewer pages then render in the browser only, so no record is baked into the build. Unset, as in `pnpm dev` and the tests, the site uses the synthetic files.
 
 Clicking in the 3D has a fuzz test: with the app running, `node scripts/pick-fuzz.mjs --url http://localhost:3000 --seeds 1,2,3 --steps 200` drives random clicks, drags, scrolls, re-sorts and Escapes in a headless browser and checks the Pick after each one (`--view bookcase`, `--src <url>` for another library file).
 
@@ -152,4 +152,4 @@ Regal renders a library file in the browser and runs no server code in a host. R
 
 The code is [MIT](LICENSE) licensed. Exceptions, each under its own licence: the bookcase model (`public/models/bookcase.glb`, CC BY 4.0, Lorenzo Drago) and the IBM Plex Mono subset (`app/assets/fonts/`, SIL Open Font License 1.1, [`OFL.txt`](app/assets/fonts/OFL.txt)); details in [CREDITS.md](CREDITS.md).
 
-Book titles, covers and blurbs that appear in a library file you load belong to their publishers and authors; Regal ships none. The demo and showcase libraries (`demo/`) are synthetic and illustrative: well-known titles with invented ratings, dates, reviews and ISBNs; the showcase's covers are drawn for it, no publisher's art.
+Book titles, covers and blurbs that appear in a library file you load belong to their publishers and authors; Regal ships none. The live site's default shelf is the owner's real one, loaded from `books.fabkho.dev` and not part of this repository. The demo and showcase libraries (`demo/`) are synthetic and illustrative: well-known titles with invented ratings, dates, reviews and ISBNs; the showcase's covers are drawn for it, no publisher's art.

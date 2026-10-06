@@ -1,3 +1,11 @@
+<script setup lang="ts">
+// The site's real shelf (REGAL_SITE_SHELF_SRC, nuxt.config.ts) shows real
+// covers and blurbs: say whose they are while it is the Library shown.
+const site = useRuntimeConfig().public.regalSite as { shelfSrc: string, shelfName: string } | undefined
+const library = useLibrary()
+const showsShelf = computed(() => Boolean(site?.shelfSrc) && library.source.value?.src === site?.shelfSrc)
+</script>
+
 <template>
   <footer class="footer">
     <span>
@@ -14,6 +22,9 @@
         rel="noopener"
       >CC BY 4.0 ↗</a>
       (modified)
+    </span>
+    <span v-if="showsShelf">
+      {{ site!.shelfName }}, live from its published library file · covers and blurbs belong to their publishers and authors
     </span>
     <span>
       Shows a
