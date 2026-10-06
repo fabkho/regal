@@ -26,7 +26,8 @@ const FORBIDDEN = [
 /** Allowed only below these folders (synthetic fixtures, docs, bundled art). */
 const CONTAINED = [
   [/\.csv$/i, ['tests/fixtures/', 'app/assets/data/'], 'CSV'],
-  [/\.(png|jpe?g|webp|avif|gif)$/i, ['docs/assets/', 'tests/fixtures/', 'public/models/', 'assets-src/'], 'image'],
+  // demo/covers/: the showcase shelf's synthetic fronts (scripts/showcase/covers.mjs), never publisher art.
+  [/\.(png|jpe?g|webp|avif|gif)$/i, ['docs/assets/', 'tests/fixtures/', 'public/models/', 'assets-src/', 'demo/covers/'], 'image'],
   [/(^|\/)library\.json$/i, ['tests/fixtures/'], 'Library export'],
 ]
 

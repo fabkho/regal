@@ -24,7 +24,7 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
 
   if (!isRegal) {
     const own = (path: string | undefined, dir: string) => Boolean(path?.startsWith(join(regalDir, dir)))
-    // Regal's own page and the dev choices panel stay out of the host.
+    // Regal's own pages, the dev choices panel and the playground stay out of the host.
     nuxt.hook('pages:extend', (pages) => {
       for (let index = pages.length - 1; index >= 0; index--) {
         if (own(pages[index]!.file, 'app/pages')) pages.splice(index, 1)
@@ -32,7 +32,8 @@ const regalApp: NuxtModule = async (_options, nuxt) => {
     })
     nuxt.hook('components:extend', (components) => {
       for (let index = components.length - 1; index >= 0; index--) {
-        if (own(components[index]!.filePath, 'app/components/dev')) components.splice(index, 1)
+        const path = components[index]!.filePath
+        if (own(path, 'app/components/dev') || own(path, 'app/components/showcase')) components.splice(index, 1)
       }
     })
     return
