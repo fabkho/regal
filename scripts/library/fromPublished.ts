@@ -12,7 +12,7 @@ import type { Book } from '../../shared/types/book'
 import { LIBRARY_FILE_VERSION } from '../../shared/types/libraryFile'
 import type { LibraryBook, LibraryBookAssets, LibraryBookFace, LibraryQuote, RegalLibraryFile } from '../../shared/types/libraryFile'
 
-/** A manifest.json entry, as the asset build (frozen on `main`) writes it (paths relative to the assets base). */
+/** A manifest.json entry, as the v1 asset build (at the tag `portfolio-v1`) writes it (paths relative to the assets base). */
 export interface ManifestEntry {
   front?: string
   spine?: string

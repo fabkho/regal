@@ -120,6 +120,8 @@ Every field is optional; a missing face is drawn by Regal (Spine and back typese
 
 A bridge for data published before Libellus (the v1 files at the bucket root). The daily job doesn't use it.
 
+The v1 files at the bucket root are due to be deleted ([#48](https://github.com/fabkho/regal/issues/48)); once they are gone, the URLs below answer 404. Then give `--library` and `--manifest` local copies (paths work as well as URLs) and `--assets-base` wherever the images are, or re-run the pipeline from Libellus instead of converting.
+
 ```bash
 pnpm library:convert \
   --library https://books.fabkho.dev/library.json \
