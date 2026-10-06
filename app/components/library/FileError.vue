@@ -1,8 +1,11 @@
 <script setup lang="ts">
 // Why no Library shows: the library file couldn't be loaded or isn't valid.
 // Lists the first problems, so a broken export fails loudly instead of
-// rendering an empty shelf.
+// rendering an empty shelf. Offers Try again when the component that shows it
+// can (useRegalLibrary provides `retry` to the components below it; none
+// inside a bare card, and none in the compact line: the Stage's card has it).
 import { shortened } from '#layers/regal/app/utils/library/libraryFile'
+import { REGAL_LIBRARY_RETRY } from '#layers/regal/app/composables/useRegalLibrary'
 import type { LibraryLoadError } from '#layers/regal/app/utils/library/libraryFile'
 
 const props = withDefaults(defineProps<{
@@ -12,6 +15,8 @@ const props = withDefaults(defineProps<{
   /** One line only (a sidebar next to a stage that shows the whole error). */
   compact?: boolean
 }>(), { src: null, compact: false })
+
+const library = inject(REGAL_LIBRARY_RETRY, null)
 </script>
 
 <template>
@@ -50,6 +55,15 @@ const props = withDefaults(defineProps<{
           …and {{ props.error.more }} more
         </li>
       </ul>
+      <button
+        v-if="library"
+        type="button"
+        class="file-error__retry"
+        :disabled="library.loading.value"
+        @click="library.retry()"
+      >
+        {{ library.loading.value ? 'Trying again…' : 'Try again' }}
+      </button>
     </template>
   </div>
 </template>
@@ -97,6 +111,48 @@ const props = withDefaults(defineProps<{
   border-top: 1px solid var(--color-line, rgba(44, 44, 42, 0.14));
   font-size: var(--text-xs, 0.7rem);
   overflow-wrap: anywhere;
+}
+
+.file-error__retry {
+  align-self: flex-start;
+  padding: 0.35rem 0.75rem;
+  border: var(--_regal-border-width, 1px) solid var(--_regal-accent, var(--color-accent, #B93E2E));
+  border-radius: var(--_regal-radius-control, 0);
+  background: transparent;
+  color: var(--_regal-accent, var(--color-accent, #B93E2E));
+  font: inherit;
+  font-size: var(--_regal-size-label, var(--text-2xs, 0.65rem));
+  text-transform: var(--_regal-label-case, uppercase);
+  letter-spacing: var(--_regal-label-tracking, 0.08em);
+  cursor: pointer;
+}
+
+.file-error__retry:hover:not(:disabled) {
+  border-color: var(--_regal-accent-hover, var(--color-accent-light, #E8665A));
+  color: var(--_regal-accent-hover, var(--color-accent-light, #E8665A));
+}
+
+.file-error__retry:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.file-error__retry:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* `unstyled`: the button keeps its place and its text, nothing of Regal's look. */
+.regal--unstyled .file-error__retry {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  text-decoration: underline;
 }
 
 .file-error__more {

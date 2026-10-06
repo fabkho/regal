@@ -426,6 +426,64 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
+  it('asks for the library file again after a failure: the built-in Try again, the host\'s retry(), the row mounted again', async () => {
+    /** /retry with the browser's own request for the file failing `failures` times (the server-side one isn't the page's). */
+    async function open(failures: number) {
+      const page = await createPage()
+      const errors: string[] = []
+      page.on('pageerror', error => errors.push(error.message))
+      const seen = { requests: 0 }
+      await page.route('**/books/library.json', async (route) => {
+        if (seen.requests++ < failures) return route.fulfill({ status: 503, body: 'Unavailable' })
+        return route.continue()
+      })
+      await page.goto(url('/retry'), { waitUntil: 'networkidle' })
+      await page.locator('.file-error').waitFor({ state: 'visible', timeout: 10_000 })
+      expect(await page.locator('.retry__state').getAttribute('data-error')).toBe('yes')
+      expect(seen.requests).toBe(1)
+      return { page, errors, seen }
+    }
+    const shown = async (page: Awaited<ReturnType<typeof createPage>>) => {
+      const row = page.locator('section.row-card')
+      await row.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+      expect(await row.getAttribute('data-book-count')).toBe('5')
+      expect(await page.locator('.retry__state').getAttribute('data-error')).toBe('no')
+      expect(await page.locator('.file-error').count()).toBe(0)
+    }
+
+    // The error card's own Try again.
+    const built = await open(1)
+    await built.page.getByRole('button', { name: 'Try again', exact: true }).click()
+    await shown(built.page)
+    expect(built.seen.requests).toBe(2)
+    // A loaded library stays: the row mounted again makes no request.
+    await built.page.getByRole('button', { name: 'Remount the row' }).click()
+    await built.page.waitForTimeout(500)
+    await shown(built.page)
+    expect(built.seen.requests).toBe(2)
+    expect(built.errors).toEqual([])
+    await built.page.close()
+
+    // The host's own button, through useRegalLibrary().retry(): no state keys to know.
+    const own = await open(1)
+    await own.page.getByRole('button', { name: 'Host\'s Try again' }).click()
+    await shown(own.page)
+    expect(own.seen.requests).toBe(2)
+    expect(own.errors).toEqual([])
+    await own.page.close()
+
+    // The row mounted again (Libellus' Try again) asks anew, and a second failure is asked for once more.
+    const remounted = await open(2)
+    await remounted.page.getByRole('button', { name: 'Remount the row' }).click()
+    await expect.poll(() => remounted.seen.requests, { timeout: 10_000 }).toBe(2)
+    await remounted.page.locator('.file-error').waitFor({ state: 'visible', timeout: 10_000 })
+    await remounted.page.getByRole('button', { name: 'Remount the row' }).click()
+    await shown(remounted.page)
+    expect(remounted.seen.requests).toBe(3)
+    expect(remounted.errors).toEqual([])
+    await remounted.page.close()
+  })
+
   it('leaves the host\'s global styles alone', async () => {
     const page = await createPage()
     await page.goto(url('/books'), { waitUntil: 'networkidle' })

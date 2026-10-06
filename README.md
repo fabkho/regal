@@ -94,6 +94,27 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_R
 
 Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
 
+### Loading errors and retry
+
+A library file that doesn't load (offline, a 5xx, CORS, bad JSON, an invalid file) shows an error card with **Try again**; the failure is never kept as the answer. The next mount of a component asks for the file again, and a file that loaded stays for the page (a remount makes no request). `preloadRegal()` follows the same rule: a failed warm-up is dropped, not kept.
+
+A host with its own "Try again" calls `retry()` from `useRegalLibrary()` (no need to know Regal's state):
+
+```vue
+<script setup lang="ts">
+const { error, loading, retry } = useRegalLibrary()
+</script>
+
+<template>
+  <RegalBooksRow />
+  <button v-if="error" :disabled="loading" @click="retry()">Try again</button>
+</template>
+```
+
+`retry()` fetches the file again after a failure and resolves once the result is shown; calls and mounts while a request is on its way share it, and while the Library is shown it does nothing. Details: [Loading errors and retry](docs/nuxt-layer.md#loading-errors-and-retry).
+
+> **Changelog.** Hosts can drop workarounds like resetting `useState('regal:library-loaded')` before remounting the row to retry: a remount asks for the file again by itself, and `retry()` is the explicit call.
+
 ### Theming
 
 Three levels, the same on the Stage and the row: **tokens** (`--regal-surface`, `--regal-ink`, `--regal-accent`, `--regal-radius`, `--regal-font-title` … on any wrapper), **`theme`** (`light`, `dark`, `auto`), and **slots** for your own markup, with **`unstyled`** for full control. The sidebar and filters read the paper-ink tokens (`--color-ink`, `--color-bg` …) with fallbacks. The row's backdrop behind a Book taken out is a token too: `--regal-veil-opacity` (broken out, `0.9`; `1` is solid), `--regal-veil-opacity-card` (`0.72`) and `--regal-veil-color` (default: the card's surface). Token table, slot props and examples: [Theming](docs/nuxt-layer.md#theming).
