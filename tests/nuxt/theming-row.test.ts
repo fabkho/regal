@@ -38,7 +38,7 @@ const BOOK: Book = {
 type RowOptions = NonNullable<Parameters<typeof mountSuspended<typeof RegalBooksRow>>[1]>
 
 /** The card's own state (script setup, read through the test wrapper). */
-type CardState = { pick: PickState, ctx: { focused: { value: string | null }, floorShadow: { value: number } } }
+type CardState = { pick: PickState, ctx: { focused: { value: string | null }, floorShadow: { value: number }, veil: { color: string, opacity: number, opacityFull: number } } }
 
 async function mountRow(options: RowOptions = {}) {
   const wrapper = await mountSuspended(RegalBooksRow, {
@@ -155,6 +155,17 @@ describe('RegalBooksRow floor shadow and dates', () => {
     await nextTick()
     await nextTick()
     expect(card.ctx.floorShadow.value).toBe(1)
+  })
+
+  it('has today\'s veil behind a Book taken out unless a host sets the tokens', async () => {
+    const wrapper = await mountRow()
+    const card = wrapper.findComponent(RowCard).vm as unknown as CardState
+    expect(card.ctx.veil.opacity).toBe(0.72)
+    expect(card.ctx.veil.opacityFull).toBe(0.9)
+    // The tokens themselves are read through getComputedStyle, which happy-dom doesn't do for custom properties (checked in a browser).
+    await pickBook(wrapper)
+    expect(card.ctx.veil.opacityFull).toBe(0.9)
+    expect(card.ctx.veil.opacity).toBe(0.72)
   })
 
   it('fades the dates out while a Book is out', async () => {

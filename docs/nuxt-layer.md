@@ -117,7 +117,7 @@ The row marks its first look in the browser's performance timeline (`regal:libra
 `RegalBooksStage` and `RegalBooksRow` take the host's look the same way, with the same tokens, the same `theme` prop, the same slots and `unstyled` (`RegalBooksSidebar`: `theme`, `unstyled` and the detail slots, for the panel it shows while a Book is out). Regal's DOM around the 3D is themed:
 
 - `RegalBooksStage`: the **tooltip** (the hover label, the Stack's scroll focus label, the morph box between label and card) and the **Book detail panel** (the card, the bottom sheet on phones).
-- `RegalBooksRow`: the card itself (its surface and frame, the month/year labels with their leader lines, the scroll indicator, the ‹ › and Back buttons), its **tooltip** (the focus label: title and stars under the Book in focus) and its **detail panel** (the details under or beside the Book in the card; broken out, `inspect="viewport"`, the phone's sheet or the card at the bottom right). The veil behind a Book taken out is the card's surface colour: paper by default, dark in the dark theme, the host's `--regal-surface` when set.
+- `RegalBooksRow`: the card itself (its surface and frame, the month/year labels with their leader lines, the scroll indicator, the ‹ › and Back buttons), its **tooltip** (the focus label: title and stars under the Book in focus) and its **detail panel** (the details under or beside the Book in the card; broken out, `inspect="viewport"`, the phone's sheet or the card at the bottom right). The veil behind a Book taken out is the card's surface colour: paper by default, dark in the dark theme, the host's `--regal-surface` when set; `--regal-veil-color` and `--regal-veil-opacity` (solid: `1`) set it directly (see "The row's card and sheet"). `RegalBooksStage` has no veil (the Stack is not dimmed behind a picked Book), so these tokens only reach the row.
 
 Three ways, from light to full control. Regal always keeps placing them, opening and closing (click, Escape, the sheet's drag, the host's Back via `putAway`; Back and a tap beside the Book in the row), the label ↔ card morph, the row's break-out and the swap between Books. The 3D (Books, lights, the row's hairline sheets) is not themed, but for the Books' shadow on the floor (`--regal-floor-shadow`: Regal's warm brown in the light theme, none in the dark one, where it would read as a lit block).
 
@@ -214,6 +214,9 @@ Three ways, from light to full control. Regal always keeps placing them, opening
 | `--regal-row-radius` | `--regal-radius` | The card's corners |
 | `--regal-row-background` | `--regal-surface` | The card's background (`transparent`: the host's card shows through; the veil behind a Book taken out then takes the colour behind) |
 | `--regal-row-z-index` | `40` | Broken out: the canvas box, the sheet and Back sit at this (+1) |
+| `--regal-veil-opacity` | `0.9` | The veil behind a Book taken out while it is broken out (`inspect="viewport"`), over the whole viewport: `0` to `1`; `1` is solid, nothing of the page or a bottom sheet shows through. It fades in and out with the Book as before |
+| `--regal-veil-opacity-card` | `0.72` | The same veil while the Book stays in the card (`inspect="card"`) |
+| `--regal-veil-color` | the card's surface | The veil's colour: any CSS colour (`#fff`, `oklch(…)`); unset (or not a colour), `--regal-surface`, i.e. the card's background |
 | `--regal-sheet-radius` | `--regal-radius` | The sheet's top corners |
 | `--regal-sheet-background` | `--regal-surface-raised` | The sheet's background |
 | `--regal-sheet-border` | `var(--regal-border-width) solid var(--regal-border)` | The sheet's border (only its top edge shows) |

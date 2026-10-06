@@ -111,7 +111,7 @@ onBeforeRender(({ delta }) => {
       const h = 2 * at * Math.tan(MathUtils.degToRad(camera3.fov) / 2) * 1.1
       veilMesh.scale.set(h * Math.max(camera3.aspect, sizes.aspectRatio.value || 1) * 2, h * 2, 1)
       const material = veilMesh.material as MeshBasicMaterial
-      material.opacity = (props.ctx.inspectFull.value ? 0.9 : 0.72) * dim
+      material.opacity = (props.ctx.inspectFull.value ? props.ctx.veil.opacityFull : props.ctx.veil.opacity) * dim
       // The card's surface (the theme's or the host's), sRGB like the CSS it comes from.
       if (veilColor !== props.ctx.veil.color) {
         veilColor = props.ctx.veil.color
