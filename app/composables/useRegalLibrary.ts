@@ -2,6 +2,8 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { NuxtApp } from '#app'
 import { NO_SOURCE_ERROR, readLibraryFile, unreachableFileError } from '#layers/regal/app/utils/library/libraryFile'
 import type { LibraryReadResult } from '#layers/regal/app/utils/library/libraryFile'
+import { markRegal } from '#layers/regal/app/utils/stage/marks'
+import { fetchLibraryFile, readLibraryFileNow } from '#layers/regal/app/utils/library/libraryCache'
 
 /** One fetch per file per app (per request on the server), however many components ask. */
 const pending = new WeakMap<NuxtApp, Map<string, Promise<LibraryReadResult>>>()
@@ -35,9 +37,20 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
   const origin = import.meta.server ? useRequestURL().origin : ''
 
   function fetchLibrary(file: string): Promise<LibraryReadResult> {
+    // In the browser through the page's cache of library files, which preloadRegal may have filled.
+    if (import.meta.client) return fetchLibraryFile(absolute(file))
     const get = (url: string) => $fetch<string>(url, { responseType: 'text' }).then(readLibraryFile)
-    if (import.meta.client || !file.startsWith('/') || file.startsWith('//')) return get(file)
+    if (!file.startsWith('/') || file.startsWith('//')) return get(file)
     return get(file).catch(() => get(new URL(file, origin).href))
+  }
+
+  const absolute = (file: string) => new URL(file, window.location.href).href
+
+  function apply(file: string, result: LibraryReadResult) {
+    if (import.meta.client) markRegal('library:shown')
+    if (result.ok) library.show(result.library, file)
+    else library.fail(result.error, file)
+    loaded.value = file
   }
 
   function load(): Promise<void> {
@@ -62,9 +75,7 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
       .then((result) => {
         // Another file was asked for meanwhile: that one shows.
         if (wanted.value !== file) return
-        if (result.ok) library.show(result.library, file)
-        else library.fail(result.error, file)
-        loaded.value = file
+        apply(file, result)
       })
       .catch((caught: unknown) => {
         loads.delete(file)
@@ -73,6 +84,13 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
         library.fail(unreachableFileError(file, caught), file)
         loaded.value = file
       })
+  }
+
+  // Read already in this page (preloadRegal, another row): shown in this first render, no
+  // frame without it. Not while hydrating: the server's HTML must match.
+  if (import.meta.client && wanted.value && loaded.value !== wanted.value && !nuxtApp.isHydrating) {
+    const ready = readLibraryFileNow(absolute(wanted.value))
+    if (ready) apply(wanted.value, ready)
   }
 
   if (import.meta.server) onServerPrefetch(load)

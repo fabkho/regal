@@ -39,6 +39,7 @@ import { SHELVED } from '#layers/regal/app/utils/books/pick'
 import type { PickState } from '#layers/regal/app/utils/books/pick'
 import { createRowView } from '#layers/regal/app/utils/row/context'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
+import type { RowIntroState } from '#layers/regal/app/utils/row/intro'
 import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
 import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
@@ -85,6 +86,8 @@ const ctx: RowContext = {
   veil: { color: '#F5F2EB' },
   visible: ref(true),
   rotate: computed(() => props.rotate),
+  intro: ref<RowIntroState>('waiting'),
+  introProgress: { value: 0 },
 }
 const pickedId = computed(() => pick.value.bookId)
 const pickedBook = computed(() => (pickedId.value ? booksById.value.get(pickedId.value) ?? null : null))
@@ -658,7 +661,7 @@ function scrub(value: number) {
   <section
     ref="root"
     class="row-card"
-    :class="{ 'row-card--picked': pickedId, 'row-card--wide': wide }"
+    :class="{ 'row-card--picked': pickedId, 'row-card--wide': wide, [`row-card--intro-${ctx.intro.value}`]: true }"
     :data-picked="pickedId ?? ''"
     :data-book-count="layout.poses.length"
     :aria-label="label"
@@ -1133,6 +1136,23 @@ function scrub(value: number) {
   .row-card__labels .row-label__count {
     transition: none;
   }
+}
+
+/* The row's intro (utils/row/intro.ts): the dates, the focus label, the
+   scroll bar and the ‹ › wait unseen with the Books, then come in as the Books settle. */
+.row-card--intro-waiting .row-card__labels,
+.row-card--intro-waiting .row-bar {
+  opacity: 0;
+  transition: none;
+}
+
+.row-card--intro-waiting .row-card__arrow {
+  visibility: hidden;
+}
+
+.row-card--intro-playing .row-card__labels,
+.row-card--intro-playing .row-bar {
+  transition: opacity 0.35s var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)) 0.3s;
 }
 
 .row-label {

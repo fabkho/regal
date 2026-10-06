@@ -298,6 +298,55 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
+  it('plays the row\'s intro once its Spines in view are drawn', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/shelf'), { waitUntil: 'networkidle' })
+    const row = page.locator('section.row-card')
+    await row.waitFor({ state: 'attached', timeout: 15_000 })
+    await expect.poll(() => row.evaluate(element => element.className), { timeout: 15_000 }).toContain('row-card--intro-done')
+    const marks = await page.evaluate(() => Object.fromEntries(['spines-ready', 'intro-start', 'intro-end']
+      .map(name => [name, performance.getEntriesByName(`regal:row:${name}`).map(mark => mark.startTime)])))
+    // Once, after the Spines in view are drawn, at most 0.7 s (and a frame or two).
+    expect(marks['intro-start']).toHaveLength(1)
+    expect(marks['intro-end']).toHaveLength(1)
+    expect(marks['intro-start']![0]!).toBeGreaterThanOrEqual(marks['spines-ready']![0]!)
+    expect(marks['intro-end']![0]! - marks['intro-start']![0]!).toBeLessThan(1000)
+    // Then the Books stand in the card.
+    expect(await inkShare(page, row)).toBeGreaterThan(0.1)
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('shows a preloaded row with its Spines on its first frame', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/warm'), { waitUntil: 'networkidle' })
+    await page.locator('main[data-warmed]').waitFor({ state: 'attached', timeout: 15_000 })
+    const before = await page.evaluate(() => {
+      performance.mark('host:to-shelf')
+      return { fetches: performance.getEntriesByName('regal:library:fetch').length, warmed: performance.getEntriesByName('regal:preload:done').length }
+    })
+    expect(before).toEqual({ fetches: 1, warmed: 1 })
+
+    await page.locator('a.warm__shelf').click()
+    const row = page.locator('section.row-card')
+    await expect.poll(() => row.evaluate(element => element.className).catch(() => ''), { timeout: 15_000 }).toContain('row-card--intro-done')
+    const after = await page.evaluate(() => {
+      const since = performance.getEntriesByName('host:to-shelf')[0]!.startTime
+      const at = (name: string) => performance.getEntriesByName(`regal:${name}`).filter(mark => mark.startTime >= since).map(mark => mark.startTime)
+      return { fetches: performance.getEntriesByName('regal:library:fetch').length, spines: at('row:spines-ready'), frame: at('row:first-frame') }
+    })
+    // The library file isn't fetched again, and the first frame drawn already wears every Spine in view.
+    expect(after.fetches).toBe(1)
+    expect(after.spines).toHaveLength(1)
+    expect(after.spines[0]!).toBeLessThanOrEqual(after.frame[0]!)
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
   it('leaves the host\'s global styles alone', async () => {
     const page = await createPage()
     await page.goto(url('/books'), { waitUntil: 'networkidle' })
