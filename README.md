@@ -91,8 +91,35 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_R
 | `RegalBooksSidebar` | Count, sort & filters, the Books as records, linked to the Stack. | `heading`, `count-label`, `filters`, `list`, `theme`, `unstyled` |
 | `RegalBooksFilters` | The same sort & filters as one bar, for a phone. | – |
 | `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `intro` (`visible`/`mount`/`none`: the Books come into place when the row first shows), `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
+| `RegalBooksDeal` (**prototype**) | A 3D "pick one of these Books" shuffle that ends with the host's winner standing face to the camera. | `books`, `winner`, `variant` (`deck`/`stack`/`wheel`), `duration`, `reduced-motion`, `theme`, `label`; events `ready`, `picked`; `skip()` |
 
 Both render a visually hidden list of the Books (a button each, taking it out) and open a Book as a real dialog; `accessible-list` turns the list off for a host with its own. Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
+
+### Deal (prototype)
+
+`RegalBooksDeal` plays a 3–5 s 3D shuffle over 2–12 candidate Books and ends with one of them standing face to the camera. **The host decides the winner** (`crypto.getRandomValues`, a vote, whatever it likes) and passes its index; Regal never picks, it only plays the shuffle toward that Book. It is a prototype for Libellus' "Pick my next book" ([fabkho/libellus#259](https://github.com/fabkho/libellus/issues/259)): the API may still change.
+
+```vue
+<RegalBooksDeal
+  style="height: 28rem"
+  :books="candidates"
+  :winner="winnerIndex"
+  variant="deck"
+  label="Picking your next book"
+  @ready="hideStaticRow"
+  @picked="({ index, id, rect }) => flyCoverTo(rect)"
+/>
+```
+
+![The three variants, top to bottom: deck, stack, wheel; left to right: the start, three moments of the shuffle, the end (synthetic Books)](docs/assets/deal-variants.jpg)
+
+`candidates` is a `DealBook[]` (`{ id, title, author?, seriesTitle?, pages?, binding?, coverUrl?, color? }`), `winnerIndex` an index into it. `ready` means the covers are in, the first frame is drawn and the motion starts now; `picked` fires once, at the end.
+
+- Props: `books` (2–12; one is allowed and just presented), `winner`, `variant` (`'deck'`), `duration` (`4000`, ms of the shuffle part; about `2200` suits later rounds), `reducedMotion` (default: follows `prefers-reduced-motion`; no shuffle, the winner fades in where it ends up), `theme` (as the other components; the wheel's pointer takes `--regal-accent`), `label` (the accessible name of the region: the root is `role="img"`, the canvas `aria-hidden`; Regal announces nothing, the host announces the result). Props are read when the component mounts: give it a new `key` to deal again.
+- `picked` carries `rect`: the winner's front cover as it rests, in viewport CSS px. The host lays its own DOM cover exactly there and flies it to its page; the end pose is square to the camera. A tap anywhere on the component, or `skip()` (via a ref, `defineExpose`), jumps to the end in a ~180 ms settle and still emits `picked`. No keys (the host owns Escape).
+- It fills its box (`position: relative; width/height 100%`) with a transparent canvas. Until `ready` it shows nothing: show your own static row of covers meanwhile. It starts once the covers it can load are in (at most ~1.2 s, then the rest are drawn fronts: title and author on the Book's `color`); nothing is uploaded while it plays. `coverUrl`s must be loadable cross-origin (see [CORS](docs/nuxt-layer.md#cors-for-the-image-host)); the winner's front is loaded at full size when it arrives in time, the others as small copies (512 px tall).
+- Variants, one start (the covers laid out like a hand of cards) and one end (the winner upright, 55 % of the stage tall, centred a little above the middle): **`deck`** gathers the Books into a deck lying flat, riffles it twice and cuts it, then turns the top card face up; **`stack`** is Regal's Stack: the pile re-sorts a few times, a riffle runs through it and slows until the winner stops in the middle, then it is pulled out; **`wheel`** is a carousel against a fixed pointer that slows to a stop with the winner under it.
+- `performance.mark('regal:deal:start')` and `'regal:deal:end'` bracket the motion. The planning (`app/utils/deal/`) is pure and tested (`tests/unit/deal.test.ts`). Dev page: `/dev/deal` (`?variant=deck|stack|wheel&n=6&theme=dark`).
 
 ### Loading errors and retry
 
