@@ -251,7 +251,8 @@ export function planDeck(ctx: VariantContext): VariantPlan {
       { t0: gatherEnd + 80, t1: cameraFrom, fn: (_u, out) => copyCamera(table, out) },
       { t0: cameraFrom, t1: timeline.presentEnd, fn: (u, out) => lerpCamera(table, { tilt: 0, targetY: 0, targetZ: 0, distance: DEAL_DISTANCE }, ease('inOut', u), out) },
     ],
-    floor: { y: floorY, opacity: t => (t < presentStart ? 1 : clamp(1 - (t - presentStart) / (0.45 * present), 0, 1)) },
+    // The floor's shadow comes in as the camera leaves the fan (a plane seen edge-on would veil the covers).
+    floor: { y: floorY, opacity: t => clamp((t - start - 250) / 550, 0, 1) * (t < presentStart ? 1 : clamp(1 - (t - presentStart) / (0.45 * present), 0, 1)) },
     info: { deckOrder: finalOrder, turnAt: presentStart },
   }
 }

@@ -111,6 +111,8 @@ Both render a visually hidden list of the Books (a button each, taking it out) a
 />
 ```
 
+![The three variants, top to bottom: deck, stack, wheel; left to right: the start, three moments of the shuffle, the end (synthetic Books)](docs/assets/deal-variants.jpg)
+
 `candidates` is a `DealBook[]` (`{ id, title, author?, seriesTitle?, pages?, binding?, coverUrl?, color? }`), `winnerIndex` an index into it. `ready` means the covers are in, the first frame is drawn and the motion starts now; `picked` fires once, at the end.
 
 - Props: `books` (2–12; one is allowed and just presented), `winner`, `variant` (`'deck'`), `duration` (`4000`, ms of the shuffle part; about `2200` suits later rounds), `reducedMotion` (default: follows `prefers-reduced-motion`; no shuffle, the winner fades in where it ends up), `theme` (as the other components; the wheel's pointer takes `--regal-accent`), `label` (the accessible name of the region: the root is `role="img"`, the canvas `aria-hidden`; Regal announces nothing, the host announces the result). Props are read when the component mounts: give it a new `key` to deal again.

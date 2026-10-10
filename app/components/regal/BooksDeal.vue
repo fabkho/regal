@@ -83,7 +83,7 @@ defineExpose({ skip })
     v-bind="rootAttrs"
     class="regal-books-deal"
     role="img"
-    :aria-label="label"
+    :aria-label="label || undefined"
     @pointerup="skip"
   >
     <ClientOnly>

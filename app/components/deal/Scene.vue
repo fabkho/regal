@@ -333,6 +333,7 @@ defineExpose({ skip })
       :color="FLOOR_SHADOW.color"
       :opacity="FLOOR_SHADOW.opacity"
       :transparent="true"
+      :depth-write="false"
     />
   </TresMesh>
 </template>

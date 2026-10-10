@@ -116,7 +116,7 @@ export function planWheel(ctx: VariantContext): VariantPlan {
       { t0: formEnd + 120, t1: presentAt(0.1), fn: (_u, out) => copyCamera(ring, out) },
       { t0: presentAt(0.1), t1: timeline.presentEnd, fn: (u, out) => lerpCamera(ring, gone, ease('inOut', u), out) },
     ],
-    floor: { y: floor - 0.001, opacity: t => (t < presentStart ? 1 : clamp(1 - (t - presentStart) / (0.4 * present), 0, 1)) },
+    floor: { y: floor - 0.001, opacity: t => clamp((t - start - 250) / 550, 0, 1) * (t < presentStart ? 1 : clamp(1 - (t - presentStart) / (0.4 * present), 0, 1)) },
     pointer: {
       position: [0, pointerY, 0.02],
       opacity: t => clamp((t - (spinStart - 200)) / 260, 0, 1) * clamp(1 - (t - presentStart) / (0.25 * present), 0, 1),
