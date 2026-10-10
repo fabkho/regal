@@ -175,11 +175,11 @@ export function planStack(ctx: VariantContext): VariantPlan {
   const winnerBuilder = builders[winner]!
   const resting = winnerBuilder.current()
   const pulled = copyPose(resting)
-  pulled.position[2] += 0.16
+  pulled.position[2] += 0.09
   pulled.position[1] += 0.01
   pulled.quaternion = qMul(qAxisAngle(AXIS_X, 0.5), resting.quaternion)
-  pulled.scale = scale * 1.1
-  const standing = poseOf([0, 0.02, 0.1], PILE_UP, { scale: scale * 1.3, thickness: 1 })
+  pulled.scale = scale * 1.02
+  const standing = poseOf([0, 0.02, 0.05], PILE_UP, { scale: scale * 1.05, thickness: 1 })
   winnerBuilder.to(pulled, presentAt(0), presentAt(0.3), { ease: 'out' })
   winnerBuilder.to(standing, presentAt(0.28), presentAt(0.62), { ease: 'inOut' })
   winnerBuilder.to(end, presentAt(0.6), presentAt(1), { ease: 'inOut' })

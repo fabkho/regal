@@ -59,8 +59,10 @@ const seed = props.seed ?? Math.floor(Math.random() * 0x100000000)
 const accent = computed(() => ui.tokens.value['--_regal-accent'] || '#B93E2E')
 
 const shadowsOn = () => renderer.shadowMap.enabled
-let plan: DealPlan = makePlan(1.6)
+let planAspect = 1.6
+let plan: DealPlan = makePlan(planAspect)
 function makePlan(aspect: number): DealPlan {
+  planAspect = aspect
   return planDeal({ books: dims, winner: props.winner, variant: props.variant, duration: props.duration, seed, aspect, reducedMotion: props.reduced })
 }
 const roundAspect = (value: number) => Math.round(value * 50) / 50
@@ -159,11 +161,11 @@ function finish() {
 
 render((notify) => {
   const cam = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
-  if (!cam || phase === 'loading' || phase === 'done') return
+  if (!cam || phase === 'loading') return
   const size = stageSize()
   if (!size.width || !size.height) return
   const aspect = roundAspect(size.width / size.height)
-  if (Math.abs(aspect - plan.stage.aspect) > 0.001) plan = makePlan(aspect)
+  if (Math.abs(aspect - planAspect) > 0.001) plan = makePlan(aspect)
   const now = performance.now()
 
   let t = 0
@@ -187,6 +189,7 @@ render((notify) => {
   }
   else {
     if (phase === 'ready') t = 0
+    else if (phase === 'done') t = plan.total
     else t = Math.min(now - startedAt, plan.total)
     for (let book = 0; book < dims.length; book++) {
       sampleDeal(plan, book, t, pose)

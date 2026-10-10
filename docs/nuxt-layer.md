@@ -95,6 +95,39 @@ The look is the decided one: re-sorts move by hand when up to 3 Books move, as a
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
 
+### `RegalBooksDeal` (prototype)
+
+A 3D "pick one of these Books" shuffle for a host such as Libellus' "Pick my next book". The host draws the winner (`crypto.getRandomValues`) and passes its index; the component only plays a 3–5 s shuffle toward it and says where the winner's front cover ends up.
+
+```vue
+<RegalBooksDeal
+  :key="round"
+  style="height: 30rem"
+  :books="candidates"
+  :winner="winnerIndex"
+  variant="stack"
+  :duration="round === 1 ? 4000 : 2200"
+  label="Picking your next book"
+  @ready="hideStaticRow"
+  @picked="({ rect }) => flyCoverTo(rect)"
+/>
+```
+
+**Types** (`#layers/regal/app/utils/deal/book`):
+
+```ts
+interface DealBook { id: string, title: string, author?: string | null, seriesTitle?: string | null, pages?: number | null, binding?: string | null, coverUrl?: string | null, color?: string | null }
+type DealVariant = 'deck' | 'stack' | 'wheel'
+interface DealPicked { index: number, id: string, rect: { left: number, top: number, width: number, height: number } }
+```
+
+- **Props.** `books` (2–12; one just presents it), `winner` (index, decided by the host), `variant` (`'deck'`), `duration` (`4000` ms of the shuffle; the intro of ~0.45 s and a hold of 0.3 s come on top), `reducedMotion` (default `prefers-reduced-motion`: the winner fades in over 0.2 s, nothing else), `theme`, `label`, and `seed` (varies the look only, for repeatable screenshots). Read at mount; a new `key` deals again.
+- **Events.** `ready`: the covers it could load are in (waits ≤ 1.2 s, the others get a drawn front), every texture is uploaded, the first frame is drawn and the motion starts now. `picked(DealPicked)`: once, at the end (after a skip and with reduced motion too); `rect` is the winner's front cover face in viewport CSS px, the bounding box of its four corners projected with the end camera plus the canvas' `getBoundingClientRect()` offset. The end pose is flat and square to the camera.
+- **Skip.** `defineExpose({ skip })`, and a pointer tap anywhere on the component: a ~180 ms settle into the end pose, then `picked`.
+- **Look.** Transparent canvas that fills its box; before `ready` it draws nothing. Fronts are the host's image at 512 px (the winner's at full size when it is in time) or drawn from title, author and `color`; Spines and page edges are the Stack's. The canvas draws only frames in which something moved and nothing after the end; the floor shadow is desktop-tier only (`useRenderQuality`). Textures are not shared with the shuffle's cover cache beyond what `loadCover` keeps for the page.
+- **What a host must know.** `coverUrl` needs CORS like the other covers; the fonts for Spines (Patua One, Antonio) are the layer's `@font-face`s; at most ~12 Books × a 512 px front, a Spine and page edges (a few MB of GPU memory) plus the winner's full cover; `ready` takes the cover loads (≤ 1.2 s) plus ~0.1 s of drawing. The component adds no global CSS and no routes.
+- **Variants.** `deck`: the fan gathers into a face-down deck, riffles, riffles, is cut (this is where the winner is put on top), the top card is turned and brought to the camera. `stack`: the Stack's pile re-sorts (a Book slides out sideways and back in at a new height), then a riffle through the pile slows to the winner in the middle, which is pulled out. `wheel`: a ring of covers spins against a fixed pointer with a natural slowing, several turns computed so the winner stops under it, then steps forward. Planning lives in `app/utils/deal/` (`planDeal`, `sampleDeal`: pure and deterministic for a seed).
+
 ## Accessibility
 
 The Books are drawn on a canvas, which names none of them. `RegalBooksRow` and `RegalBooksStage` therefore render a visually hidden **Book list** beside it (`accessible-list`, default `true`): a `role="list"` of buttons, each reading "Title, Author, finished March 2025, 4 of 5 stars" (what a Book lacks is left out; a Book being read says "reading now"), which takes the Book out like a tap. It lists what is shown: the row's Books (`limit`, `year`), the Stack's filtered and sorted ones. The whole list is one Tab stop; the arrow keys, Home and End move inside it, and the button in focus shows itself (a small label over the corner) so sighted keyboard users see where they are. In the row, focusing a button also brings its Book to the middle. A host that renders its own list (Libellus' `ShelfBookList`) sets `:accessible-list="false"`.

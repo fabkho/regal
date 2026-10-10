@@ -23,7 +23,7 @@ export function planWheel(ctx: VariantContext): VariantPlan {
   const tallest = Math.max(...dims.map(d => d.height))
   // Radius: room for every cover side by side; the ring may run wider than a narrow stage (it is a carousel).
   const radiusUnit = Math.max(0.11, (count * widest * 1.12) / (2 * Math.PI))
-  const scale = clamp(Math.min((0.95 * stage.width) / (2 * radiusUnit + widest), (0.46 * stage.height) / tallest), 0.5, 1.1)
+  const scale = clamp(Math.min((0.95 * stage.width) / (2 * radiusUnit + widest), (0.38 * stage.height) / tallest), 0.5, 1.1)
   const radius = radiusUnit * scale
   const floor = (-tallest * scale) / 2
 
@@ -106,7 +106,7 @@ export function planWheel(ctx: VariantContext): VariantPlan {
   }
   for (const builder of builders) builder.hold(timeline.total)
 
-  const ring: DealCamera = { tilt: WHEEL_TILT, targetY: 0, targetZ: -radius * 0.8, distance: DEAL_DISTANCE }
+  const ring: DealCamera = { tilt: WHEEL_TILT, targetY: -0.012, targetZ: -radius * 0.8, distance: DEAL_DISTANCE }
   const gone: DealCamera = { tilt: 0, targetY: 0, targetZ: 0, distance: DEAL_DISTANCE }
   // Its tip rests just above the winner's top, where the ring stops.
   const pointerY = floor + dims[winner]!.height * scale + 0.014
