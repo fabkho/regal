@@ -34,7 +34,8 @@ export function planWheel(ctx: VariantContext): VariantPlan {
 
   // Who stands where on the ring.
   const slots = shuffled(Array.from({ length: count }, (_, index) => index), random)
-  const angles = dims.map((_, book) => (2 * Math.PI * slots.indexOf(book)) / count)
+  // Two covers on opposite sides of a ring would stand one behind the other: they sit 126° apart instead.
+  const angles = dims.map((_, book) => (count === 2 ? 2.2 * slots.indexOf(book) : (2 * Math.PI * slots.indexOf(book)) / count))
 
   /** A cover on the ring turned by `turn` rad (written to `out`). */
   const ringPose = (book: number, turn: number, out: DealPose) => {

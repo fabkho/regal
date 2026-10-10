@@ -96,9 +96,75 @@ async function prepare() {
     booksRef.value?.showAll()
     if (pointer.value) pointer.value.visible = true
     if (floor.value) floor.value.visible = true
-    renderer.compile(scene.value, cam)
+    // Linked off the main thread where the browser can (KHR_parallel_shader_compile); resolves once they are.
+    await renderer.compileAsync(scene.value, cam)
+    await warmUp(cam)
   }
+  if (phase === 'done') return
   phase = 'ready'
+}
+
+/**
+ * Resolves once the GPU has run everything queued so far (a fence, polled, so the main thread is never
+ * blocked: `finish()` does not wait in Chrome). Gives up after 3 s.
+ */
+async function gpuIdle() {
+  const gl = renderer.getContext() as WebGL2RenderingContext
+  if (typeof gl.fenceSync !== 'function') return
+  const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
+  if (!fence) return
+  gl.flush()
+  const until = performance.now() + 3000
+  while (performance.now() < until) {
+    const state = gl.clientWaitSync(fence, 0, 0)
+    if (state === gl.ALREADY_SIGNALED || state === gl.CONDITION_SATISFIED || state === gl.WAIT_FAILED) break
+    await new Promise(resolve => setTimeout(resolve, 16))
+  }
+  gl.deleteSync(fence)
+}
+
+/**
+ * One real frame with everything showing (the Books at their fan, casting
+ * shadows, the floor and the pointer in): compile() builds the Books' shaders
+ * but not the shadow pass's depth/VSM programs, the shadow map's targets or
+ * the first draw of each visible object, which would otherwise land in the
+ * first frames of the motion. Waited for on the GPU and wiped, so none of it
+ * shows and the clock starts on a warm renderer.
+ */
+async function warmUp(cam: PerspectiveCamera) {
+  const size = stageSize()
+  if (!size.width || !size.height) return
+  const aspect = roundAspect(size.width / size.height)
+  if (Math.abs(aspect - planAspect) > 0.001) plan = makePlan(aspect)
+  for (let book = 0; book < dims.length; book++) {
+    sampleDeal(plan, book, plan.timeline.introEnd, pose)
+    booksRef.value?.apply(book, pose)
+  }
+  sampleCamera(plan, 0, live)
+  applyEffects(1, 1)
+  applyCamera(cam, live, size)
+  // Shown to the browser too, twice: first at a whisper of canvas opacity with everything in (shadow
+  // casters included), then at full canvas opacity with the Books all but transparent, so both ways the
+  // compositor draws this canvas have been used before the motion's first frames.
+  const canvas = renderer.domElement as HTMLCanvasElement
+  const before = canvas.style.opacity
+  const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve))
+  canvas.style.opacity = '0.01'
+  renderer.render(scene.value, cam)
+  await nextFrame()
+  canvas.style.opacity = before
+  for (let book = 0; book < dims.length; book++) {
+    sampleDeal(plan, book, plan.timeline.introEnd, pose)
+    pose.opacity = 0.02
+    booksRef.value?.apply(book, pose)
+  }
+  applyEffects(0.02, 0.02)
+  renderer.render(scene.value, cam)
+  await nextFrame()
+  renderer.clear()
+  await nextFrame()
+  await gpuIdle()
+  gate.invalidate()
 }
 onMounted(prepare)
 
