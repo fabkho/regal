@@ -86,6 +86,8 @@ let snapshotPointer = 0
 const gate = createFrameGate(renderer)
 onBeforeUnmount(() => gate.dispose())
 
+const isDone = () => phase === 'done'
+
 /** The rest of the work before the first frame: every texture uploaded, every shader compiled. */
 async function prepare() {
   const assets = await booksRef.value?.prepare()
@@ -100,7 +102,7 @@ async function prepare() {
     await renderer.compileAsync(scene.value, cam)
     await warmUp(cam)
   }
-  if (phase === 'done') return
+  if (isDone()) return
   phase = 'ready'
 }
 
