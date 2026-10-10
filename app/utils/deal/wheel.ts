@@ -14,7 +14,7 @@ import { copyCamera, DEAL_DISTANCE, FRONT, lerpCamera } from './layout'
 export const WHEEL_TILT = 0.3
 /** The fastest the ring turns (rad/s): the cover next to it has moved less than half a gap per frame at 60 fps. */
 const MAX_SPEED = 16
-const SPIN = { power: 1.7, ramp: 0.06 } as const
+const SPIN = { power: 1.1, ramp: 0.06 } as const
 
 export function planWheel(ctx: VariantContext): VariantPlan {
   const { dims, winner, stage, random, end, timeline, builders } = ctx
@@ -23,7 +23,7 @@ export function planWheel(ctx: VariantContext): VariantPlan {
   const tallest = Math.max(...dims.map(d => d.height))
   // Radius: room for every cover side by side; the ring may run wider than a narrow stage (it is a carousel).
   const radiusUnit = Math.max(0.11, (count * widest * 1.12) / (2 * Math.PI))
-  const scale = clamp((0.95 * stage.width) / (2 * radiusUnit + widest), 0.62, 1.05)
+  const scale = clamp(Math.min((0.95 * stage.width) / (2 * radiusUnit + widest), (0.46 * stage.height) / tallest), 0.5, 1.1)
   const radius = radiusUnit * scale
   const floor = (-tallest * scale) / 2
 
@@ -74,7 +74,7 @@ export function planWheel(ctx: VariantContext): VariantPlan {
   const spinStart = formEnd + 20
   const spinEnd = at(0.95)
   const spinLength = spinEnd - spinStart
-  const mainEnd = spinStart + 0.9 * spinLength
+  const mainEnd = spinStart + 0.88 * spinLength
   const fast = Math.min(MAX_SPEED, (0.5 * (2 * Math.PI / count) * 60))
   const speed = Math.max(6, fast)
   const wanted = (speed * (spinLength / 1000)) / spinPeak(SPIN.power, SPIN.ramp)
@@ -108,7 +108,8 @@ export function planWheel(ctx: VariantContext): VariantPlan {
 
   const ring: DealCamera = { tilt: WHEEL_TILT, targetY: 0, targetZ: -radius * 0.8, distance: DEAL_DISTANCE }
   const gone: DealCamera = { tilt: 0, targetY: 0, targetZ: 0, distance: DEAL_DISTANCE }
-  const pointerY = floor + tallest * scale + 0.016
+  // Its tip rests just above the winner's top, where the ring stops.
+  const pointerY = floor + dims[winner]!.height * scale + 0.014
   return {
     camera: [
       { t0: start, t1: formEnd + 120, fn: (u, out) => lerpCamera(ctx.startCamera, ring, ease('inOut', u), out) },

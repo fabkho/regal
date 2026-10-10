@@ -33,7 +33,7 @@ export function planStack(ctx: VariantContext): VariantPlan {
   const thickness = dims.map(d => d.thickness)
   const totalHeight = thickness.reduce((sum, value) => sum + value, 0)
   const longest = Math.max(...dims.map(d => d.height))
-  const scale = clamp(Math.min((0.8 * stage.width) / longest, (0.72 * stage.height) / totalHeight, 1.25), 0.45, 1.25)
+  const scale = clamp(Math.min((0.8 * stage.width) / longest, (0.72 * stage.height) / totalHeight, 1.5), 0.45, 1.5)
 
   const start = timeline.shuffleStart
   const length = timeline.presentStart - start
@@ -127,7 +127,7 @@ export function planStack(ctx: VariantContext): VariantPlan {
     travel += Math.abs(waypoints[index]! - waypoints[index - 1]!)
     legs.push(travel)
   }
-  const progress = spinProfile(2.4, 0.04)
+  const progress = spinProfile(2, 0.04)
   const focusAt = (u: number): number => {
     const distance = travel * progress(u)
     let leg = 0

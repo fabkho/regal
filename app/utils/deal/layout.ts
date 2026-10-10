@@ -70,21 +70,21 @@ export function fanPoses(dims: readonly DealDims[], stage: DealStage, random: ()
   for (let rows = 1; rows <= Math.min(3, count); rows++) {
     const columns = Math.ceil(count / rows)
     const fitWidth = (0.92 * viewWidth) / (width * (1 + 0.34 * (columns - 1)))
-    const fitHeight = (0.66 * viewHeight) / (height * (1 + 0.55 * (rows - 1)))
-    const scale = Math.min(1.05, fitWidth, fitHeight)
+    const fitHeight = (0.7 * viewHeight) / (height * (1 + 0.6 * (rows - 1)))
+    const scale = Math.min(1.3, fitWidth, fitHeight)
     if (best.scale === 0 || scale > best.scale * 1.06) best = { rows, columns, scale }
   }
 
   const { rows, scale } = best
   const poses: DealPose[] = []
-  const radius = 0.42
+  const radius = 0.95
   const step = Math.max(0.0045, mean(dims.map(d => d.thickness)) * FAN_THICKNESS * 1.2 + 0.001)
   let index = 0
   for (let row = 0; row < rows; row++) {
     const inRow = Math.min(best.columns, count - index, Math.ceil((count - index) / (rows - row)))
     const cardWidth = width * scale
     const spread = Math.min(0.9 * viewWidth - cardWidth * 1.03, Math.max(0, inRow - 1) * 0.8 * cardWidth)
-    const rowY = ((rows - 1) / 2 - row) * 0.55 * height * scale - 0.012
+    const rowY = ((rows - 1) / 2 - row) * 0.6 * height * scale - 0.012
     for (let column = 0; column < inRow; column++) {
       const x = inRow > 1 ? -spread / 2 + (spread * column) / (inRow - 1) : 0
       const angle = Math.asin(clamp(x / radius, -0.9, 0.9))

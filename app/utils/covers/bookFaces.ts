@@ -698,3 +698,106 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
   drawClassicBack(context, input, width, height, color, k)
   return element
 }
+
+export interface FrontInput {
+  book: Pick<FaceBook, 'title' | 'author' | 'seriesTitle'>
+  /** Colours the front is typeset in (the cover's, or a cloth's with ink or paper on it). */
+  palette: SpinePalette
+  /** Pixels tall; the width follows the Book's cover (default 600). */
+  height?: number
+  /** Cover width / height (default 2:3). */
+  ratio?: number
+}
+
+/** The words on a cover, wrapped greedily to `maxWidth`. */
+function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word
+    if (line && context.measureText(next).width > maxWidth) {
+      lines.push(line)
+      line = word
+    }
+    else {
+      line = next
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+/**
+ * A front drawn for a Book that has no cover image (or whose image did not load
+ * in time): its title and author typeset on its colour, with a hairline frame
+ * and a soft hinge. Small and quick, a few of these per deal.
+ */
+export function drawFront(input: FrontInput): HTMLCanvasElement {
+  const height = input.height ?? 600
+  const width = Math.round(height * (input.ratio ?? 2 / 3))
+  const { element, context } = canvas(width, height)
+  const { palette, book } = input
+  const text = palette.text
+  const k = height / 600
+
+  context.fillStyle = rgba(palette.background)
+  context.fillRect(0, 0, width, height)
+  const wash = context.createLinearGradient(0, 0, 0, height)
+  wash.addColorStop(0, 'rgba(255,255,255,0.1)')
+  wash.addColorStop(0.5, 'rgba(255,255,255,0)')
+  wash.addColorStop(1, 'rgba(0,0,0,0.16)')
+  context.fillStyle = wash
+  context.fillRect(0, 0, width, height)
+
+  // The frame.
+  const inset = 26 * k
+  context.strokeStyle = rgba(text, 0.42)
+  context.lineWidth = 1.5 * k
+  context.strokeRect(inset, inset, width - inset * 2, height - inset * 2)
+
+  context.textAlign = 'center'
+  context.textBaseline = 'alphabetic'
+  const maxWidth = width - inset * 2 - 44 * k
+
+  // Series, small, above the title.
+  const series = book.seriesTitle?.replace(/\s*#\s*[\d.]+\s*$/, '').trim()
+  if (series) {
+    context.font = `${15 * k}px ${SANS}`
+    context.fillStyle = rgba(text, 0.7)
+    context.fillText(ellipsize(context, series.toUpperCase(), maxWidth), width / 2, inset + 52 * k)
+  }
+
+  // The title: the largest size that sets in five lines or fewer.
+  let size = 62 * k
+  let lines: string[] = []
+  for (; size >= 22 * k; size -= 2 * k) {
+    context.font = `700 ${size}px ${SERIF}`
+    lines = wrapLines(context, book.title, maxWidth)
+    const widest = Math.max(...lines.map(line => context.measureText(line).width))
+    if (lines.length <= 5 && widest <= maxWidth) break
+  }
+  context.font = `700 ${size}px ${SERIF}`
+  context.fillStyle = rgba(text)
+  const lead = size * 1.12
+  const top = height * 0.42 - (lines.length * lead) / 2 + size * 0.8
+  lines.forEach((line, index) => context.fillText(ellipsize(context, line, maxWidth), width / 2, top + index * lead))
+
+  // A short rule, then the author.
+  const ruleY = top + lines.length * lead - size * 0.3
+  context.fillStyle = rgba(palette.accent, 0.9)
+  context.fillRect(width / 2 - 22 * k, ruleY, 44 * k, 2 * k)
+  if (book.author) {
+    context.font = `${20 * k}px ${SANS}`
+    context.fillStyle = rgba(text, 0.88)
+    context.fillText(ellipsize(context, book.author.toUpperCase().split('').join('\u200A'), maxWidth), width / 2, height - inset - 36 * k)
+  }
+
+  // The hinge, where the front board meets the spine.
+  const hinge = context.createLinearGradient(0, 0, width * 0.1, 0)
+  hinge.addColorStop(0, 'rgba(0,0,0,0.3)')
+  hinge.addColorStop(0.55, 'rgba(0,0,0,0.06)')
+  hinge.addColorStop(1, 'rgba(0,0,0,0)')
+  context.fillStyle = hinge
+  context.fillRect(0, 0, width * 0.1, height)
+  return element
+}

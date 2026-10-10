@@ -21,6 +21,10 @@ export const DECK_THICKNESS = 0.26
 /** The camera's tilt over the table (rad). */
 export const DECK_TILT = 0.92
 
+/** Face up, lying, its top away from the camera (DECK_DOWN turned over about the view axis). */
+const FACE_UP: Readonly<Quat> = qMul(qAxisAngle(AXIS_Z, Math.PI), DECK_DOWN)
+const tipQuat: Quat = [0, 0, 0, 1]
+
 const yawed = (yaw: number): Quat => qMul(qAxisAngle(AXIS_Y, yaw), DECK_DOWN)
 
 interface Jitter { x: number, z: number, yaw: number }
@@ -29,7 +33,7 @@ export function planDeck(ctx: VariantContext): VariantPlan {
   const { dims, winner, stage, random, end, timeline, builders } = ctx
   const count = dims.length
   const maxWidth = Math.max(...dims.map(d => d.depth))
-  const scale = clamp((0.88 * stage.width) / (2.16 * maxWidth), 0.5, 1.05)
+  const scale = clamp((0.88 * stage.width) / (2.16 * maxWidth), 0.5, 1.3)
   const pitch = dims.map(d => d.thickness * DECK_THICKNESS + 0.0008)
   const total = pitch.reduce((sum, value) => sum + value, 0)
   const base = -total / 2
@@ -191,18 +195,38 @@ export function planDeck(ctx: VariantContext): VariantPlan {
   }
   if (finalOrder[count - 1] !== winner) throw new Error('deck: the winner is not on top')
 
-  // --- Present: the top card is lifted, turned face up and stood up ------------------
+  // --- Present: the top card is lifted, turned face up, and held up to the camera as it comes down ---
   const presentStart = timeline.presentStart
   const presentAt = (share: number) => presentStart + share * present
-  const slotTop = finalY.get(winner)!
+  const topY = finalY.get(winner)! * scale
   const winnerBuilder = builders[winner]!
-  const lifted = poseOf([0, (slotTop + 0.1) * scale, 0.03], DECK_DOWN, { scale, thickness: DECK_THICKNESS })
-  const halfTurn = poseOf([0, (slotTop + 0.14) * scale, 0.06], qMul(qAxisAngle(AXIS_Z, Math.PI / 2), DECK_DOWN), { scale: scale * 1.08, thickness: DECK_THICKNESS })
-  const faceUp = poseOf([0, (slotTop + 0.15) * scale, 0.08], qMul(qAxisAngle(AXIS_Z, Math.PI), DECK_DOWN), { scale: scale * 1.12, thickness: 0.6 })
-  winnerBuilder.to(lifted, presentAt(0), presentAt(0.26), { ease: 'out' })
-  winnerBuilder.to(halfTurn, presentAt(0.26), presentAt(0.43), { ease: 'in' })
-  winnerBuilder.to(faceUp, presentAt(0.43), presentAt(0.6), { ease: 'out' })
-  winnerBuilder.to(end, presentAt(0.58), presentAt(1), { ease: 'inOut', arc: [0, 0, 0.06] })
+  // The camera comes down from the table in [cameraFrom, presentEnd]; the card follows it, always facing it.
+  const cameraFrom = presentAt(0.14)
+  const tiltAt = (t: number) => DECK_TILT * (1 - ease('inOut', clamp((t - cameraFrom) / (timeline.presentEnd - cameraFrom), 0, 1)))
+  const faceFrom = presentAt(0.5)
+  const facing = (tilt: number, out: Quat): Quat => {
+    const half = (Math.PI / 2 - tilt) / 2
+    tipQuat[0] = Math.sin(half)
+    tipQuat[3] = Math.cos(half)
+    return qMul(tipQuat, FACE_UP, out)
+  }
+  // Kept low and near the deck so the card never leaves the frame.
+  const lifted = poseOf([0, topY + 0.02, 0.05], DECK_DOWN, { scale, thickness: DECK_THICKNESS })
+  const halfTurn = poseOf([0, topY + 0.03, 0.09], qMul(qAxisAngle(AXIS_Z, Math.PI / 2), DECK_DOWN), { scale: scale * 1.04, thickness: DECK_THICKNESS })
+  const faceUp = poseOf([0, topY + 0.03, 0.1], facing(tiltAt(faceFrom), [0, 0, 0, 1]), { scale: scale * 1.08, thickness: 0.6 })
+  winnerBuilder.to(lifted, presentAt(0), presentAt(0.22), { ease: 'out' })
+  winnerBuilder.to(halfTurn, presentAt(0.22), presentAt(0.36), { ease: 'in' })
+  winnerBuilder.to(faceUp, presentAt(0.36), faceFrom, { ease: 'out' })
+  winnerBuilder.custom(faceFrom, timeline.presentEnd, (u, out) => {
+    const e = ease('inOut', u)
+    out.position[0] = 0
+    out.position[1] = faceUp.position[1] + (end.position[1] - faceUp.position[1]) * e
+    out.position[2] = faceUp.position[2] + (end.position[2] - faceUp.position[2]) * e
+    facing(tiltAt(faceFrom + u * (timeline.presentEnd - faceFrom)), out.quaternion)
+    out.scale = faceUp.scale + (end.scale - faceUp.scale) * e
+    out.thickness = faceUp.thickness + (end.thickness - faceUp.thickness) * e
+    out.opacity = 1
+  }, end)
 
   // The rest of the deck sinks away, top card first.
   finalOrder.forEach((book, index) => {
@@ -213,7 +237,7 @@ export function planDeck(ctx: VariantContext): VariantPlan {
     gone.scale *= 0.9
     gone.opacity = 0
     const t0 = presentAt(0.04) + (finalOrder.length - 2 - index) * 12
-    builders[book]!.to(gone, t0, t0 + 0.5 * present, { ease: 'in' })
+    builders[book]!.to(gone, t0, t0 + 0.34 * present, { ease: 'out' })
   })
   // Everyone holds the end.
   for (const builder of builders) builder.hold(timeline.total)
@@ -224,8 +248,8 @@ export function planDeck(ctx: VariantContext): VariantPlan {
   return {
     camera: [
       { t0: start, t1: gatherEnd + 80, fn: (u, out) => lerpCamera(ctx.startCamera, table, ease('inOut', u), out) },
-      { t0: gatherEnd + 80, t1: presentStart + 0.14 * present, fn: (_u, out) => copyCamera(table, out) },
-      { t0: presentStart + 0.14 * present, t1: timeline.presentEnd, fn: (u, out) => lerpCamera(table, { tilt: 0, targetY: 0, targetZ: 0, distance: DEAL_DISTANCE }, ease('inOut', u), out) },
+      { t0: gatherEnd + 80, t1: cameraFrom, fn: (_u, out) => copyCamera(table, out) },
+      { t0: cameraFrom, t1: timeline.presentEnd, fn: (u, out) => lerpCamera(table, { tilt: 0, targetY: 0, targetZ: 0, distance: DEAL_DISTANCE }, ease('inOut', u), out) },
     ],
     floor: { y: floorY, opacity: t => (t < presentStart ? 1 : clamp(1 - (t - presentStart) / (0.45 * present), 0, 1)) },
     info: { deckOrder: finalOrder, turnAt: presentStart },
