@@ -821,6 +821,7 @@ function updateFlatSpines() {
         current.flat.spine = 'typeset'
         current.ready = true
         noteShown(bookId, 'spine')
+        noteFlat()
       })
     }
     else if (wanted === 'drop' && flat.spine === 'typeset') {
@@ -830,17 +831,21 @@ function updateFlatSpines() {
       flat.spine = 'plain'
     }
   }
-  if (props.debugLoads) {
-    let typeset = 0
-    let pixels = 0
-    for (const entry of materialsByBook.values()) {
-      if (entry.flat?.spine !== 'typeset') continue
-      typeset++
-      const image = entry.spineTexture.image as HTMLCanvasElement
-      pixels += image.width * image.height
-    }
-    ;(window as { __regalFlat?: unknown }).__regalFlat = { books: materialsByBook.size, typeset, pixels }
+  noteFlat()
+}
+
+/** ?debug=loads: how many flat Books there are, how many wear a typeset Spine and its pixels (window.__regalFlat). */
+function noteFlat() {
+  if (!props.debugLoads) return
+  let typeset = 0
+  let pixels = 0
+  for (const entry of materialsByBook.values()) {
+    if (entry.flat?.spine !== 'typeset') continue
+    typeset++
+    const image = entry.spineTexture.image as HTMLCanvasElement
+    pixels += image.width * image.height
   }
+  ;(window as { __regalFlat?: unknown }).__regalFlat = { books: materialsByBook.size, typeset, pixels }
 }
 
 /** A flat Book's front where it shows: the Cover's small copy, or without one its drawn front. */
