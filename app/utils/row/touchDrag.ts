@@ -7,12 +7,43 @@
 // handles itself ends in a real `pointerup`, which does count: from the
 // first swipe on, the fling after it ticks, as the Stack's does.
 //
+// Only where the page can vibrate (ownsTouchDrag): the drag exists for the
+// ticks alone. Everywhere else (iOS and iPadOS, whose WebKit has no
+// Vibration API; desktop Safari) a finger scrolls the row natively, with the
+// platform's own momentum (touch-action pan-x pan-y, as before the drag).
+// iOS WebKit carried all of the drag's risk and none of its benefit: it
+// cancels a touch's pointer events (`pointercancel`) as soon as one of its
+// own pan gestures starts, and with pan-y such a pan can't move the row
+// sideways either, so a swipe moved nothing (fabkho/libellus backlog #26).
+//
 // It should feel like the native scroll it replaces: the row follows the
 // finger 1:1 once it has moved past the touch slop (the slop itself is left
 // out, so it doesn't jump), and a fling glides on along the curve Android's
 // Scroller uses and Chrome on Android ports (ui/events/android/scroller.cc):
 // a spline whose distance and duration grow with the release speed. Pure, so
 // it's unit-testable.
+
+/**
+ * Whether the row drags itself under a finger (true: touch-action pan-y, this
+ * module) or leaves a sideways swipe to the browser's own scroll (false):
+ * only where `navigator.vibrate` exists, since the drag is there for the
+ * scroll ticks. Before the page is mounted (SSR) it's false: native.
+ */
+export function ownsTouchDrag(host: { vibrate?: unknown } | undefined): boolean {
+  return typeof host?.vibrate === 'function'
+}
+
+/** The `touch-action` of RegalBooksRow's scroller and canvas for a finger. */
+export function rowTouchAction(state: { ownDrag: boolean, picked: boolean, broken: boolean }): 'none' | 'pan-y' | 'pan-x pan-y' {
+  // Broken out, the picked Book has the screen: every move turns it.
+  if (state.picked && state.broken) return 'none'
+  // Our own drag takes sideways moves, as a Book taken out in the card does (the row doesn't scroll then).
+  if (state.ownDrag || state.picked) return 'pan-y'
+  return 'pan-x pan-y'
+}
+
+/** A finger down this soon (ms) after the row last scrolled (a native fling) only stops it: no Book comes out. */
+export const CAUGHT_AFTER_SCROLL = 100
 
 /** CSS px a finger moves before the row follows it (Android's touch slop, 8 dp). */
 export const ROW_TOUCH_SLOP = 8

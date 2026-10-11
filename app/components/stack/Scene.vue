@@ -11,7 +11,7 @@ import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 import { focusLine, STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
-import { glideStep, releaseSpeed, startGlide, TOUCH_FEEL, trackTouch, tunedFeel } from '#layers/regal/app/utils/stack/touchScroll'
+import { dragHeld, glideStep, holdTouchMove, releaseSpeed, startGlide, TOUCH_FEEL, trackTouch, tunedFeel } from '#layers/regal/app/utils/stack/touchScroll'
 import type { Glide, TouchFeel, TouchSample } from '#layers/regal/app/utils/stack/touchScroll'
 import { topAt, viewForTop } from '#layers/regal/app/utils/stack/camera'
 
@@ -173,8 +173,9 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
-  // A release outside the window never reaches us: no button down, no drag.
-  if (dragging && !(event.buttons & 1)) dragging = false
+  // A mouse released outside the window never reaches us: no button down, no
+  // drag. A finger ends with its pointerup or pointercancel (dragHeld).
+  if (dragging && !dragHeld(event)) dragging = false
   if (!dragging) return
   const dy = event.clientY - lastY
   lastY = event.clientY
@@ -246,6 +247,8 @@ onMounted(() => {
   const element = renderer.domElement as HTMLElement
   element.addEventListener('wheel', onWheel, { passive: false })
   element.addEventListener('pointerdown', onPointerDown)
+  // A finger's moves stay the Stack's: iOS starts no pan of its own under it (holdTouchMove).
+  element.addEventListener('touchmove', holdTouchMove, { passive: false })
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -257,6 +260,7 @@ onBeforeUnmount(() => {
   const element = renderer.domElement as HTMLElement | undefined
   element?.removeEventListener('wheel', onWheel)
   element?.removeEventListener('pointerdown', onPointerDown)
+  element?.removeEventListener('touchmove', holdTouchMove)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)

@@ -86,6 +86,31 @@ export const VELOCITY_WINDOW = 100
 /** A finger lifted longer than this (ms) after its last move was held still: no glide. */
 export const HOLD_STILL = 80
 
+/**
+ * Whether a `pointermove` still belongs to the drag that went down. A mouse
+ * needs its main button held (a release outside the window never reaches the
+ * page). A finger or pen is down until its own `pointerup` or
+ * `pointercancel`, whatever `buttons` says: a touch pointer's `buttons` is
+ * not checked, so no engine's reading of it can end the drag early.
+ */
+export function dragHeld(event: { pointerType: string, buttons: number }): boolean {
+  return event.pointerType !== 'mouse' || (event.buttons & 1) === 1
+}
+
+/**
+ * The Stack's canvas keeps a finger to itself (touch-action none), and
+ * cancels its `touchmove` too: iOS Safari's oldest way to keep its own pan
+ * or zoom from starting, which would end the drag in a `pointercancel`. A
+ * second lock in case WebKit misses the canvas's touch-action; where it
+ * doesn't, nothing changes. Only a cancelable move: one the browser already
+ * scrolls can't be.
+ */
+export function holdTouchMove(event: { cancelable: boolean, preventDefault: () => void }): boolean {
+  if (!event.cancelable) return false
+  event.preventDefault()
+  return true
+}
+
 export interface TouchSample {
   /** Event time (ms). */
   t: number

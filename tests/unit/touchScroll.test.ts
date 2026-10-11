@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampSpeed,
+  dragHeld,
   GLIDE_MAX_SPEED,
   GLIDE_TAU,
   glideStep,
   HOLD_STILL,
+  holdTouchMove,
   longestGlide,
   releaseSpeed,
   startGlide,
@@ -150,5 +152,42 @@ describe('glideStep', () => {
 
   it('does nothing once stopped', () => {
     expect(glideStep({ speed: 0 }, GLIDE_TAU, 1 / 60)).toBe(0)
+  })
+})
+
+describe('dragHeld / holdTouchMove (a finger keeps the Stack)', () => {
+  /** Replays pointermoves through dragHeld as Scene.vue does: true while the drag holds. */
+  function replay(moves: { pointerType: string, buttons: number }[]): boolean[] {
+    let dragging = true
+    return moves.map((move) => {
+      if (dragging && !dragHeld(move)) dragging = false
+      return dragging
+    })
+  }
+
+  it('ends a mouse drag once its button is up (a release outside the window)', () => {
+    expect(replay([
+      { pointerType: 'mouse', buttons: 1 },
+      { pointerType: 'mouse', buttons: 0 },
+      { pointerType: 'mouse', buttons: 1 },
+    ])).toEqual([true, false, false])
+  })
+
+  it('keeps a finger or pen drag whatever its buttons say (it ends with pointerup or pointercancel)', () => {
+    expect(replay([
+      { pointerType: 'touch', buttons: 1 },
+      { pointerType: 'touch', buttons: 0 },
+      { pointerType: 'touch', buttons: 0 },
+    ])).toEqual([true, true, true])
+    expect(replay([{ pointerType: 'pen', buttons: 0 }])).toEqual([true])
+  })
+
+  it('cancels a cancelable touchmove, leaves one the browser already scrolls', () => {
+    let prevented = 0
+    const move = (cancelable: boolean) => ({ cancelable, preventDefault: () => void prevented++ })
+    expect(holdTouchMove(move(true))).toBe(true)
+    expect(prevented).toBe(1)
+    expect(holdTouchMove(move(false))).toBe(false)
+    expect(prevented).toBe(1)
   })
 })
