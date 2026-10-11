@@ -5,6 +5,7 @@
 // picked Book's detail panel in it takes `theme`, `unstyled` and the #detail
 // slots like RegalBooksStage's (docs/nuxt-layer.md: "Theming").
 import type { Book } from '#layers/regal/shared/types/book'
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 
@@ -21,7 +22,9 @@ const props = withDefaults(defineProps<{
   theme?: RegalTheme
   /** The detail panel without Regal's colours, frame and type. */
   unstyled?: boolean
-}>(), { heading: 'Bookshelf', countLabel: 'Books read', filters: true, list: true, theme: undefined, unstyled: false })
+  /** The Library as a document in memory, as RegalBooksStage's `library` (give both the same one). */
+  library?: RegalLibraryFile | null
+}>(), { heading: 'Bookshelf', countLabel: 'Books read', filters: true, list: true, theme: undefined, unstyled: false, library: null })
 
 defineSlots<{
   'detail'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face, sheet: boolean }) => unknown
@@ -31,7 +34,7 @@ defineSlots<{
   'detail-actions'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face }) => unknown
 }>()
 
-useRegalLibrary()
+useRegalLibrary(undefined, { library: () => props.library })
 
 const root = ref<{ $el: HTMLElement } | null>(null)
 provideRegalUi({

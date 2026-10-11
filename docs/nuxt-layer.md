@@ -102,10 +102,11 @@ document instead of a URL: `library` on `RegalBooksStage` and `RegalBooksRow`, a
 [library file's format](library-file.md). It is validated with the same validator and shown at once:
 nothing is fetched, no file needs publishing, nothing leaves the device. A new object shows again (the
 host's Library changed); the same object given to several components shows once. Its images must be
-absolute URLs (there is no file to be relative to). Components given no `library` and no `src` (a
-sidebar beside such a Stage) show what is shown, never the configured file over it.
-`preloadRegal({ library })` warms from the document the same way. `useRegalLibrary(src, { library })`
-is the composable underneath.
+absolute URLs (there is no file to be relative to). `RegalBooksSidebar` and `RegalBooksFilters` take
+`library` too: give them the same document. A component given none reads `librarySrc`; with none
+configured, it shows what another component was given. A component kept alive (`<KeepAlive>`) shows its
+own Library again when it is shown again. `preloadRegal({ library })` warms from the document the same
+way. `useRegalLibrary(src, { library })` is the composable underneath.
 
 ```vue
 <RegalBooksStage :library="memberLibrary" theme="auto" />

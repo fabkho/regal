@@ -4,7 +4,14 @@
 // `sidebar__filters`, is then hidden by the host). The bar is `--regal-filter-bar-height`
 // tall (2.8rem) so the host can size the pile below it; its panel opens over
 // the page. Shares the Stack view with the sidebar and the stage.
-useRegalLibrary()
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
+
+const props = withDefaults(defineProps<{
+  /** The Library as a document in memory, as RegalBooksStage's `library` (give both the same one). */
+  library?: RegalLibraryFile | null
+}>(), { library: null })
+
+useRegalLibrary(undefined, { library: () => props.library })
 </script>
 
 <template>

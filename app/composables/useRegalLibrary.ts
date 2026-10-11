@@ -66,14 +66,14 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
   /** The file whose Library (or error) the state holds. */
   const loaded = useState<string | null>('regal:library-loaded', () => null)
   const document = () => toValue(options.library) ?? null
-  // An in-memory document wins; a component given neither a document nor a URL (a sidebar
-  // beside a Stage given a document) shows what is shown, never the configured file over it.
+  // An in-memory document wins, then a URL, then the configured file. With no file configured,
+  // a component given neither (a sidebar beside a Stage given a document) shows what is shown.
   const wanted = computed(() => {
     const given = document()
     if (given) return memorySource(given)
-    const url = toValue(src)?.trim()
+    const url = toValue(src)?.trim() || librarySrc
     if (url) return url
-    return isMemorySource(loaded.value) ? loaded.value! : librarySrc
+    return isMemorySource(loaded.value) ? loaded.value! : ''
   })
   /** A request is on its way (the browser only; the server's is over before the page is). */
   const loading = useState<boolean>('regal:library-loading', () => false)
@@ -174,6 +174,8 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
 
   if (import.meta.server) onServerPrefetch(() => load())
   onMounted(() => void load())
+  // Kept alive and shown again (a host's cached page) after another Library was shown meanwhile: its own again.
+  if (getCurrentInstance()) onActivated(() => void load())
   if (import.meta.client) watch(wanted, () => void load())
   // The built-in error card (Try again) reaches this through the components below.
   if (getCurrentInstance()) provide(REGAL_LIBRARY_RETRY, { retry, loading })

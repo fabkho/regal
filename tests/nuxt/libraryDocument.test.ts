@@ -61,14 +61,26 @@ describe('useRegalLibrary with a library document', () => {
     expect(host.text()).toBe('error')
   })
 
-  it('is not replaced by the configured file when a component given nothing mounts beside it', async () => {
+  it('shows once however many components are given the same document', async () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     document.value = { ...DEMO }
+    const first = await mountSuspended(WithDocument)
+    const shown = useLibrary().books.value
+    const second = await mountSuspended(WithDocument)
+    await nextTick()
+    expect(second.text()).toBe(first.text())
+    // Not read again: the very same Books.
+    expect(useLibrary().books.value).toBe(shown)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('leaves a component given nothing to the configured file', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(DEMO), { status: 200 })))
+    document.value = { ...DEMO, books: DEMO.books.slice(0, 1) }
     await mountSuspended(WithDocument)
     const plain = await mountSuspended(Plain)
-    await nextTick()
-    expect(plain.text()).toBe(`${DEMO.books.length} books`)
-    expect(fetch).not.toHaveBeenCalled()
+    // The layer's own config names a file: that one (the demo's), not the document's single Book.
+    await vi.waitFor(() => expect(plain.text()).toBe(`${DEMO.books.length} books`))
   })
 })
