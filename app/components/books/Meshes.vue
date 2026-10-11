@@ -151,7 +151,7 @@ interface BookMaterials {
    * is plain or typeset (see Flat Books below), and its drawn front when it
    * has no Cover and shows it (the top of the pile, taken out).
    */
-  flat: { color: RGB, hex: string, spine: 'plain' | 'queued' | 'typeset', front: CanvasTexture | null } | null
+  flat: { color: RGB, hex: string, spine: 'plain' | 'queued' | 'typeset', front: CanvasTexture | null, edges: boolean } | null
 }
 
 interface Motion {
@@ -225,10 +225,11 @@ const booksById = computed(() => new Map(props.books.map(book => [book.id, book]
  * bottom rows: the head shows it as is, the tail mirrored, and the fore-edge
  * samples only the middle so no Spine board shows there.
  */
-function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
+function pageEdgesFor(pose: BookPose, board: RGB, plain = false): BookMaterials['edges'] {
   const book = booksById.value.get(pose.bookId)
   const plan = pageEdgePlan(book ?? { id: pose.bookId, pages: null, binding: null }, pose.thickness, pose.depth)
-  const canvas = drawPageEdges(plan, board, pose.bookId)
+  // Plain paper for a flat Book until it comes near the view (its sheets drawn with its typeset Spine).
+  const canvas = plain ? plainPaper(plan) : drawPageEdges(plan, board, pose.bookId)
   const head = faceTexture(canvas)
   const tail = head.clone()
   tail.repeat.set(1, -1)
@@ -246,6 +247,17 @@ function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
     envMapIntensity: 0.3,
   })
   return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
+}
+
+/** The page edges as plain paper, the canvas drawPageEdges draws on later (the row's stand-in too). */
+function plainPaper(plan: PageEdgePlan): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.width = plan.width
+  element.height = plan.height
+  const context = element.getContext('2d')!
+  context.fillStyle = `rgb(${plan.paper.map(channel => Math.round(channel)).join(' ')})`
+  context.fillRect(0, 0, plan.width, plan.height)
+  return element
 }
 
 /**
@@ -323,7 +335,7 @@ function materialsFor(pose: BookPose): Material[] {
   if (!entry) {
     // A flat Book is its one colour from the first frame: cloth, plain Spine, plain back, boards.
     const flatColor = import.meta.client ? facesOf(pose.bookId)?.flat ?? null : null
-    const flat = flatColor ? { color: flatColor, hex: toHex(flatColor), spine: 'plain' as const, front: null } : null
+    const flat = flatColor ? { color: flatColor, hex: toHex(flatColor), spine: 'plain' as const, front: null, edges: false } : null
     const color = flat?.hex ?? pose.color
     const input = flat ? null : faceInput(pose)
     const cover = cloth(color)
@@ -331,7 +343,7 @@ function materialsFor(pose: BookPose): Material[] {
     const backTexture = faceTexture(plainCanvas(color))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    const edges = pageEdgesFor(pose, flatColor ?? fromHex(pose.color))
+    const edges = pageEdgesFor(pose, flatColor ?? fromHex(pose.color), !!flat)
     const [head, tail, fore] = edges.materials
     entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, flat, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
@@ -790,7 +802,9 @@ function setFullCover(bookId: string, on: boolean) {
 // view has moved far away (and come to rest after a fling) it is plain again
 // and its canvas freed. So the Spines' memory follows the view, not the
 // Library: a pile of 1,000 flat Books keeps a hundred or so typeset (each
-// ~250 kB of texture with its mipmaps) instead of all of them. Its front (the Cover's small copy) loads only when it
+// ~250 kB of texture with its mipmaps) instead of all of them. Its page
+// edges are plain paper until then too (drawing every Book's sheets took a
+// second on a laptop for 1,000 Books, before the first frame). Its front (the Cover's small copy) loads only when it
 // shows: the top of the pile or the Book taken out (then at full size); a
 // Book without a Cover shows a drawn front there instead, its title block in
 // its colour, like its back.
@@ -818,6 +832,11 @@ function updateFlatSpines() {
           return
         }
         drawFace(pose, current, 'spine')
+        // Its sheets along the page edges, once (a small canvas, kept).
+        if (!current.flat.edges) {
+          redrawPageEdges(current, current.flat.color, bookId)
+          current.flat.edges = true
+        }
         current.flat.spine = 'typeset'
         current.ready = true
         noteShown(bookId, 'spine')
