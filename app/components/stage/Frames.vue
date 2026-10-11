@@ -36,7 +36,7 @@ render((notify) => {
   const canvas = renderer.domElement as HTMLCanvasElement
   // A resized drawing buffer is blank: it needs a frame even when nothing
   // moved (the gate forgets the last frame on every setSize, the same size too).
-  const due = gate.due(motionKey(scene.value, cam, canvas.width, canvas.height), () => looksKey(scene.value))
+  const due = gate.due(motionKey(scene.value, cam, canvas.width, canvas.height), () => looksKey(scene.value, cam))
   if (quality.value.onDemand && !due) return
   renderer.render(scene.value, cam)
   notify()

@@ -6,6 +6,7 @@
 // lights and the camera, folded into one number. Values are rounded to
 // FRAME_QUANTUM first, so easing that has settled below it reads the same
 // and the canvas goes quiet; a slow creep still shows once it crosses a step.
+import { Frustum, Matrix4, Sphere } from 'three'
 import type { Camera, Light, Material, Mesh, MeshPhysicalMaterial, Object3D, Texture } from 'three'
 
 /** Changes below this don't show (0.01 mm, 1e-5 rad, colour channels). */
@@ -120,13 +121,39 @@ export function motionKey(scene: Object3D, camera: Camera, ...extra: number[]): 
   return hash
 }
 
+const frustum = new Frustum()
+const viewProjection = new Matrix4()
+const bounds = new Sphere()
+
+/** Whether a mesh can show in the camera's view (its bounding sphere meets the frustum); anything else counts as showing. */
+function inFrustum(object: Object3D): boolean {
+  const mesh = object as Mesh
+  if (!mesh.isMesh || mesh.frustumCulled === false || !mesh.geometry) return true
+  if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere()
+  bounds.copy(mesh.geometry.boundingSphere!).applyMatrix4(mesh.matrixWorld)
+  return frustum.intersectsSphere(bounds)
+}
+
 /**
  * One number for how everything visible in `scene` looks: its materials'
  * opacity, gloss, colours, textures and blending. Read apart from the motion
  * (several times the work): while things move a frame is drawn anyway.
+ * With `camera`, only the meshes in its view are read (the others count by
+ * id): a look that changes off screen draws nothing, and a pile of 1,000
+ * Books (six materials each) was read whole on every quiet frame. Once the
+ * camera moves, the motion key says so.
  */
-export function looksKey(scene: Object3D): number {
+export function looksKey(scene: Object3D, camera?: Camera): number {
   hash = 0xF5F2EB
-  visit(scene, mixLooks)
+  if (!camera) {
+    visit(scene, mixLooks)
+    return hash
+  }
+  viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  frustum.setFromProjectionMatrix(viewProjection)
+  visit(scene, (object) => {
+    if (inFrustum(object)) mixLooks(object)
+    else mixWhole(object.id)
+  })
   return hash
 }
