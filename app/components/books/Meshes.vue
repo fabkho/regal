@@ -785,12 +785,12 @@ function setFullCover(bookId: string, on: boolean) {
 // A Book with one colour (`assets.color`, utils/covers/bookAssets.ts) has no
 // image but its front: Spine and back are drawn in its colour (bookFaces.ts,
 // `flat`). It starts plain, the 2 × 2 canvas of its colour and no type, and
-// its typeset Spine is drawn only while it is in or near the view (the load
-// window's eager band, utils/covers/loadWindow.ts `flatSpineWanted`); once
-// the view has moved far away it is plain again and its canvas freed. So
-// the Spines' memory follows the view, not the Library: a pile of 1,000
-// flat Books keeps a hundred or so typeset (each ~130 kB of texture) instead
-// of all of them. Its front (the Cover's small copy) loads only when it
+// its typeset Spine is drawn only while it is in or near the view (a view
+// height around it, utils/covers/loadWindow.ts `flatSpineWanted`); once the
+// view has moved far away (and come to rest after a fling) it is plain again
+// and its canvas freed. So the Spines' memory follows the view, not the
+// Library: a pile of 1,000 flat Books keeps a hundred or so typeset (each
+// ~250 kB of texture with its mipmaps) instead of all of them. Its front (the Cover's small copy) loads only when it
 // shows: the top of the pile or the Book taken out (then at full size); a
 // Book without a Cover shows a drawn front there instead, its title block in
 // its colour, like its back.

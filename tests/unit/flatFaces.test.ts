@@ -3,7 +3,7 @@ import { validateLibraryFile } from '../../shared/library/libraryFile'
 import { assetFaces } from '../../app/utils/covers/bookAssets'
 import { drawBack, drawSpine } from '../../app/utils/covers/bookFaces'
 import type { FaceInput } from '../../app/utils/covers/bookFaces'
-import { flatSpineWanted, LOOK_AHEAD } from '../../app/utils/covers/loadWindow'
+import { FLAT_AHEAD, flatSpineWanted } from '../../app/utils/covers/loadWindow'
 import type { LoadView } from '../../app/utils/covers/loadWindow'
 import { INK, PAPER, readableOn } from '../../app/utils/covers/palette'
 import type { RGB } from '../../app/utils/covers/palette'
@@ -66,7 +66,7 @@ describe('assetFaces of a flat Book', () => {
 
 describe('flatSpineWanted', () => {
   const view: LoadView = { focusY: 0, targetY: 0, halfView: 0.5, speed: 0 }
-  const margin = LOOK_AHEAD * 2 * view.halfView
+  const margin = FLAT_AHEAD * 2 * view.halfView
 
   it('draws the typeset Spine in and near the view', () => {
     expect(flatSpineWanted(0, view)).toBe('draw')
