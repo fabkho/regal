@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   ASSUME_STOPPED,
   boostFling,
+  CAUGHT_AFTER_SCROLL,
   dragAxis,
   flingAt,
   followed,
   MAX_FLING_SPEED,
   MIN_FLING_SPEED,
+  ownsTouchDrag,
   releaseVelocity,
   ROW_TOUCH_SLOP,
+  rowTouchAction,
   startFling,
   trackDrag,
   VELOCITY_HORIZON,
@@ -112,5 +115,41 @@ describe('the fling (Android\'s Scroller curve)', () => {
     expect(boostFling(-1500, -900)).toBe(-2400)
     expect(boostFling(1500, -900)).toBe(1500)
     expect(boostFling(1500, 0)).toBe(1500)
+  })
+})
+
+describe('ownsTouchDrag / rowTouchAction (who scrolls the row under a finger)', () => {
+  it('drags the row itself only where the page can vibrate', () => {
+    // Android Chrome, Firefox, desktop Chrome: the drag, for the scroll ticks.
+    expect(ownsTouchDrag({ vibrate: () => true })).toBe(true)
+    // iOS and iPadOS WebKit (every browser there), desktop Safari: no Vibration API.
+    expect(ownsTouchDrag({})).toBe(false)
+    expect(ownsTouchDrag({ vibrate: undefined })).toBe(false)
+    // Before mount (SSR): native.
+    expect(ownsTouchDrag(undefined)).toBe(false)
+  })
+
+  it('leaves sideways swipes to the browser without the drag, never traps up/down', () => {
+    const resting = { picked: false, broken: false }
+    // iOS: both axes native. A pan-y here cancelled the pointer (pointercancel) and didn't move the row.
+    expect(rowTouchAction({ ownDrag: false, ...resting })).toBe('pan-x pan-y')
+    // Android: sideways is ours, up/down the page's.
+    expect(rowTouchAction({ ownDrag: true, ...resting })).toBe('pan-y')
+  })
+
+  it('keeps a picked Book\'s touch as before, on either path', () => {
+    for (const ownDrag of [true, false]) {
+      // In the card: a sideways drag turns the Book, up/down still scrolls the page.
+      expect(rowTouchAction({ ownDrag, picked: true, broken: false })).toBe('pan-y')
+      // Broken out: the Book has the screen.
+      expect(rowTouchAction({ ownDrag, picked: true, broken: true })).toBe('none')
+      // Broken out with nothing picked (landing back): as at rest.
+      expect(rowTouchAction({ ownDrag, picked: false, broken: true })).toBe(ownDrag ? 'pan-y' : 'pan-x pan-y')
+    }
+  })
+
+  it('counts a press only as a catch right after a scroll', () => {
+    expect(CAUGHT_AFTER_SCROLL).toBeGreaterThan(16)
+    expect(CAUGHT_AFTER_SCROLL).toBeLessThanOrEqual(150)
   })
 })

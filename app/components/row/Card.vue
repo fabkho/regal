@@ -5,11 +5,13 @@
 // The card is a horizontal scroll container (overflow-x) holding a track as
 // wide as the row, the canvas sticky at its left edge. A trackpad or
 // Shift+wheel scrolls it natively, arrow keys once focused, the scroll bar,
-// a mouse can drag it. A finger swiping sideways drags it too, with a fling
+// a mouse can drag it. A finger swiping sideways scrolls it natively where
+// the page can't vibrate (iOS: the platform's own momentum, touch-action
+// pan-x pan-y), and where it can (Android) drags it itself, with a fling
 // like the platform's (utils/row/touchDrag.ts: a native touch scroll would
 // end in a pointercancel, which keeps the scroll ticks from vibrating until a
-// first tap); swiping up or down scrolls the page as usual (touch-action
-// pan-y: nothing is trapped). At rest the card is full of Books (rowRest).
+// first tap; touch-action pan-y). Either way swiping up or down scrolls the
+// page as usual: nothing is trapped. At rest the card is full of Books (rowRest).
 // The camera follows scrollLeft, matched so the Spines move with the finger. The dates are HTML, placed each frame from the
 // camera, in step with the 3D.
 //
@@ -42,7 +44,7 @@ import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { introVisible } from '#layers/regal/app/utils/row/intro'
 import type { RowIntroMode, RowIntroState } from '#layers/regal/app/utils/row/intro'
 import { layoutRow, ROW_CAMERA, ROW_LABEL_Y, rowFocusLabelTop, rowLabelPlan, rowLabelReach, rowLabelSlots, rowLabelTexts, rowProject, rowRest, rowScroll } from '#layers/regal/app/utils/row/layout'
-import { boostFling, dragAxis, flingAt, followed, releaseVelocity, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
+import { boostFling, CAUGHT_AFTER_SCROLL, dragAxis, flingAt, followed, ownsTouchDrag, releaseVelocity, rowTouchAction, startFling, trackDrag } from '#layers/regal/app/utils/row/touchDrag'
 import type { DragAxis, DragSample, Fling } from '#layers/regal/app/utils/row/touchDrag'
 import { backgroundOf, parseCssColor } from '#layers/regal/app/utils/theme/color'
 import { floorShadowStrength, ROW_SHEET_TOKENS, VEIL_OPACITY_CARD, VEIL_OPACITY_FULL, veilOpacity } from '#layers/regal/app/utils/theme/tokens'
@@ -168,7 +170,11 @@ watch([cameraStart, maxScroll, pxPerMetre], () => nextTick(syncCamera), { immedi
 /** Mouse travel since the last scroll; a little gives the lead back to hover (as in the Stack). */
 let mouseTravel = 0
 
+/** When the row last scrolled (performance.now()), for a finger that lands on a native fling. */
+let lastScrollAt = -Infinity
+
 function onScroll() {
+  lastScrollAt = performance.now()
   syncCamera()
   scrolling.value = true
   clearTimeout(scrollingTimer)
@@ -190,13 +196,16 @@ function onScrollEnd() {
 let drag: { x: number, left: number, lastX: number, lastT: number, speed: number } | null = null
 let glideFrame = 0
 
-// A finger (or pen) drags the row sideways itself (utils/row/touchDrag.ts):
-// the scroller is touch-action pan-y, so Chrome leaves sideways moves to the
-// page and an up/down swipe still scrolls the page (and cancels this drag).
-// Its pointerup is a user activation, a native scroll's pointercancel is
-// not: the scroll ticks work from the first swipe on. A flick flings on
-// along Android's curve; a finger on a flinging row stops it (and doesn't
-// take a Book out, as with the native scroll).
+// A finger (or pen) drags the row sideways itself (utils/row/touchDrag.ts)
+// where the page can vibrate (ownTouchDrag): the scroller is touch-action
+// pan-y, so Chrome leaves sideways moves to the page and an up/down swipe
+// still scrolls the page (and cancels this drag). Its pointerup is a user
+// activation, a native scroll's pointercancel is not: the scroll ticks work
+// from the first swipe on. A flick flings on along Android's curve; a finger
+// on a flinging row stops it (and doesn't take a Book out, as with the native
+// scroll). Elsewhere (iOS) the browser scrolls the row (pan-x pan-y).
+/** The row drags itself under a finger (ownsTouchDrag); false until mounted: native. */
+const ownTouchDrag = ref(false)
 let touchDrag: { id: number, x: number, y: number, left: number, axis: DragAxis, samples: DragSample[] } | null = null
 let fling: { start: number, left: number, curve: Fling } | null = null
 let flingFrame = 0
@@ -249,6 +258,11 @@ function runFling(velocity: number) {
 function onPointerDownCapture(event: PointerEvent) {
   ctx.view.caught = false
   if (event.pointerType === 'mouse' || !event.isPrimary || pickedId.value || !scroller.value) return
+  // The browser scrolls the row: a finger on its fling only stops it, as on our own.
+  if (!ownTouchDrag.value) {
+    ctx.view.caught = performance.now() - lastScrollAt < CAUGHT_AFTER_SCROLL
+    return
+  }
   ctx.view.caught = !!fling
   stopGlide()
   touchDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: scroller.value.scrollLeft, axis: 'pending', samples: [] }
@@ -558,8 +572,13 @@ useDialogFocus({
   fallback: () => scroller.value,
 })
 
-/** Touch on the canvas: up/down scrolls the page, sideways the row (its own drag) or a picked Book; broken out, it has the screen. */
-const touchAction = computed(() => (broken.value && pickedId.value ? 'none' : 'pan-y'))
+/**
+ * Touch on the canvas: up/down scrolls the page, sideways the row (natively,
+ * or its own drag) or a picked Book; broken out, it has the screen. The
+ * scroller as without a picked Book (it doesn't scroll while one is out).
+ */
+const touchAction = computed(() => rowTouchAction({ ownDrag: ownTouchDrag.value, picked: !!pickedId.value, broken: broken.value }))
+const scrollerTouchAction = computed(() => rowTouchAction({ ownDrag: ownTouchDrag.value, picked: false, broken: false }))
 
 // Back (the browser's, Android's) puts the Book away: a history entry while it is out.
 let pushed = false
@@ -687,6 +706,7 @@ onMounted(() => {
     ctx.introVisible.value = !!entry?.isIntersecting && introVisible(entry.intersectionRatio, entry.intersectionRect.height, window.innerHeight)
   }, { threshold: Array.from({ length: 21 }, (_, step) => step / 20) })
   if (root.value) introObserver.observe(root.value)
+  ownTouchDrag.value = ownsTouchDrag(navigator)
   window.addEventListener('pointermove', onMouseMove, { passive: true })
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -741,6 +761,8 @@ function scrub(value: number) {
       :id="scrollerId"
       ref="scroller"
       class="row-card__scroller"
+      :style="{ touchAction: scrollerTouchAction }"
+      :data-touch="ownTouchDrag ? 'drag' : 'native'"
       tabindex="0"
       role="region"
       :aria-label="`${books.length} books, scroll sideways`"
@@ -1070,8 +1092,8 @@ function scrub(value: number) {
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   outline: none;
-  /* Sideways a finger drags the row itself (RowCard): its pointerup lets the scroll ticks vibrate. */
-  touch-action: pan-y;
+  /* Native for a finger until mounted; where the page can vibrate the row drags itself sideways (`pan-y`, inline): its pointerup lets the scroll ticks vibrate. */
+  touch-action: pan-x pan-y;
 }
 
 .row-card__scroller::-webkit-scrollbar {
