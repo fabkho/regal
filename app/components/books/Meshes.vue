@@ -1273,8 +1273,10 @@ watch(() => props.poses, (next, previous) => {
 const ranked = { focusY: Number.NaN, targetY: Number.NaN }
 
 onBeforeRender(({ delta }) => {
-  // The load window moves with the scroll: new ranks once the view has moved a little.
-  if (stackScroll && (Math.abs(stackScroll.focusY - ranked.focusY) > 0.03 || Math.abs(stackScroll.targetY - ranked.targetY) > 0.03)) {
+  // The load window moves with the scroll: new ranks once the view has moved a little. Written as
+  // "not within", so the first frame (nothing ranked yet, NaN) counts as moved: `NaN > 0.03` is false,
+  // and the window then never moved at all.
+  if (stackScroll && !(Math.abs(stackScroll.focusY - ranked.focusY) <= 0.03 && Math.abs(stackScroll.targetY - ranked.targetY) <= 0.03)) {
     ranked.focusY = stackScroll.focusY
     ranked.targetY = stackScroll.targetY
     reschedule()
