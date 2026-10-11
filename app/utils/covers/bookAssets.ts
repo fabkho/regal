@@ -5,8 +5,9 @@
 //
 // The small pile copies of the front and Spine and the Spine colours are
 // optional: without them the full faces and colours sampled from the front
-// stand in.
-import { fromHex } from './palette'
+// stand in. A Book with one colour (`color`, no Spine art) has flat faces:
+// Spine and back in that colour, typeset, no image but the front.
+import { fromHex, readableOn } from './palette'
 import type { RGB, SpinePalette } from './palette'
 
 export type AssetSource = 'photo' | 'ai'
@@ -41,6 +42,8 @@ export interface BookAssetEntry {
   palette?: { background: string, text: string, accent: string }
   /** Average colour of the Spine art, as hex. */
   spineColor?: string
+  /** The Book's one colour, as hex: Spine and back drawn flat in it (library file `assets.color`). */
+  color?: string
 }
 
 /** True when `face` of this Book is a photo of the real thing, not artwork. */
@@ -61,6 +64,11 @@ export interface AssetFaces {
   palette: SpinePalette | null
   /** Average colour of the Spine art, from the file. */
   spineColor: RGB | null
+  /**
+   * The Book's one colour (`assets.color`): Spine and back drawn flat in it.
+   * Null without it, or when the file has Spine art (art wins).
+   */
+  flat: RGB | null
 }
 
 const hex = (value: unknown): RGB | null => (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value) ? fromHex(value) : null)
@@ -72,13 +80,19 @@ const hex = (value: unknown): RGB | null => (typeof value === 'string' && /^#[\d
 export function assetFaces(entry: BookAssetEntry, url: (reference: string) => string | null): AssetFaces {
   const at = (reference: string | undefined) => (reference ? url(reference) ?? undefined : undefined)
   const [background, text, accent] = [entry.palette?.background, entry.palette?.text, entry.palette?.accent].map(hex)
+  const color = hex(entry.color)
+  // Art wins over the one colour: a Book with Spine art keeps it.
+  const flat = color && !entry.spine && !entry.pile?.spine ? color : null
+  const palette = background && text && accent ? { background, text, accent } : null
   return {
     entry,
     spine: at(entry.pile?.spine ?? entry.spine),
     pileFront: at(entry.pile?.front ?? entry.front),
     front: at(entry.front),
     back: at(entry.back),
-    palette: background && text && accent ? { background, text, accent } : null,
-    spineColor: hex(entry.spineColor),
+    // A flat Book's Spine is final without its front: its colour and the ink that reads on it.
+    palette: flat ? { background: flat, text: readableOn(flat), accent: readableOn(flat) } : palette,
+    spineColor: hex(entry.spineColor) ?? flat,
+    flat,
   }
 }

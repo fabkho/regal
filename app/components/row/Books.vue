@@ -56,7 +56,7 @@ import { approach, focusLine, liftFor, RIFFLE, targetAmount } from '#layers/rega
 import type { Lift } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { createGlintSettle, GLINT_DELAY, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { fromHex } from '#layers/regal/app/utils/covers/palette'
+import { fromHex, toHex } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
 import type { RowContext } from '#layers/regal/app/utils/row/context'
 import { createSpin, dragSpin, glideSpin, resetSpin, spinQuaternion, startSettle, stopGlide } from '#layers/regal/app/utils/books/spin'
@@ -129,6 +129,8 @@ interface BookMaterials {
   /** Its Spine and page edges came drawn from the page's cache: nothing to load or draw. */
   cached: boolean
   fullCover: string | null
+  /** A flat Book without a Cover, taken out: its drawn front (its title block in its colour). */
+  flatFront?: CanvasTexture | null
   backPrep: BackPrep | null
   aborted: AbortController
 }
@@ -266,9 +268,15 @@ function plainBack(pose: BookPose): HTMLCanvasElement {
   element.width = 2
   element.height = 2
   const context = element.getContext('2d')!
-  context.fillStyle = pose.color
+  context.fillStyle = colorOf(pose)
   context.fillRect(0, 0, 2, 2)
   return element
+}
+
+/** The Book's colour before its faces: its one colour when it has one (flat, `assets.color`), else the pose's cloth. */
+function colorOf(pose: BookPose): string {
+  const flat = import.meta.client ? facesOf(pose.bookId)?.flat : null
+  return flat ? toHex(flat) : pose.color
 }
 
 /** Where this Book's drawn faces are kept in the page's cache (utils/row/faceCache.ts). */
@@ -285,7 +293,7 @@ function materialsFor(pose: BookPose): Material[] {
     const drawnSpine = rowSpines.get(keys.spine)
     const drawnEdges = drawnSpine ? rowEdges.get(keys.edges) : undefined
     const cached = !!(drawnSpine && drawnEdges)
-    const cover = cloth(pose.color)
+    const cover = cloth(colorOf(pose))
     // Otherwise its colour until its Spine is drawn (applyCover; the intro waits for it).
     const spineTexture = faceTexture(cached ? drawnSpine! : plainBack(pose))
     const backTexture = faceTexture(plainBack(pose))
@@ -386,6 +394,7 @@ function spineCanvas(input: FaceInput): HTMLCanvasElement {
 }
 
 function disposeEntry(entry: BookMaterials) {
+  entry.flatFront?.dispose()
   entry.cover.dispose()
   entry.back.dispose()
   entry.spine.dispose()
@@ -621,7 +630,7 @@ function setFullCover(bookId: string, on: boolean) {
   if (!entry) return
   if (on) {
     const url = fullCoverUrl(bookId)
-    if (!url) return
+    if (!url) return showFlatFront(bookId, entry)
     entry.fullCover = url
     void loadFullCover(url, loadPriority(bookId, 'shown')).then((texture) => {
       const current = materialsByBook.get(bookId)
@@ -629,12 +638,27 @@ function setFullCover(bookId: string, on: boolean) {
     })
     return
   }
+  if (entry.flatFront) {
+    clothCover(entry)
+    ;(entry.flatFront.image as HTMLCanvasElement).width = 0
+    entry.flatFront.dispose()
+    entry.flatFront = null
+  }
   const url = entry.fullCover
   if (!url) return
   entry.fullCover = null
   if (entry.loaded) printCover(entry, entry.loaded.texture)
   else clothCover(entry)
   releaseFullCover(url)
+}
+
+/** A flat Book without a Cover, taken out: its front drawn like its back (a title block in its colour). */
+function showFlatFront(bookId: string, entry: BookMaterials) {
+  const pose = props.poses.find(candidate => candidate.bookId === bookId)
+  const input = pose && entry.set?.flat ? faceInput(pose, entry) : null
+  if (!input) return
+  entry.flatFront ??= faceTexture(drawBack(input))
+  printCover(entry, entry.flatFront)
 }
 
 function clothCover(entry: BookMaterials) {

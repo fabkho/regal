@@ -1,6 +1,7 @@
 import type { InjectionKey, MaybeRefOrGetter, Ref } from 'vue'
 import type { NuxtApp } from '#app'
-import { NO_SOURCE_ERROR, readLibraryFile, unreachableFileError } from '#layers/regal/app/utils/library/libraryFile'
+import { isMemorySource, memorySource, NO_SOURCE_ERROR, readLibraryDocument, readLibraryFile, unreachableFileError } from '#layers/regal/app/utils/library/libraryFile'
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { LibraryReadResult } from '#layers/regal/app/utils/library/libraryFile'
 import { markRegal } from '#layers/regal/app/utils/stage/marks'
 import { fetchLibraryFile, readLibraryFileNow } from '#layers/regal/app/utils/library/libraryCache'
@@ -28,6 +29,13 @@ export interface RegalLibraryOptions {
    * fetches what a visitor names.
    */
   server?: boolean
+  /**
+   * A library document already in memory (an object in the library file's
+   * format, `docs/library-file.md`) instead of a file's URL: validated and
+   * shown at once, nothing fetched. A new object shows again; `null` or
+   * absent: the file at `src`. Its images must be absolute URLs.
+   */
+  library?: MaybeRefOrGetter<RegalLibraryFile | Record<string, unknown> | null | undefined>
 }
 
 /**
@@ -54,10 +62,19 @@ export interface RegalLibraryOptions {
 export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined>, options: RegalLibraryOptions = {}) {
   const library = useLibrary()
   const { librarySrc } = useRegalConfig()
-  const wanted = computed(() => toValue(src)?.trim() || librarySrc)
   const nuxtApp = useNuxtApp()
   /** The file whose Library (or error) the state holds. */
   const loaded = useState<string | null>('regal:library-loaded', () => null)
+  const document = () => toValue(options.library) ?? null
+  // An in-memory document wins; a component given neither a document nor a URL (a sidebar
+  // beside a Stage given a document) shows what is shown, never the configured file over it.
+  const wanted = computed(() => {
+    const given = document()
+    if (given) return memorySource(given)
+    const url = toValue(src)?.trim()
+    if (url) return url
+    return isMemorySource(loaded.value) ? loaded.value! : librarySrc
+  })
   /** A request is on its way (the browser only; the server's is over before the page is). */
   const loading = useState<boolean>('regal:library-loading', () => false)
   const origin = import.meta.server ? useRequestURL().origin : ''
@@ -79,10 +96,22 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
     loaded.value = file
   }
 
+  /** An in-memory document: shown at once, nothing to fetch. */
+  function showDocument(): boolean {
+    const given = document()
+    if (!given) return false
+    const key = memorySource(given)
+    if (loaded.value !== key) apply(key, readLibraryDocument(given))
+    return true
+  }
+
   function load(fresh = false): Promise<void> {
+    if (showDocument()) return Promise.resolve()
     const file = wanted.value
     // Shown already; a failure is not an answer to keep, so a mount after one asks again.
     if (!fresh && loaded.value === file && !library.error.value) return Promise.resolve()
+    // Somebody else's document (the component holding it shows it again): nothing to fetch.
+    if (isMemorySource(file)) return Promise.resolve()
     if (!file) {
       library.fail(NO_SOURCE_ERROR, null)
       loaded.value = file
@@ -134,9 +163,11 @@ export function useRegalLibrary(src?: MaybeRefOrGetter<string | null | undefined
     return load(true)
   }
 
+  // A document is shown in this first render (on the server too: it travels in the payload).
+  showDocument()
   // Read already in this page (preloadRegal, another row): shown in this first render, no
   // frame without it. Not while hydrating: the server's HTML must match.
-  if (import.meta.client && wanted.value && loaded.value !== wanted.value && !nuxtApp.isHydrating) {
+  if (import.meta.client && wanted.value && !isMemorySource(wanted.value) && loaded.value !== wanted.value && !nuxtApp.isHydrating) {
     const ready = readLibraryFileNow(absolute(wanted.value))
     if (ready) apply(wanted.value, ready)
   }

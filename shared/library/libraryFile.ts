@@ -115,6 +115,7 @@ function checkAssets(check: Checker, assets: unknown, path: string) {
     }
   }
   check.optionalColour(assets.spineColor, `${path}.spineColor`)
+  check.optionalColour(assets.color, `${path}.color`)
 
   const photoFaces = assets.photoFaces
   if (photoFaces != null) {

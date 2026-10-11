@@ -95,6 +95,14 @@ export interface LibraryBookAssets {
   palette?: LibraryPalette | null
   /** Average colour of the Spine art, `#rrggbb`: the boards on the page edges. */
   spineColor?: string | null
+  /**
+   * The Book's one colour, `#rrggbb`: a Spine and back without art are drawn
+   * flat in it (title and author along the Spine, a quiet title block on the
+   * back), the page edges' boards take it, and the front stays the Cover. For
+   * producers without Spine art (an app's member shelves); absent: the Spine is
+   * drawn from `palette` or the front, as before.
+   */
+  color?: string | null
   /** Faces that are photos of the owner's copy: drawn as they are. */
   photoFaces?: LibraryBookFace[] | null
   /** How the faces were made: 'photo' (all photographed) or 'ai' (generated); informational. */

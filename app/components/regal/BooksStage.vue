@@ -9,6 +9,7 @@
 // `unstyled` leaves only structure and layout, and the slots below replace
 // their content (Regal keeps placing, opening, closing and animating them).
 import type { Book } from '#layers/regal/shared/types/book'
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 
@@ -32,7 +33,14 @@ const props = withDefaults(defineProps<{
    * the Stack's sort and filters.
    */
   accessibleList?: boolean
-}>(), { controls: false, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true })
+  /**
+   * The Library as a document in memory (the library file's format,
+   * docs/library-file.md) instead of the file at `runtimeConfig.public.regal.librarySrc`:
+   * validated and shown at once, nothing fetched. For a host that builds a
+   * Library on the device (an app's member shelves). Images: absolute URLs.
+   */
+  library?: RegalLibraryFile | null
+}>(), { controls: false, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, library: null })
 
 defineSlots<{
   /** The tooltip's content (hover and scroll focus label). */
@@ -49,7 +57,7 @@ defineSlots<{
   'detail-actions'?: (scope: { book: Book, close: () => void, flip: () => void, face: Face }) => unknown
 }>()
 
-useRegalLibrary()
+useRegalLibrary(undefined, { library: () => props.library })
 
 const root = ref<HTMLElement | null>(null)
 const { rootAttrs } = provideRegalUi({

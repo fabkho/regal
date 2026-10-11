@@ -79,3 +79,23 @@ export function loadRank(y: number | undefined, view: LoadView | null, use: Face
  * urgent always find a free slot.
  */
 export const LOAD_BANDS = [{ from: BACKGROUND, max: 6 }, { from: HIDDEN, max: 2 }] as const
+
+/** How much further than the eager band a typeset flat Spine is kept before it is dropped (hysteresis). */
+export const FLAT_KEEP = 2
+
+/**
+ * A flat Book's typeset Spine (one colour, `assets.color`): draw it while the
+ * Book is in the eager band (in view or within LOOK_AHEAD view heights of the
+ * stretch the view covers), or reached for (picked, hovered); drop it once the
+ * Book lies FLAT_KEEP times that far away; in between keep what it has. So the
+ * typeset Spines follow the view and a fling back finds them still there.
+ * Without a view (the Bookcase) or a height, every Spine is drawn.
+ */
+export function flatSpineWanted(y: number | undefined, view: LoadView | null, boost: Boost = null): 'draw' | 'drop' | 'keep' {
+  if (boost) return 'draw'
+  if (!view || y === undefined) return view ? 'keep' : 'draw'
+  const outside = outsideView(y, view)
+  const margin = LOOK_AHEAD * 2 * view.halfView
+  if (outside <= margin) return 'draw'
+  return outside > margin * FLAT_KEEP ? 'drop' : 'keep'
+}
