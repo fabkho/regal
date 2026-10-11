@@ -87,13 +87,39 @@ export default defineNuxtConfig({
 
 On a tall, narrow stage (a phone) the pile starts with its top Book at about 80 % of the stage's height instead of mid-view (`app/utils/stack/camera.ts`); wide stages are unchanged.
 
-All of them load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML; one fetch) and share it; the Stage, the Sidebar and the Filters also share the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
+All of them load the Library from `librarySrc` themselves (server-side when possible, so the records are in the HTML; one fetch) and share it, unless `RegalBooksStage` or `RegalBooksRow` is given one ([In-memory library](#in-memory-library)); the Stage, the Sidebar and the Filters also share the Stack's sort & filters (kept in the URL: `?sort=rating&year=2025&min=4`; `group=year|month|off` sets the date separators, default by year), the picked Book and the hovered one. They work on the same page in any layout, also when one sits in a layout and the other in the page.
 
 The look is the decided one: re-sorts move by hand when up to 3 Books move, as a carousel above that; Books a filter brings back pop in scattered around the pile and leaving ones slide out and shrink away, and when no Book stays (a new year) the old pile sweeps out to the left before the new one settles in from the bottom up (instant with reduced motion); classic back covers; title and stars in the hover label; while you scroll the Stack (and on touch screens), Books passing the middle of the view riffle out, the centred one with that label.
 
 **Styling.** The tooltip, the detail panel and `RegalBooksRow`'s card have their own tokens, `--regal-*` ([Theming](#theming)). The rest (the sidebar, the filters, the stage's notes) use the paper-ink tokens with fallbacks, e.g. `var(--color-ink, #2C2C2A)`, so they look right with or without them. A host that defines the same tokens (`--color-bg`, `--color-ink`, `--color-ink-muted`, `--color-ink-faint`, `--color-line`, `--color-accent`, `--color-accent-tint`, `--font-mono`, `--font-serif`, `--text-2xs` … `--text-2xl`) restyles them; set them on a wrapper to change only Regal. The `--regal-*` defaults of the light theme read them too, so a host that already maps them keeps that look. Regal registers the IBM Plex Mono, Patua One and Antonio `@font-face`s (no other global CSS).
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
+
+## In-memory library
+
+A host that builds a Library on the device (an app showing each member her own shelf) passes it as a
+document instead of a URL: `library` on `RegalBooksStage` and `RegalBooksRow`, an object in the
+[library file's format](library-file.md). It is validated with the same validator and shown at once:
+nothing is fetched, no file needs publishing, nothing leaves the device. A new object shows again (the
+host's Library changed); the same object given to several components shows once. Its images must be
+absolute URLs (there is no file to be relative to). `RegalBooksSidebar` and `RegalBooksFilters` take
+`library` too: give them the same document. A component given none reads `librarySrc`; with none
+configured, it shows what another component was given. A component kept alive (`<KeepAlive>`) shows its
+own Library again when it is shown again. `preloadRegal({ library })` warms from the document the same
+way. `useRegalLibrary(src, { library })` is the composable underneath.
+
+```vue
+<RegalBooksStage :library="memberLibrary" theme="auto" />
+<RegalBooksRow :library="memberLibrary" :limit="80" />
+```
+
+Without art, such a Library pairs well with **flat faces**: give each Book its one colour
+(`assets.color`, [library file](library-file.md#assets)) and Regal draws its Spine and back flat in it,
+the type in ink or paper by WCAG contrast, with no image but the front. In the Stack a flat Book's
+typeset Spine is drawn only while the Book is in or near the view and freed once the view is far away,
+and its front loads only when it shows (the top Book, a Book taken out): a pile of 1,000 Books keeps a
+hundred or so Spines on the GPU instead of all of them. A flat Book without a front shows a drawn one,
+its title block in its colour.
 
 ## Accessibility
 
@@ -141,7 +167,7 @@ requestIdleCallback(async () => {
 ```
 
 - **What it does.** Fetches and reads the library file into the page's cache (the row reads it there and shows the Library in its first render, no second fetch); fetches the row's code (`import()` of `RegalBooksRow`); draws the Spines and page edges of the Books the row opens on (the newest, a `year` row's January; as many as the card shows) into the page's face cache, exactly as the row would draw them. Only Spines whose colours the library file gives (`palette`, as Regal assets writes) are drawn ahead; others the row draws itself.
-- **Options.** `src` (default `librarySrc`; pass it when calling outside the app's context with a page-specific source), `limit` and `year` (the row's), `spines` (`'visible'`, a number from where the row opens, or `false`), `width` / `height` (the card's CSS px; default the viewport's width × 288, for which Books show and the Spines' resolution), `chunk` (`true`: `RegalBooksRow`'s chunk; a function: your own import, e.g. of the component that wraps the row, when it brings Regal's fonts with it; `false`: none).
+- **Options.** `src` (default `librarySrc`; pass it when calling outside the app's context with a page-specific source), `library` (a document in memory instead, as the row's `library`), `limit` and `year` (the row's), `spines` (`'visible'`, a number from where the row opens, or `false`), `width` / `height` (the card's CSS px; default the viewport's width × 288, for which Books show and the Spines' resolution), `chunk` (`true`: `RegalBooksRow`'s chunk; a function: your own import, e.g. of the component that wraps the row, when it brings Regal's fonts with it; `false`: none).
 - **Safe anywhere.** It resolves when done and never rejects (whatever didn't warm, the row loads as before); a failed warm-up (offline, a 5xx, a file that isn't valid) is dropped, not kept, and tried again on the next call. Calls with the same options share one warm-up; everything is kept for the page (module level) and reused by every row and by a row mounted again. It does nothing on the server and needs no row on the page.
 - **Where to call it.** As soon as the owner's row is a likely next step: on the screen before it, on idle (`requestIdleCallback`), or when its link comes into view. A dynamic `import()` keeps it out of the host's entry, and when the host bundles Regal into one chunk (a `codeSplitting` group), that import already fetches the chunk. The Spines are drawn only once the Spine fonts (Patua One, Antonio) are registered; a host that moves Regal's `@font-face` rules into its own chunk passes `chunk: () => import('~/components/MyRow.vue')`.
 
@@ -367,4 +393,4 @@ The owner's shelf (`books.fabkho.dev`) allows `https://fabkho.dev` and Libellus'
 ## Two hosts
 
 - **fabkho.dev/books** (the portfolio): `RegalBooksStage` and `RegalBooksSidebar` side by side on a `/books` page, `RegalBooksFilters` above the stage under 1025 px (the sidebar's filters hidden there with `.sidebar__filters`). `librarySrc: 'https://books.fabkho.dev/v2/library.json'`, the file the [daily chain](producing.md#the-daily-chain) publishes to R2; the page is rendered per request.
-- **Libellus** (a Nuxt SPA and PWA): the owner's shelf in its profile (`RegalBooksStage` with `theme="auto"` and its own tokens, mapped from its design tokens in one stylesheet) and a `RegalBooksRow` in each year in review (`inspect="viewport"`, `:year`, `:back-button="false"`, its own `#detail` sheet; the example under [Theming](#theming)). Everything Regal is lazy, in one chunk outside the precache, warmed with `preloadRegal` for the signed-in owner; see its [`regal.config.ts`](https://github.com/fabkho/libellus/blob/main/web/regal.config.ts).
+- **Libellus** (a Nuxt SPA and PWA): every member's own shelf, built on the device from her Library and passed as `library` with flat faces (each Book in its cover's most common colour), and the owner's shelf in its profile (`RegalBooksStage` with `theme="auto"` and its own tokens, mapped from its design tokens in one stylesheet) and a `RegalBooksRow` in each year in review (`inspect="viewport"`, `:year`, `:back-button="false"`, its own `#detail` sheet; the example under [Theming](#theming)). Everything Regal is lazy, in one chunk outside the precache, warmed with `preloadRegal` for the signed-in owner; see its [`regal.config.ts`](https://github.com/fabkho/libellus/blob/main/web/regal.config.ts).

@@ -11,8 +11,9 @@
 // before any row exists, and on the server (where it does nothing).
 import type { Book } from '#layers/regal/shared/types/book'
 import { fetchLibraryFile } from '#layers/regal/app/utils/library/libraryCache'
-import { resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
-import type { LoadedLibrary } from '#layers/regal/app/utils/library/libraryFile'
+import { memorySource, readLibraryDocument, resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
+import type { LibraryReadResult, LoadedLibrary } from '#layers/regal/app/utils/library/libraryFile'
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import { assetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { drawSpine, SPINE_AUTHOR_FONT, SPINE_TITLE_FONT } from '#layers/regal/app/utils/covers/bookFaces'
 import { loadPicture } from '#layers/regal/app/utils/covers/images'
@@ -26,6 +27,8 @@ import { markRegal } from '#layers/regal/app/utils/stage/marks'
 export interface PreloadRegalOptions {
   /** The library file (default: `runtimeConfig.public.regal.librarySrc`, as the row). */
   src?: string
+  /** A library document in memory instead of a file (the row's `library`): nothing fetched, its Spines drawn ahead. */
+  library?: RegalLibraryFile | null
   /** The row's `limit` and `year`: which Books it shows, and where it opens (a year row: January). */
   limit?: number | null
   year?: number | null
@@ -55,7 +58,7 @@ const runs = new Map<string, Promise<void>>()
  */
 export function preloadRegal(options: PreloadRegalOptions = {}): Promise<void> {
   if (import.meta.server || typeof window === 'undefined') return Promise.resolve()
-  const src = options.src ?? configuredSrc()
+  const src = options.library ? memorySource(options.library) : options.src ?? configuredSrc()
   if (!src) return Promise.resolve()
   const key = JSON.stringify([src, options.limit ?? null, options.year ?? null, options.spines ?? 'visible', options.width ?? null, options.height ?? null, typeof options.chunk === 'function' ? 'host' : options.chunk ?? true])
   let run = runs.get(key)
@@ -81,7 +84,7 @@ async function warm(src: string, options: PreloadRegalOptions): Promise<boolean>
     : typeof options.chunk === 'function'
       ? options.chunk()
       : import('#layers/regal/app/components/regal/BooksRow.vue')
-  const file = fetchLibraryFile(new URL(src, page).href)
+  const file: Promise<LibraryReadResult> = options.library ? Promise.resolve(readLibraryDocument(options.library)) : fetchLibraryFile(new URL(src, page).href)
   // The fonts' @font-face rules may come with the chunk (a host that keeps Regal in one).
   const [result] = await Promise.all([file, chunk?.catch(() => null)])
   if (result.ok && options.spines !== false && await spineFontsLoaded()) {

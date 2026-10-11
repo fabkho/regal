@@ -12,6 +12,7 @@
 // `unstyled` leaves only structure and layout, and the slots below replace
 // the focus label's and the details' content.
 import type { Book } from '#layers/regal/shared/types/book'
+import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 import type { RowIntroMode } from '#layers/regal/app/utils/row/intro'
@@ -57,7 +58,14 @@ const props = withDefaults(defineProps<{
    * never.
    */
   intro?: RowIntroMode
-}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free', accessibleList: true, intro: 'visible' })
+  /**
+   * The Library as a document in memory (the library file's format,
+   * docs/library-file.md) instead of the file at `runtimeConfig.public.regal.librarySrc`:
+   * validated and shown at once, nothing fetched. For a host that builds a
+   * Library on the device (an app's member shelves). Images: absolute URLs.
+   */
+  library?: RegalLibraryFile | null
+}>(), { inspect: 'card', limit: null, year: null, label: '', theme: undefined, unstyled: false, backButton: true, rotate: 'free', accessibleList: true, intro: 'visible', library: null })
 
 defineSlots<{
   /** The focus label's content (title and stars under the Book in focus). */
@@ -76,7 +84,7 @@ defineSlots<{
   'back'?: (scope: { book: Book, close: () => void, broken: boolean }) => unknown
 }>()
 
-useRegalLibrary()
+useRegalLibrary(undefined, { library: () => props.library })
 const { books, source, error } = useLibrary()
 const shown = computed(() => rowBooks(books.value, { limit: props.limit, year: props.year }))
 const ariaLabel = computed(() => props.label || (props.year ? `Books read in ${props.year}` : 'Books read'))

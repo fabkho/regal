@@ -212,7 +212,7 @@ render((notify) => {
   const camera3 = camera.value
   if (!camera3 || !props.ctx.visible.value) return
   const canvas = renderer.domElement as HTMLCanvasElement
-  if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value))) return
+  if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value, camera3))) return
   if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
   else renderer.render(scene.value, camera3)
   if (firstFrame) {

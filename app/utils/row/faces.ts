@@ -63,6 +63,7 @@ export function rowFaceInput(book: Book, pose: BookPose, parts: RowFaceParts = {
     publisher: set?.entry.publisher,
     backIsPhoto: isPhotoFace(set?.entry, 'back'),
     spineIsPhoto: isPhotoFace(set?.entry, 'spine'),
+    flat: Boolean(set?.flat),
   }
 }
 
@@ -79,7 +80,7 @@ export function edgesBoard(set: AssetFaces, art: Picture | null | undefined): RG
 
 /** Where a Book's drawn Spine and page edges are kept in the page's cache. */
 export function rowFaceKeys(book: Pick<Book, 'id' | 'title' | 'author' | 'seriesTitle'>, pose: BookPose, set: AssetFaces | null | undefined, scale: number): { spine: string, edges: string } {
-  const color = set?.spineColor ? `${set.spineColor}` : set?.palette ? `${set.palette.background}` : null
+  const color = set?.flat ? `flat:${set.flat}` : set?.spineColor ? `${set.spineColor}` : set?.palette ? `${set.palette.background}` : null
   const text = `${book.title}|${book.author ?? ''}|${book.seriesTitle ?? ''}`
   return {
     spine: spineKey(book.id, scale, pose.thickness, pose.height, set?.spine, color, text),

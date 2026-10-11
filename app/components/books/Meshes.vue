@@ -46,12 +46,12 @@ import { backArtUrl, backDrawDue } from '#layers/regal/app/utils/books/backs'
 import { CLICK_SLOP } from '#layers/regal/app/utils/books/press'
 import { reschedule, setBands } from '#layers/regal/app/utils/covers/loadQueue'
 import type { Priority } from '#layers/regal/app/utils/covers/loadQueue'
-import { inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
+import { flatSpineWanted, inView, LOAD_BANDS, loadRank } from '#layers/regal/app/utils/covers/loadWindow'
 import type { Boost, FaceUse } from '#layers/regal/app/utils/covers/loadWindow'
 import { STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { createGlintSettle, GLINT_DELAY, glintDelay, settledGlint } from '#layers/regal/app/utils/stack/glintSettle'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
-import { fromHex, readableOn } from '#layers/regal/app/utils/covers/palette'
+import { fromHex, readableOn, toHex } from '#layers/regal/app/utils/covers/palette'
 import type { RGB } from '#layers/regal/app/utils/covers/palette'
 import { createSpin, dragSpin, glideSpin, resetSpin, spinQuaternion, startSettle, stopGlide } from '#layers/regal/app/utils/books/spin'
 import type { Spin, SpinMode } from '#layers/regal/app/utils/books/spin'
@@ -146,6 +146,12 @@ interface BookMaterials {
   aborted: AbortController
   /** Below 1 while the Book appears or vanishes. */
   opacity: number
+  /**
+   * A flat Book (one colour, `assets.color`): its colour, whether its Spine
+   * is plain or typeset (see Flat Books below), and its drawn front when it
+   * has no Cover and shows it (the top of the pile, taken out).
+   */
+  flat: { color: RGB, hex: string, spine: 'plain' | 'queued' | 'typeset', front: CanvasTexture | null, edges: boolean } | null
 }
 
 interface Motion {
@@ -219,10 +225,11 @@ const booksById = computed(() => new Map(props.books.map(book => [book.id, book]
  * bottom rows: the head shows it as is, the tail mirrored, and the fore-edge
  * samples only the middle so no Spine board shows there.
  */
-function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
+function pageEdgesFor(pose: BookPose, board: RGB, plain = false): BookMaterials['edges'] {
   const book = booksById.value.get(pose.bookId)
   const plan = pageEdgePlan(book ?? { id: pose.bookId, pages: null, binding: null }, pose.thickness, pose.depth)
-  const canvas = drawPageEdges(plan, board, pose.bookId)
+  // Plain paper for a flat Book until it comes near the view (its sheets drawn with its typeset Spine).
+  const canvas = plain ? plainPaper(plan) : drawPageEdges(plan, board, pose.bookId)
   const head = faceTexture(canvas)
   const tail = head.clone()
   tail.repeat.set(1, -1)
@@ -240,6 +247,17 @@ function pageEdgesFor(pose: BookPose, board: RGB): BookMaterials['edges'] {
     envMapIntensity: 0.3,
   })
   return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
+}
+
+/** The page edges as plain paper, the canvas drawPageEdges draws on later (the row's stand-in too). */
+function plainPaper(plan: PageEdgePlan): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.width = plan.width
+  element.height = plan.height
+  const context = element.getContext('2d')!
+  context.fillStyle = `rgb(${plan.paper.map(channel => Math.round(channel)).join(' ')})`
+  context.fillRect(0, 0, plan.width, plan.height)
+  return element
 }
 
 /**
@@ -282,6 +300,7 @@ function faceInput(pose: BookPose, entry: BookMaterials | null = null): FaceInpu
     // The file's colours first: they don't change when the front arrives.
     palette: set?.palette ?? entry?.loaded?.palette ?? { background, text, accent: text },
     cover: entry?.loaded?.image,
+    flat: Boolean(set?.flat),
     seed: hashString(book.id),
     description: entry?.description ?? null,
     spineArt: entry?.art.spine,
@@ -295,29 +314,38 @@ function faceInput(pose: BookPose, entry: BookMaterials | null = null): FaceInpu
   }
 }
 
-/** A plain back in the Book's colour: it faces down in the pile, so its real one is drawn later. */
-function plainBack(pose: BookPose): HTMLCanvasElement {
+/** A 2 × 2 canvas in one colour: a back facing down in the pile, a flat Book's Spine far from the view. */
+function plainCanvas(color: string): HTMLCanvasElement {
   const element = document.createElement('canvas')
   element.width = 2
   element.height = 2
   const context = element.getContext('2d')!
-  context.fillStyle = pose.color
+  context.fillStyle = color
   context.fillRect(0, 0, 2, 2)
   return element
+}
+
+/** A plain back in the Book's colour: it faces down in the pile, so its real one is drawn later. */
+function plainBack(pose: BookPose, entry?: BookMaterials | null): HTMLCanvasElement {
+  return plainCanvas(entry?.flat?.hex ?? pose.color)
 }
 
 function materialsFor(pose: BookPose): Material[] {
   let entry = materialsByBook.get(pose.bookId)
   if (!entry) {
-    const input = faceInput(pose)
-    const cover = cloth(pose.color)
-    const spineTexture = faceTexture(input ? drawSpine(input) : document.createElement('canvas'))
-    const backTexture = faceTexture(plainBack(pose))
+    // A flat Book is its one colour from the first frame: cloth, plain Spine, plain back, boards.
+    const flatColor = import.meta.client ? facesOf(pose.bookId)?.flat ?? null : null
+    const flat = flatColor ? { color: flatColor, hex: toHex(flatColor), spine: 'plain' as const, front: null, edges: false } : null
+    const color = flat?.hex ?? pose.color
+    const input = flat ? null : faceInput(pose)
+    const cover = cloth(color)
+    const spineTexture = faceTexture(flat ? plainCanvas(color) : input ? drawSpine(input) : document.createElement('canvas'))
+    const backTexture = faceTexture(plainCanvas(color))
     const spine = printed(spineTexture)
     const back = printed(backTexture)
-    const edges = pageEdgesFor(pose, fromHex(pose.color))
+    const edges = pageEdgesFor(pose, flatColor ?? fromHex(pose.color), !!flat)
     const [head, tail, fore] = edges.materials
-    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, faces: [cover, back, head, tail, spine, fore] }
+    entry = { cover, back, spine, spineTexture, backTexture, edges, set: undefined, art: {}, loaded: null, ready: false, fullCover: null, backPrep: null, aborted: new AbortController(), opacity: 1, flat, faces: [cover, back, head, tail, spine, fore] }
     materialsByBook.set(pose.bookId, entry)
   }
   return entry.faces
@@ -356,6 +384,23 @@ async function applyCover(pose: BookPose) {
   if (!entry || entry.aborted.signal.aborted) return
   entry.set = set
   if (set && !set.entry.pile && (set.front || set.spine)) fullSizeFaces = true
+
+  // A flat Book in the Stack: no image to load for the pile. Its typeset Spine follows the
+  // view (updateFlatSpines), its front loads when it shows (showFlatFront).
+  if (set?.flat && entry.flat && stackScroll) {
+    await flatFonts
+    flatFontsReady = true
+    // Every flat Book arrives here at once: one look at all of them, not one per Book.
+    if (!flatUpdateQueued) {
+      flatUpdateQueued = true
+      queueMicrotask(() => {
+        flatUpdateQueued = false
+        updateFlatSpines()
+      })
+    }
+    if (topBookId === pose.bookId) showFlatFront(pose.bookId)
+    return
+  }
 
   const fonts = spineFontsReady()
   const frontShows = () => topBookId === pose.bookId || !set?.palette
@@ -459,6 +504,7 @@ function drawFace(pose: BookPose, entry: BookMaterials, face: 'spine' | 'back') 
 
 function disposeEntry(entry: BookMaterials) {
   // Cover textures stay cached in loadCover; everything per-Book goes.
+  if (entry.flat?.front) disposeCanvasTexture(entry.flat.front)
   entry.cover.dispose()
   entry.back.dispose()
   entry.spine.dispose()
@@ -485,6 +531,12 @@ const deferBacks = !!stackScroll
 setBands(LOAD_BANDS)
 /** Height of each Book in the current poses, for the load order. */
 const poseHeights = new Map<string, number>()
+/** Each Book's pose, by id (flat Books' Spines and fronts). */
+const poseById = new Map<string, BookPose>()
+/** Flat Books draw their typeset Spines once the Spine fonts are in (Flat Books, below). */
+const flatFonts = import.meta.client ? spineFontsReady() : Promise.resolve()
+let flatFontsReady = false
+let flatUpdateQueued = false
 /** The top Book of the pile: its front shows. */
 let topBookId: string | null = null
 
@@ -534,13 +586,21 @@ watch(() => props.poses, (poses) => {
   let top: BookPose | null = null
   for (const pose of poses) {
     poseHeights.set(pose.bookId, pose.y)
+    poseById.set(pose.bookId, pose)
     if (!top || pose.y > top.y) top = pose
     if (!materialsByBook.has(pose.bookId)) {
       materialsFor(pose)
       applyCover(pose)
     }
   }
+  const previousTop = topBookId
   topBookId = top?.bookId ?? null
+  // A flat Book come to the top shows its front; the one that was there goes back to cloth.
+  if (topBookId !== previousTop) {
+    if (topBookId) showFlatFront(topBookId)
+    if (previousTop) hideFlatFront(previousTop)
+  }
+  updateFlatSpines()
 }, { immediate: true })
 
 /** Frees the materials of Books that are neither in the view nor still on their way out. */
@@ -553,6 +613,7 @@ function sweep() {
     motionByBook.delete(bookId)
     // Gone from the pile: its remaining loads (shared Covers) rank last.
     poseHeights.delete(bookId)
+    poseById.delete(bookId)
   }
 }
 
@@ -713,7 +774,8 @@ function setFullCover(bookId: string, on: boolean) {
   if (!entry) return
   if (on) {
     const url = fullCoverUrl(bookId)
-    if (!url) return
+    // A flat Book without a Cover: its drawn front, as on the top of the pile.
+    if (!url) return showFlatFront(bookId)
     entry.fullCover = url
     void loadFullCover(url, loadPriority(bookId, 'shown')).then((texture) => {
       const current = materialsByBook.get(bookId)
@@ -722,12 +784,122 @@ function setFullCover(bookId: string, on: boolean) {
     return
   }
   const url = entry.fullCover
-  if (!url) return
+  if (!url) return hideFlatFront(bookId)
   entry.fullCover = null
   // Back to the small Cover, or to cloth when that never came: never a freed texture.
   if (entry.loaded) printCover(entry, entry.loaded.texture)
   else clothCover(entry)
   releaseFullCover(url)
+  hideFlatFront(bookId)
+}
+
+// --- Flat Books (Stack) ------------------------------------------------------
+// A Book with one colour (`assets.color`, utils/covers/bookAssets.ts) has no
+// image but its front: Spine and back are drawn in its colour (bookFaces.ts,
+// `flat`). It starts plain, the 2 × 2 canvas of its colour and no type, and
+// its typeset Spine is drawn only while it is in or near the view (a view
+// height around it, utils/covers/loadWindow.ts `flatSpineWanted`); once the
+// view has moved far away (and come to rest after a fling) it is plain again
+// and its canvas freed. So the Spines' memory follows the view, not the
+// Library: a pile of 1,000 flat Books keeps a hundred or so typeset (each
+// ~250 kB of texture with its mipmaps) instead of all of them. Its page
+// edges are plain paper until then too (drawing every Book's sheets took a
+// second on a laptop for 1,000 Books, before the first frame). Its front (the Cover's small copy) loads only when it
+// shows: the top of the pile or the Book taken out (then at full size); a
+// Book without a Cover shows a drawn front there instead, its title block in
+// its colour, like its back.
+
+function disposeCanvasTexture(texture: CanvasTexture) {
+  ;(texture.image as HTMLCanvasElement).width = 0
+  texture.dispose()
+}
+
+/** Draws or drops flat Books' typeset Spines as the view moves (cheap: one look at each flat Book). */
+function updateFlatSpines() {
+  if (!flatFontsReady || !stackScroll) return
+  for (const [bookId, entry] of materialsByBook) {
+    const flat = entry.flat
+    if (!flat || entry.set === undefined) continue
+    const wanted = flatSpineWanted(poseHeights.get(bookId), stackScroll, boostOf(bookId))
+    if (wanted === 'draw' && flat.spine === 'plain') {
+      flat.spine = 'queued'
+      void whenDrawn(entry, bookId, (current) => {
+        const pose = poseById.get(bookId)
+        if (!current.flat || current.flat.spine !== 'queued') return
+        // The view moved on before its turn: it stays plain.
+        if (!pose || flatSpineWanted(poseHeights.get(bookId), stackScroll, boostOf(bookId)) === 'drop') {
+          current.flat.spine = 'plain'
+          return
+        }
+        drawFace(pose, current, 'spine')
+        // Its sheets along the page edges, once (a small canvas, kept).
+        if (!current.flat.edges) {
+          redrawPageEdges(current, current.flat.color, bookId)
+          current.flat.edges = true
+        }
+        current.flat.spine = 'typeset'
+        current.ready = true
+        noteShown(bookId, 'spine')
+        noteFlat()
+      })
+    }
+    else if (wanted === 'drop' && flat.spine === 'typeset') {
+      const drawn = entry.spineTexture.image as HTMLCanvasElement
+      setFace(entry, 'spine', plainCanvas(flat.hex))
+      drawn.width = 0
+      flat.spine = 'plain'
+    }
+  }
+  noteFlat()
+}
+
+/** ?debug=loads: how many flat Books there are, how many wear a typeset Spine and its pixels (window.__regalFlat). */
+function noteFlat() {
+  if (!props.debugLoads) return
+  let typeset = 0
+  let pixels = 0
+  for (const entry of materialsByBook.values()) {
+    if (entry.flat?.spine !== 'typeset') continue
+    typeset++
+    const image = entry.spineTexture.image as HTMLCanvasElement
+    pixels += image.width * image.height
+  }
+  ;(window as { __regalFlat?: unknown }).__regalFlat = { books: materialsByBook.size, typeset, pixels }
+}
+
+/** A flat Book's front where it shows: the Cover's small copy, or without one its drawn front. */
+function showFlatFront(bookId: string) {
+  const entry = materialsByBook.get(bookId)
+  const set = entry?.set
+  if (!entry?.flat || !set || entry.fullCover) return
+  if (entry.loaded) return printCover(entry, entry.loaded.texture)
+  const url = set.pileFront ?? set.front
+  if (url) {
+    void loadCover(url, loadPriority(bookId, 'shown')).then((loaded) => {
+      const current = materialsByBook.get(bookId)
+      if (!loaded || current !== entry) return
+      entry.loaded = loaded
+      if (!entry.fullCover && (topBookId === bookId || pickedId.value === bookId)) printCover(entry, loaded.texture)
+      noteShown(bookId, 'front')
+    })
+    return
+  }
+  const pose = poseById.get(bookId)
+  const input = pose ? faceInput(pose, entry) : null
+  if (!input || !flatFontsReady) return
+  entry.flat.front ??= faceTexture(drawBack(input))
+  printCover(entry, entry.flat.front)
+}
+
+/** A flat Book no longer shows its front (put back, no longer on top): cloth again, its drawn front freed. */
+function hideFlatFront(bookId: string) {
+  const entry = materialsByBook.get(bookId)
+  if (!entry?.flat || entry.fullCover || topBookId === bookId || pickedId.value === bookId) return
+  clothCover(entry)
+  if (entry.flat.front) {
+    disposeCanvasTexture(entry.flat.front)
+    entry.flat.front = null
+  }
 }
 
 /** The plain cloth front a Book has until its Cover is in. */
@@ -844,7 +1016,7 @@ function releaseBack(bookId: string) {
   const pose = rendered.value.find(candidate => candidate.bookId === bookId)
   if (!prep.drawn || !pose) return
   const drawn = entry.backTexture.image as HTMLCanvasElement
-  setFace(entry, 'back', plainBack(pose))
+  setFace(entry, 'back', plainBack(pose, entry))
   drawn.width = 0
 }
 
@@ -876,12 +1048,14 @@ watch(pickedId, (id, previous) => {
     }, RETURN_SECONDS * 1000 + 100)
   }
   reschedule()
+  updateFlatSpines()
 })
 
 let hoverTimer: ReturnType<typeof setTimeout> | undefined
 watch(hoveredBook, (id) => {
   // A hovered Book's faces jump the queue.
   reschedule()
+  updateFlatSpines()
   clearTimeout(hoverTimer)
   if (!id) return
   hoverTimer = setTimeout(() => {
@@ -1115,14 +1289,23 @@ watch(() => props.poses, (next, previous) => {
 })
 
 /** Where the view was when the load queue last read its ranks. */
-const ranked = { focusY: Number.NaN, targetY: Number.NaN }
+const ranked = { focusY: Number.NaN, targetY: Number.NaN, resting: false }
 
 onBeforeRender(({ delta }) => {
-  // The load window moves with the scroll: new ranks once the view has moved a little.
-  if (stackScroll && (Math.abs(stackScroll.focusY - ranked.focusY) > 0.03 || Math.abs(stackScroll.targetY - ranked.targetY) > 0.03)) {
+  // The load window moves with the scroll: new ranks once the view has moved a little. Written as
+  // "not within", so the first frame (nothing ranked yet, NaN) counts as moved: `NaN > 0.03` is false,
+  // and the window then never moved at all.
+  if (stackScroll && !(Math.abs(stackScroll.focusY - ranked.focusY) <= 0.03 && Math.abs(stackScroll.targetY - ranked.targetY) <= 0.03)) {
     ranked.focusY = stackScroll.focusY
     ranked.targetY = stackScroll.targetY
+    ranked.resting = false
     reschedule()
+    updateFlatSpines()
+  }
+  // Come to rest after a fling: the window no longer reaches ahead, so the Spines it drew on the way go.
+  else if (stackScroll && !ranked.resting && Math.abs(stackScroll.speed) < 0.05) {
+    ranked.resting = true
+    updateFlatSpines()
   }
   drawBackWhenDue()
   drawPending()

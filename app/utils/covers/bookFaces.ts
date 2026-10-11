@@ -64,6 +64,13 @@ export interface FaceInput {
   spineIsPhoto?: boolean
   /** drawSpine at this share of its full size (a row's card needs fewer pixels; default 1). */
   resolution?: number
+  /**
+   * Flat faces (the Book's one colour, library file `assets.color`): without
+   * art, the Spine and the back are `palette.background` all over, the type in
+   * `palette.text` (ink or paper by WCAG contrast, `readableOn`): no sheen, no
+   * blurred Cover, no blurb or barcode on the back, only a quiet title block.
+   */
+  flat?: boolean
 }
 
 type Art = CanvasImageSource & { width: number, height: number }
@@ -142,7 +149,9 @@ export function drawSpine(input: FaceInput): HTMLCanvasElement {
   }
 
   const { palette, book } = input
-  const text = spineTextColor(art ? averageColor(art, 0.15, 0.2, 0.7, 0.6) : palette.background)
+  // Flat: one colour, its readable ink (the producer's colour as given, the ink by WCAG contrast).
+  const flat = Boolean(input.flat) && !art
+  const text = flat ? palette.text : spineTextColor(art ? averageColor(art, 0.15, 0.2, 0.7, 0.6) : palette.background)
 
   if (art) {
     context.drawImage(art, 0, 0, width, height)
@@ -153,13 +162,16 @@ export function drawSpine(input: FaceInput): HTMLCanvasElement {
   }
 
   // Sheen across the Spine, darker at the hinges (subtler on artwork, which has its own light).
-  const sheen = context.createLinearGradient(0, 0, width, 0)
-  sheen.addColorStop(0, `rgba(0,0,0,${art ? 0.22 : 0.28})`)
-  sheen.addColorStop(0.2, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
-  sheen.addColorStop(0.8, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
-  sheen.addColorStop(1, `rgba(0,0,0,${art ? 0.24 : 0.3})`)
-  context.fillStyle = sheen
-  context.fillRect(0, 0, width, height)
+  // A flat Spine has none: one colour, the scene's light gives it its shape.
+  if (!flat) {
+    const sheen = context.createLinearGradient(0, 0, width, 0)
+    sheen.addColorStop(0, `rgba(0,0,0,${art ? 0.22 : 0.28})`)
+    sheen.addColorStop(0.2, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
+    sheen.addColorStop(0.8, `rgba(255,255,255,${art ? 0.04 : 0.1})`)
+    sheen.addColorStop(1, `rgba(0,0,0,${art ? 0.24 : 0.3})`)
+    context.fillStyle = sheen
+    context.fillRect(0, 0, width, height)
+  }
   if (art) textHalo(context, text, 6 * k)
 
   context.fillStyle = rgba(text)
@@ -693,8 +705,48 @@ export function drawBack(input: FaceInput): HTMLCanvasElement {
     return element
   }
 
+  if (input.flat && !art) {
+    drawFlatBack(context, input, width, height, k)
+    return element
+  }
+
   const color = spineTextColor(art ? averageColor(art, 0.1, 0.05, 0.8, 0.7) : input.palette.background)
   paintBackGround(context, input, width, height, color, k)
   drawClassicBack(context, input, width, height, color, k)
   return element
+}
+
+/**
+ * A flat back (the Book's one colour): the colour all over and, in its ink, a
+ * quiet title block in the upper part, the title (up to three lines) over the
+ * author and a short rule, as a plain cloth binding is printed. Nothing else:
+ * no blurb, no quotes, no barcode, no Cover showing through.
+ */
+function drawFlatBack(context: CanvasRenderingContext2D, input: FaceInput, width: number, height: number, k: number) {
+  const { book, palette } = input
+  const ink = palette.text
+  context.fillStyle = rgba(palette.background)
+  context.fillRect(0, 0, width, height)
+
+  const margin = width * 0.12
+  const inner = width - margin * 2
+  const blocks: FitBlock[] = [{ text: book.title, gapAfter: 0.45 }]
+  const styles: BlockStyle[] = [{ font: size => `600 ${size}px ${SERIF}`, alpha: 0.92 }]
+  if (book.author) {
+    blocks.push({ text: book.author, scale: 0.62 })
+    styles.push({ font: size => `400 ${size}px ${SERIF}`, alpha: 0.72 })
+  }
+  const fitted = fitTextBlocks(blocks, {
+    measure: canvasMeasure(context, styles),
+    maxWidth: inner,
+    maxHeight: height * 0.24,
+    min: 8 * k,
+    max: Math.min(22 * k, width * 0.075),
+    lineHeight: 1.22,
+  })
+  const top = height * 0.14
+  drawFitted(context, fitted, styles, ink, margin, top, inner)
+  // A short rule under the block, the one ornament.
+  context.fillStyle = rgba(ink, 0.35)
+  context.fillRect(margin, top + fitted.height + height * 0.03, Math.min(inner, width * 0.18), Math.max(1, 1.2 * k))
 }

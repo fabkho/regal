@@ -1,7 +1,7 @@
 // Reading a Regal library file (docs/library-file.md) into what the display
 // keeps: the Books, each Book's faces and the file's few top-level facts. Pure,
 // so it runs on the server (the records are in the HTML) and in the browser.
-import { formatLibraryFileErrors, libraryBookToBook, parseLibraryFile } from '#layers/regal/shared/library/libraryFile'
+import { formatLibraryFileErrors, libraryBookToBook, parseLibraryFile, validateLibraryFile } from '#layers/regal/shared/library/libraryFile'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { LibraryBook } from '#layers/regal/shared/types/libraryFile'
 import type { BookAssetEntry } from '#layers/regal/app/utils/covers/bookAssets'
@@ -42,6 +42,7 @@ export function assetEntryOf(book: LibraryBook): BookAssetEntry | undefined {
     pile: assets?.pile?.front || assets?.pile?.spine ? { front: defined(assets.pile.front), spine: defined(assets.pile.spine) } : undefined,
     palette: defined(assets?.palette),
     spineColor: defined(assets?.spineColor),
+    color: defined(assets?.color),
     photoFaces: assets?.photoFaces?.length ? [...assets.photoFaces] : undefined,
     quotes: book.quotes?.length ? book.quotes.map(({ text, source }) => ({ text, source })) : undefined,
     genre: defined(book.genre),
@@ -65,7 +66,20 @@ export function invalidFileError(errors: { path: string, reason: string }[]): Li
 
 /** Parses and validates the text of a library file. */
 export function readLibraryFile(text: string): LibraryReadResult {
-  const result = parseLibraryFile(text)
+  return readValidated(parseLibraryFile(text))
+}
+
+/**
+ * Validates a library document already in memory (a host builds it, nothing
+ * fetched: RegalBooksStage's and RegalBooksRow's `library`), as a file's text
+ * would be. Its image references must be absolute URLs: there is no file to
+ * be relative to.
+ */
+export function readLibraryDocument(document: unknown): LibraryReadResult {
+  return readValidated(validateLibraryFile(document))
+}
+
+function readValidated(result: ReturnType<typeof validateLibraryFile>): LibraryReadResult {
   if (!result.ok) return { ok: false, error: invalidFileError(result.errors) }
   const assets: Record<string, BookAssetEntry> = {}
   for (const book of result.library.books) {
@@ -112,3 +126,27 @@ export function resolveLibraryUrl(reference: string, src: string, page: string):
     return null
   }
 }
+
+/** What an in-memory library document is shown as: its `source.src`. */
+export const MEMORY_SOURCE = 'regal-memory:'
+
+const memoryKeys = new WeakMap<object, string>()
+let memoryCount = 0
+
+/**
+ * A stable source key for an in-memory library document, one per object: the
+ * same document shows once however many components are given it, a new one
+ * (the host's Library changed) shows again. Image references resolve against
+ * it as against a file's URL, so only absolute http(s) ones load.
+ */
+export function memorySource(document: object): string {
+  let key = memoryKeys.get(document)
+  if (!key) {
+    key = `${MEMORY_SOURCE}${++memoryCount}`
+    memoryKeys.set(document, key)
+  }
+  return key
+}
+
+/** Whether a source is an in-memory document (memorySource), not a file's URL. */
+export const isMemorySource = (src: string | null | undefined): boolean => Boolean(src?.startsWith(MEMORY_SOURCE))

@@ -87,10 +87,10 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_R
 
 | Component | What | Main props |
 |---|---|---|
-| `RegalBooksStage` | The 3D Stack and the picked Book's details (a bottom sheet on stages ≤ 560 px). | `controls`, `rotate`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…` |
+| `RegalBooksStage` | The 3D Stack and the picked Book's details (a bottom sheet on stages ≤ 560 px). | `library` (a document in memory instead of `librarySrc`), `controls`, `rotate`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…` |
 | `RegalBooksSidebar` | Count, sort & filters, the Books as records, linked to the Stack. | `heading`, `count-label`, `filters`, `list`, `theme`, `unstyled` |
 | `RegalBooksFilters` | The same sort & filters as one bar, for a phone. | – |
-| `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `intro` (`visible`/`mount`/`none`: the Books come into place when the row first shows), `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
+| `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `library`, `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `intro` (`visible`/`mount`/`none`: the Books come into place when the row first shows), `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
 
 Both render a visually hidden list of the Books (a button each, taking it out) and open a Book as a real dialog; `accessible-list` turns the list off for a host with its own. Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
 

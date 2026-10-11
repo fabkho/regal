@@ -21,6 +21,8 @@ Use these terms in code, issues and commits.
 | **Cover** | The front image of a Book, listed in the **Regal library file** (found by a **Pipeline**). |
 | **Cover resolver** | **Regal assets** code (`pipeline/src/assets/front.ts`, `pipeline/src/resolvers/`) that finds a Cover for a Book by walking **Cover sources** in order. Not part of the display. |
 | **Cover source** | One upstream lookup strategy (Apple Books, the German National Library, Google Books, Open Library by ISBN or title). |
+| **Flat faces** | A Book given its one colour (`assets.color` in the **Regal library file**, no Spine art): its **Spine** and back are drawn flat in that colour, title/author in ink or paper by contrast, a quiet title block on the back; the front stays the **Cover**. In the **Stack** its typeset Spine exists only near the view. |
+| **In-memory library** | A **Regal library file**'s content handed to a component as an object (`library` prop) instead of a URL: validated and shown, nothing fetched. |
 | **Placeholder cover** | Procedurally drawn front used when the library file has no front image for a Book (or it doesn't load). |
 | **View** | How the Library is shown: the **Bookcase** (Books standing on Shelves), the **Stack**, or the **Row** (in a card). |
 | **Stack** | View without furniture: every Book lying flat in one scrollable pile, Spines towards the viewer, what you're reading now on top. |
