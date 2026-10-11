@@ -1270,7 +1270,7 @@ watch(() => props.poses, (next, previous) => {
 })
 
 /** Where the view was when the load queue last read its ranks. */
-const ranked = { focusY: Number.NaN, targetY: Number.NaN }
+const ranked = { focusY: Number.NaN, targetY: Number.NaN, resting: false }
 
 onBeforeRender(({ delta }) => {
   // The load window moves with the scroll: new ranks once the view has moved a little. Written as
@@ -1279,7 +1279,13 @@ onBeforeRender(({ delta }) => {
   if (stackScroll && !(Math.abs(stackScroll.focusY - ranked.focusY) <= 0.03 && Math.abs(stackScroll.targetY - ranked.targetY) <= 0.03)) {
     ranked.focusY = stackScroll.focusY
     ranked.targetY = stackScroll.targetY
+    ranked.resting = false
     reschedule()
+    updateFlatSpines()
+  }
+  // Come to rest after a fling: the window no longer reaches ahead, so the Spines it drew on the way go.
+  else if (stackScroll && !ranked.resting && Math.abs(stackScroll.speed) < 0.05) {
+    ranked.resting = true
     updateFlatSpines()
   }
   drawBackWhenDue()
