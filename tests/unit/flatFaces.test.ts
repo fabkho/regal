@@ -156,7 +156,7 @@ const input = (background: RGB, extra: Partial<FaceInput> = {}): FaceInput => ({
   depth: 0.13,
   palette: { background, text: readableOn(background), accent: readableOn(background) },
   seed: 1,
-  description: 'A blurb that a flat back never prints.',
+  description: 'A blurb printed on the back. It runs on.',
   flat: true,
   ...extra,
 })
@@ -187,18 +187,27 @@ describe('flat faces, drawn', () => {
     expect(calls.filter(call => call.op === 'fillText')[0]!.fillStyle).toBe('rgba(44, 44, 42, 1)')
   })
 
-  it('draws a back in the same colour with a quiet title block and nothing else', () => {
+  it('prints the back on its one colour: title, author, blurb and the ISBN barcode in its ink', () => {
     const cover = { width: 10, height: 10 } as unknown as FaceInput['cover']
-    drawBack(input(navy, { cover }))
+    drawBack(input(navy, { cover, publisher: 'Ace' }))
     const fills = calls.filter(call => call.op === 'fillRect')
     expect(fills[0]!.fillStyle).toBe('rgba(29, 59, 90, 1)')
-    // No Cover blurred through it, no barcode, no blurb: title, author and a short rule.
+    // No Cover blurred through it.
     expect(calls.find(call => call.op === 'drawImage')).toBeUndefined()
-    const texts = calls.filter(call => call.op === 'fillText').map(call => call.args[0])
-    expect(texts.join(' ')).toContain('Darkness')
-    expect(texts.join(' ')).toContain('Le Guin')
-    expect(texts.join(' ')).not.toContain('blurb')
-    expect(fills).toHaveLength(2)
+    const texts = calls.filter(call => call.op === 'fillText')
+    const printed = texts.map(call => call.args[0]).join(' ')
+    expect(printed).toContain('Darkness')
+    expect(printed).toContain('Le Guin')
+    expect(printed).toContain('blurb')
+    expect(printed).toContain('9 780441 478125')
+    // The type in the colour's ink (paper on navy); the barcode on its white panel.
+    expect(texts.find(call => call.args[0] === 'The Left Hand of Darkness')!.fillStyle).toBe('rgba(245, 242, 235, 0.95)')
+    expect(fills.some(call => call.fillStyle === '#fbfaf6')).toBe(true)
+  })
+
+  it('prints no barcode without an ISBN', () => {
+    drawBack(input(navy, { book: { id: 'b-2', title: 'Untitled', seriesTitle: null, author: null, isbn13: null } }))
+    expect(calls.some(call => call.op === 'fillRect' && call.fillStyle === '#fbfaf6')).toBe(false)
   })
 
   it('leaves a Book that is not flat as before: a sheen on the Spine', () => {
