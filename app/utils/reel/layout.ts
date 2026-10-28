@@ -57,20 +57,24 @@ export function reelDistance(index: number, focus: number, n: number): number {
 
 /** The pose of Book `index` for the arc at `focus` (n Books). */
 export function reelPose(index: number, focus: number, n: number): ReelPose {
+  return reelPoseInto(index, focus, n, { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, shadow: 0, zIndex: 0 })
+}
+
+/** `reelPose`, written into `out` (the reel poses its Books every frame without allocating). */
+export function reelPoseInto(index: number, focus: number, n: number, out: ReelPose): ReelPose {
   const d = reelDistance(index, focus, n)
   const ad = Math.abs(d)
   const s = Math.sign(d)
   const hidden = ad > REEL_FADE_AT
-  return {
-    distance: d,
-    x: s * (ad < 1 ? ad * REEL_SPACING : REEL_SPACING + (ad - 1) * REEL_STEP) + 0,
-    y: REEL_LIFT,
-    z: -Math.min(ad, 1) * REEL_DEPTH - Math.max(0, ad - 1) * REEL_DEPTH_STEP + 0,
-    rotateY: -clamp(d, -1, 1) * REEL_TURN - s * clamp(ad - 1, 0, 2) * REEL_TURN_STEP + 0,
-    opacity: hidden ? 0 : 1,
-    shadow: hidden ? 0 : 1 - ad * 0.3,
-    zIndex: 100 - Math.round(ad * 10),
-  }
+  out.distance = d
+  out.x = s * (ad < 1 ? ad * REEL_SPACING : REEL_SPACING + (ad - 1) * REEL_STEP) + 0
+  out.y = REEL_LIFT
+  out.z = -Math.min(ad, 1) * REEL_DEPTH - Math.max(0, ad - 1) * REEL_DEPTH_STEP + 0
+  out.rotateY = -clamp(d, -1, 1) * REEL_TURN - s * clamp(ad - 1, 0, 2) * REEL_TURN_STEP + 0
+  out.opacity = hidden ? 0 : 1
+  out.shadow = hidden ? 0 : 1 - ad * 0.3
+  out.zIndex = 100 - Math.round(ad * 10)
+  return out
 }
 
 /** Poses of all `n` Books for the arc at `focus`, in Book order. */
@@ -89,10 +93,14 @@ export interface ReelCamera {
 
 /** The slow dolly and sway at `time` ms on the reel's clock (index.html: the world's transform). */
 export function reelCamera(time: number): ReelCamera {
+  return reelCameraInto(time, { z: 0, rotateY: 0, rotateX: 0 })
+}
+
+/** `reelCamera`, written into `out`. */
+export function reelCameraInto(time: number, out: ReelCamera): ReelCamera {
   const phase = (time / REEL_DOLLY_PERIOD) * Math.PI * 2
-  return {
-    z: REEL_CAMERA_Z + REEL_DOLLY_PX * Math.cos(phase),
-    rotateY: Math.sin(phase) * REEL_SWAY_DEG,
-    rotateX: REEL_TILT_DEG,
-  }
+  out.z = REEL_CAMERA_Z + REEL_DOLLY_PX * Math.cos(phase)
+  out.rotateY = Math.sin(phase) * REEL_SWAY_DEG
+  out.rotateX = REEL_TILT_DEG
+  return out
 }

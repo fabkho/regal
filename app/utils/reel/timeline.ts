@@ -95,13 +95,35 @@ export interface ReelPhase {
  * beats, so a caller wraps it with `n`.
  */
 export function reelPhase(time: number): ReelPhase {
+  const beat = Math.floor(Math.max(0, time) / REEL_BEAT)
+  return { beat, focus: reelFocus(time), badge: reelBadge(time), index: beat }
+}
+
+/** `reelPhase(time).focus` without an object (the reel reads it every frame). */
+export function reelFocus(time: number): number {
   const t = Math.max(0, time)
   const beat = Math.floor(t / REEL_BEAT)
-  const local = t - beat * REEL_BEAT
-  const move = REEL_EASE.standard(seg(local, 0, REEL_MOVE))
-  const badge = REEL_EASE.standard(seg(local, REEL_MOVE, REEL_MOVE + REEL_BADGE_IN))
+  return beat - 1 + REEL_EASE.standard(seg(t - beat * REEL_BEAT, 0, REEL_MOVE))
+}
+
+/** `reelPhase(time).badge` without an object (the reel reads it every frame). */
+export function reelBadge(time: number): number {
+  const t = Math.max(0, time)
+  const local = t - Math.floor(t / REEL_BEAT) * REEL_BEAT
+  return REEL_EASE.standard(seg(local, REEL_MOVE, REEL_MOVE + REEL_BADGE_IN))
     * (1 - REEL_EASE.exit(seg(local, REEL_BEAT - REEL_BADGE_OUT, REEL_BEAT)))
-  return { beat, focus: beat - 1 + move, badge, index: beat }
+}
+
+/**
+ * The dolly's clock on a phone (the mobile render tier): it runs only while the
+ * arc moves, eased with the move, so a hold renders no frames (plan section C,
+ * "on phones only while the arc moves"). At each beat's end it has run a whole
+ * beat, so the camera ends where the desktop's continuous dolly is.
+ */
+export function reelMoveClock(time: number): number {
+  const t = Math.max(0, time)
+  const beat = Math.floor(t / REEL_BEAT)
+  return beat * REEL_BEAT + REEL_BEAT * REEL_EASE.standard(seg(t - beat * REEL_BEAT, 0, REEL_MOVE))
 }
 
 /** The nearest whole Book, as a number that is never -0 (so poses and tests see +0). */

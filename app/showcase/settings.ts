@@ -7,7 +7,7 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
 
-export type PlaygroundComponent = 'stage' | 'row'
+export type PlaygroundComponent = 'stage' | 'row' | 'reel'
 export type PlaygroundLibrary = 'live' | 'shelf' | 'demo' | 'url' | 'file'
 export type TokenPreset = 'regal' | 'night' | 'soft'
 export type SlotDemo = 'none' | 'whole' | 'parts'
@@ -40,6 +40,8 @@ export interface PlaygroundSettings {
   backButton: boolean
   label: string
   rowSize: RowSize
+  /** RegalBooksReel: one round when it first shows (`autoplay`). */
+  reelAutoplay: boolean
   /** Theming: the `theme` prop, `unstyled`, token presets and overrides, slots. */
   theme: RegalTheme
   /** For `theme="auto"`: the host page's own scheme (`<html data-theme>`). */
@@ -77,6 +79,7 @@ export const DEFAULT_SETTINGS: Readonly<PlaygroundSettings> = Object.freeze({
   backButton: true,
   label: '',
   rowSize: 'wide',
+  reelAutoplay: true,
   theme: 'light',
   hostScheme: 'dark',
   unstyled: false,
@@ -110,6 +113,7 @@ const KEYS: Record<keyof PlaygroundSettings, string> = {
   backButton: 'back',
   label: 'label',
   rowSize: 'size',
+  reelAutoplay: 'rplay',
   theme: 'theme',
   hostScheme: 'host',
   unstyled: 'unstyled',
@@ -160,7 +164,7 @@ export function readSettings(query: LocationQuery, choices: LibraryChoices = NO_
   const library = src ? 'url' : pick(q('library'), offered, defaultLibrary(choices))
   const accent = text(q('accent'))
   return {
-    component: pick(q('component'), ['stage', 'row'] as const, d.component),
+    component: pick(q('component'), ['stage', 'row', 'reel'] as const, d.component),
     accessibleList: flag(q('accessibleList'), d.accessibleList),
     controls: flag(q('controls'), d.controls),
     stageRotate: pick(q('stageRotate'), ['turntable', 'free'] as const, d.stageRotate),
@@ -178,6 +182,7 @@ export function readSettings(query: LocationQuery, choices: LibraryChoices = NO_
     backButton: flag(q('backButton'), d.backButton),
     label: text(q('label')) ?? d.label,
     rowSize: pick(q('rowSize'), ['phone', 'wide'] as const, d.rowSize),
+    reelAutoplay: flag(q('reelAutoplay'), d.reelAutoplay),
     theme: pick(q('theme'), ['light', 'dark', 'auto'] as const, d.theme),
     hostScheme: pick(q('hostScheme'), ['light', 'dark'] as const, d.hostScheme),
     unstyled: flag(q('unstyled'), d.unstyled),
@@ -328,10 +333,31 @@ function slotLines(settings: PlaygroundSettings): string[] {
   return []
 }
 
+/** A reel's slots: the host's pills and caption under the Book in front, its line in the details. */
+const REEL_SLOT_LINES = [
+  '<template #tooltip="{ book }">',
+  '  <MyPills :book="book" />',
+  '  <p>{{ book.title }}</p>',
+  '</template>',
+  '<template #detail-meta="{ book }">',
+  '  <MyRatings :book="book" />',
+  '</template>',
+]
+
 /** The host's template for these settings. */
 export function templateSnippet(settings: PlaygroundSettings): string {
   const parts: string[] = []
-  if (settings.component === 'row') {
+  if (settings.component === 'reel') {
+    // Its Library is a document in memory (the library file's format): the host builds or fetches it.
+    const attrs = ['class="books-reel"', ':library="library"']
+    if (!settings.reelAutoplay) attrs.push(attr('autoplay', false))
+    if (!settings.accessibleList) attrs.push(attr('accessible-list', false))
+    if (settings.label) attrs.push(attr('label', settings.label))
+    attrs.push(...themeAttrs(settings))
+    attrs.push('@open="({ id }) => navigateTo(`/books/${id}`)"')
+    parts.push(tag('RegalBooksReel', attrs, settings.slots === 'none' ? [] : REEL_SLOT_LINES))
+  }
+  else if (settings.component === 'row') {
     const attrs = ['class="books-row"']
     if (settings.inspect !== DEFAULT_SETTINGS.inspect) attrs.push(attr('inspect', settings.inspect))
     if (settings.limit !== null) attrs.push(attr('limit', settings.limit))
@@ -367,10 +393,12 @@ export function templateSnippet(settings: PlaygroundSettings): string {
 
 /** The host's CSS for these settings: the component's size and the tokens set. */
 export function styleSnippet(settings: PlaygroundSettings): string {
-  const selector = settings.component === 'row' ? '.books-row' : '.books-stage'
+  const selector = settings.component === 'row' ? '.books-row' : settings.component === 'reel' ? '.books-reel' : '.books-stage'
   const size = settings.component === 'row'
     ? [`width: ${ROW_SIZES[settings.rowSize].width};`, `height: ${ROW_SIZES[settings.rowSize].height};`]
-    : ['height: 36rem;']
+    : settings.component === 'reel'
+      ? ['max-width: 430px;', '/* The stage\'s height (the prototype\'s 330 px) */', '--regal-reel-height: 330px;']
+      : ['height: 36rem;']
   const tokens = Object.entries(tokensOf(settings)).map(([name, value]) => `${name}: ${value};`)
   const lines = [...size, ...(tokens.length ? ['/* Theme tokens (README: "Theming") */', ...tokens] : [])]
   return `<style scoped>\n${selector} {\n${lines.map(line => `  ${line}`).join('\n')}\n}\n</style>`

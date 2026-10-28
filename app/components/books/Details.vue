@@ -14,7 +14,9 @@ const props = withDefaults(defineProps<{
   maxHeight?: number
   /** Where focus goes when the card closes and what opened it is gone (the stage). */
   returnFocus?: HTMLElement | null
-}>(), { sheet: false, maxHeight: 0, returnFocus: null })
+  /** The card lives in <body> too (a reel broken out over the viewport): it carries the root's tokens, as the sheet does. */
+  teleported?: boolean
+}>(), { sheet: false, maxHeight: 0, returnFocus: null, teleported: false })
 
 const { bookById } = usePickContext()
 const { pickedId, face, flip, putAway } = useBookPick()
@@ -28,7 +30,7 @@ const titleId = useId()
 const ui = useRegalUi()
 /** The host's own head (#detail, #detail-header) has no title of Regal's to name the dialog by. */
 const customTitle = computed(() => ui.hasSlot('detail') || ui.hasSlot('detail-header'))
-const surface = useRegalSurface(() => props.sheet)
+const surface = useRegalSurface(() => props.sheet || props.teleported)
 
 // The card grows out of the Book's label and shrinks back into it
 // (composables/useLabelMorph.ts): then it skips its own fade and stays hidden
