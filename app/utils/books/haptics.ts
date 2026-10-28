@@ -4,9 +4,9 @@
 // while a finger scrolls the pile or its flick glides on, like the detents of
 // a dial. The ticks are rate-limited (TICK_GAP_MS), so a fast flick ticks
 // sparsely instead of buzzing. Only where the Vibration API exists (Android
-// Chrome; iOS Safari has none), only with the user's gesture (Chrome ignores
-// it otherwise anyway), never with reduced motion, and a host page can turn
-// it off (runtimeConfig.public.regal.haptics, docs/nuxt-layer.md). Pure, so it's
+// Chrome) or, on iOS 18+, the switch haptic (iosHaptic.ts: one tap per
+// pulse), only with the user's gesture (Chrome ignores it otherwise anyway),
+// never with reduced motion, and a host page can turn it off (runtimeConfig.public.regal.haptics, docs/nuxt-layer.md). Pure, so it's
 // unit-testable; composables/useBookHaptics.ts applies it.
 
 export type Pulse = 'out' | 'back' | 'tick'
@@ -69,7 +69,7 @@ export function scrollTick(state: TickState, focusId: string | null, touchScroll
 export interface PulseGate {
   /** The host allows haptics (runtimeConfig.public.regal.haptics). */
   enabled: boolean
-  /** navigator.vibrate exists. */
+  /** The phone can pulse: navigator.vibrate exists, or the iOS switch haptic does (iosHaptic.ts). */
   canVibrate: boolean
   /** prefers-reduced-motion: reduce. */
   reducedMotion: boolean

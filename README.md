@@ -80,7 +80,7 @@ Each component loads the library file itself (server-side when it can, one fetch
 |---|---|---|
 | `librarySrc` | `''` | URL of the [Regal library file](docs/library-file.md): absolute, or relative to the page (`/books/library.json` from the host's `public/`). On another origin it, and its images, need CORS ([why](docs/nuxt-layer.md#cors-for-the-image-host)). Unset: the components show an error saying so. |
 | `theme` | `'light'` | Colour scheme of the tooltip, the detail panel and the row's card where a component doesn't set `theme`: `'light'`, `'dark'` or `'auto'` (follows the host). |
-| `haptics` | `true` | Short vibrations on phones that can (Android Chrome) when a Book is taken out or put back and while a finger scrolls. `false` turns them off. |
+| `haptics` | `true` | Short vibrations on phones that can (Android Chrome; iOS 18+ Safari as a light system tap) when a Book is taken out or put back and while a finger scrolls. `false` turns them off. |
 
 Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_REGAL_THEME=auto`, `NUXT_PUBLIC_REGAL_HAPTICS=false`.
 

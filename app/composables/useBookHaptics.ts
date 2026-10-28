@@ -1,4 +1,5 @@
 import { createTickState, hapticsTuning, mayPulse, pickPulse, PULSES, scrollTick, vibrates } from '#layers/regal/app/utils/books/haptics'
+import { getIosHaptic } from '#layers/regal/app/utils/books/iosHaptic'
 import type { HapticsTuning, Pulse } from '#layers/regal/app/utils/books/haptics'
 import type { Ref } from 'vue'
 
@@ -13,6 +14,8 @@ const UNTUNED: HapticsTuning = { enabled: null, patterns: PULSES }
  * turned haptics off (runtimeConfig.public.regal.haptics). On the dev server
  * ?haptics=1|0, ?hapticOut=, ?hapticBack= and ?hapticTick= (patterns in ms,
  * `10,45,18`) tune them, read on every change; production builds drop that.
+ * Without navigator.vibrate (iOS 18+ Safari, also as a home-screen app) each
+ * pulse is one light system tap instead, through a hidden switch (iosHaptic.ts).
  * Call once per stage. A view with its own Pick (RegalBooksRow) hands in
  * its own picked Book, focused Book and finger scroll.
  */
@@ -33,14 +36,19 @@ export function useBookHaptics(sources: {
   function pulse(kind: Pulse, userActive: (host: HapticNavigator) => boolean) {
     const tuning = import.meta.dev ? hapticsTuning(route!.query) : UNTUNED
     const host = navigator as HapticNavigator
+    const canVibrate = typeof host.vibrate === 'function'
+    const ios = getIosHaptic()
     const allowed = mayPulse({
       enabled: tuning.enabled ?? haptics,
-      canVibrate: typeof host.vibrate === 'function',
+      canVibrate: canVibrate || ios.available,
       reducedMotion: reducedMotion.value === 'reduce',
       userActive: userActive(host),
     })
     const steps = tuning.patterns[kind]
-    if (allowed && vibrates(steps)) host.vibrate([...steps])
+    if (!allowed || !vibrates(steps)) return
+    // Android: the pattern. iOS has no Vibration API: one system tap per pulse (utils/books/iosHaptic.ts).
+    if (canVibrate) host.vibrate([...steps])
+    else ios.tap(kind, performance.now())
   }
 
   watch(pickedId, (next, previous) => {
