@@ -8,13 +8,15 @@
 // row's RowScene). It renders only when something on screen changed
 // (utils/stage/frameGate.ts) and nothing while the reel is off screen.
 import type { DirectionalLight, Group, Mesh, MeshBasicMaterial, PerspectiveCamera } from 'three'
-import { MathUtils, Vector3 } from 'three'
+import { MathUtils, Vector3, WebGLRenderer } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
 import { createFrameGate } from '#layers/regal/app/utils/stage/frameGate'
 import { markRegal } from '#layers/regal/app/utils/stage/marks'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
+import { gpuIdle, warmReelMaterials } from '#layers/regal/app/utils/reel/materials'
+import type { ReelWarmup } from '#layers/regal/app/utils/reel/materials'
 import { REEL_AXIS_Y, REEL_PERSPECTIVE, REEL_PX, reelWindow } from '#layers/regal/app/utils/reel/scene'
 import type { ReelWindow } from '#layers/regal/app/utils/reel/scene'
 
@@ -143,9 +145,49 @@ function renderBrokenOut(camera3: PerspectiveCamera) {
 const gate = createFrameGate(renderer)
 let firstFrame = true
 let readySent = false
+
+// The shaders compile ahead, off the main thread, and each program is drawn once
+// (a pixel) so the GPU has built it (utils/reel/materials.ts); the first frame
+// waits for that (at most WARM_PATIENCE_MS) instead of stalling on it, and the
+// warm-up holds the programs until the real Books have drawn.
+const WARM_PATIENCE_MS = 700
+/** `ready` waits this long at most for the GPU to be done with the first frame. */
+const REVEAL_PATIENCE_MS = 500
+/** The reel needs three's WebGL renderer (Tres may hand a WebGPU one): otherwise no warm-up, no fence. */
+const gl = renderer instanceof WebGLRenderer ? renderer : null
+const lifetime = new AbortController()
+let warmup: ReelWarmup | null = null
+let warmed = false
+let warmTimer: ReturnType<typeof setTimeout> | undefined
+let warmStart: ReturnType<typeof setTimeout> | undefined
+function warmUp() {
+  const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
+  if (!camera3 || !gl) {
+    warmed = true
+    return
+  }
+  warmup = warmReelMaterials(gl, scene.value, camera3)
+  warmTimer = setTimeout(() => (warmed = true), WARM_PATIENCE_MS)
+  void warmup.ready
+    .then(() => {
+      warmup?.draw()
+      return gpuIdle(gl, WARM_PATIENCE_MS, lifetime.signal)
+    })
+    .catch(() => {})
+    .then(() => {
+      clearTimeout(warmTimer)
+      warmed = true
+    })
+}
+
+// What the reader sees first is the canvas fading in at `ready`: until the faces are
+// drawn no frame is drawn (nobody could see it), and `ready` waits for the GPU to be
+// done with the first one, so showing the canvas is not where the page waits for it.
+let revealing = false
 render((notify) => {
   const camera3 = camera.value
-  if (!camera3 || !props.ctx.visible.value) return
+  if (!camera3 || !props.ctx.visible.value || !warmed) return
+  if (!readySent && (revealing || !props.ctx.facesReady.value)) return
   const canvas = renderer.domElement as HTMLCanvasElement
   if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value, camera3))) return
   if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
@@ -153,11 +195,17 @@ render((notify) => {
   if (firstFrame) {
     firstFrame = false
     markRegal('reel:first-frame')
+    warmup?.dispose()
+    warmup = null
   }
   if (!readySent && props.ctx.facesReady.value) {
-    readySent = true
-    markRegal('reel:ready')
-    props.ctx.ready()
+    revealing = true
+    void (gl ? gpuIdle(gl, REVEAL_PATIENCE_MS, lifetime.signal) : Promise.resolve()).catch(() => {}).then(() => {
+      if (lifetime.signal.aborted) return
+      readySent = true
+      markRegal('reel:ready')
+      props.ctx.ready()
+    })
   }
   notify()
   gate.drawn()
@@ -166,7 +214,13 @@ render((notify) => {
 watch(props.ctx.visible, (visible) => {
   if (visible) gate.invalidate()
 })
-onBeforeUnmount(() => gate.dispose())
+onBeforeUnmount(() => {
+  lifetime.abort()
+  clearTimeout(warmStart)
+  clearTimeout(warmTimer)
+  warmup?.dispose()
+  gate.dispose()
+})
 // The render loop runs only while the reel is on screen (or broken out): off screen,
 // in a hidden tab or a page kept alive away, no frame runs at all (ReelCard's visibility).
 watch(props.ctx.visible, (visible) => {
@@ -174,7 +228,11 @@ watch(props.ctx.visible, (visible) => {
   else stop()
 }, { immediate: true })
 
-onMounted(lightBothLayers)
+onMounted(() => {
+  lightBothLayers()
+  // Its own task, after the mount's (building the programs' sources is ~20 ms at 4× throttling).
+  warmStart = setTimeout(warmUp)
+})
 </script>
 
 <template>

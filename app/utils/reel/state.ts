@@ -101,6 +101,25 @@ export function takeOver(state: ReelState): ReelState {
 }
 
 /**
+ * A takeover that ends on a Book: Playing (or a glide) is taken over from where
+ * the arc is, then the arc snaps to the nearest Book by a drag release's rule
+ * (`releaseGlide` at rest: nearest whole Book, REEL_SNAP_MS per Book travelled,
+ * kept on the arc). Reduce Motion: no glide, it is there at once. A reel resting
+ * on a Book is left as it is (same state back). A tap beside the Books, Pause,
+ * a catch that never became a swipe and Reduce Motion switching on use it, so
+ * the reel never rests between two Books (a tap at the centre would hit nothing).
+ * Detail is untouched.
+ */
+export function settleOnBook(state: ReelState): ReelState {
+  if (state.mode === 'detail' || state.n < 1) return state
+  const base = takeOver(state)
+  if (base.mode === 'manual' && !base.glide && Number.isInteger(base.focus)) return base
+  const glide = releaseGlide(base.focus, REEL_DRAG_PX_PER_BOOK, 0, base.n)
+  if (base.reduced || glide.to === base.focus) return { ...base, focus: glide.to, glide: null }
+  return { ...base, glide: { glide, elapsed: 0 } }
+}
+
+/**
  * Manual → Playing (Play on the pause button). A ringing arc (n ≥ REEL_WRAP_FROM)
  * begins its round at the Book in front and runs n beats. An arc with ends
  * begins at its first Book (or the second, from the last Book) and runs to its
@@ -150,7 +169,7 @@ export function setVisible(state: ReelState, visible: boolean): ReelState {
 export function setReduced(state: ReelState, reduced: boolean): ReelState {
   if (state.reduced === reduced) return state
   const next = { ...state, reduced }
-  return reduced ? takeOver(next) : next
+  return reduced ? settleOnBook(next) : next
 }
 
 /**
