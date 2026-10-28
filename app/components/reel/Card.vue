@@ -104,6 +104,8 @@ const shownBook = computed(() => props.books[shown.value] ?? null)
 const frontId = ref<string | null>(null)
 const touchScrolling = ref(false)
 let lastBadge = -1
+/** What the live region reads out: the Book in front once the reel rests on it in Manual. */
+const announced = ref('')
 /** The first frame with the faces in view is drawn: the canvas fades in. */
 const ready = ref(false)
 
@@ -171,6 +173,8 @@ function update(now: number) {
   const front = count ? props.books[reelShownIndex(focus, count, false)]?.id ?? null : null
   if (frontId.value !== front) frontId.value = front
   if (touchScrolling.value && !drag && !state.glide) touchScrolling.value = false
+  // Read out once the reel has come to rest on a Book (not every Book a swipe passes).
+  if (state.mode === 'manual' && !drag && !state.glide && !settle && announced.value !== slideText.value) announced.value = slideText.value
   // The pills and caption fade with the beat: straight on the element, no render.
   const badge = Math.round(badgeOpacity(state) * 1000) / 1000
   const element = focusElement.value
@@ -296,7 +300,9 @@ function onPointerUp(event: PointerEvent) {
   if (ended.axis !== 'x') return
   // Cancelled (the page took the swipe): it snaps where it is.
   const velocity = event.type === 'pointerup' ? releaseVelocity(ended.samples, event.timeStamp) : 0
-  commit(release(state, reduced.value ? 0 : velocity))
+  const released = release(state, reduced.value ? 0 : velocity)
+  // Reduce Motion: no glide, it snaps to the nearest Book.
+  commit(reduced.value && released.glide ? dragTo(released, released.glide.glide.to) : released)
 }
 
 // --- A Book out ------------------------------------------------------------------------
@@ -499,6 +505,9 @@ onBeforeUnmount(() => {
   clearTimeout(landing)
   clearTimeout(openTimer)
   if (broken.value) document.documentElement.style.overflow = ''
+  // Gone with a Book out: its history entry goes too (else Back would first land on nothing).
+  if (pushed && history.state?.regalReelPick) history.back()
+  pushed = false
 })
 
 // --- Template bits ---------------------------------------------------------------------
@@ -512,6 +521,8 @@ const slideText = computed(() => {
   return [position, book.title, book.author].filter(Boolean).join(', ')
 })
 const keysId = useId()
+/** Up to this many Books a dot each (the prototype's twelve); more: a count. */
+const MAX_DOTS = 24
 const ariaLabel = computed(() => props.label || words.value.reel)
 </script>
 
@@ -593,7 +604,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
 
     <div class="reel-card__controls">
       <div
-        v-if="books.length > 1"
+        v-if="books.length > 1 && books.length <= MAX_DOTS"
         class="reel-card__dots"
         aria-hidden="true"
       >
@@ -604,6 +615,13 @@ const ariaLabel = computed(() => props.label || words.value.reel)
           class="reel-card__dot"
         />
       </div>
+      <p
+        v-else-if="books.length > MAX_DOTS"
+        class="reel-card__count"
+        aria-hidden="true"
+      >
+        {{ shown + 1 }} / {{ books.length }}
+      </p>
       <!-- WCAG 2.2.2: anything that moves on its own beside other content can be paused. -->
       <button
         v-if="autoPlays"
@@ -640,7 +658,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
       class="regal-visually-hidden"
       :aria-live="mode === 'playing' ? 'off' : 'polite'"
     >
-      {{ mode === 'playing' ? '' : slideText }}
+      {{ mode === 'playing' ? '' : announced }}
     </p>
 
     <!-- The Books for assistive tech: the canvas names none of them. -->
@@ -668,6 +686,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
 <style scoped>
 .reel-card {
   position: relative;
+  min-width: 0;
   color: var(--_regal-ink);
   font-family: var(--_regal-font-body);
   font-size: var(--_regal-size-body);
@@ -775,6 +794,13 @@ const ariaLabel = computed(() => props.label || words.value.reel)
   margin-top: 2px;
 }
 
+.reel-card__count {
+  margin: 0;
+  color: var(--_regal-ink-faint);
+  font-size: var(--_regal-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
 .reel-card__dots {
   display: flex;
   gap: 5px;
@@ -807,6 +833,13 @@ const ariaLabel = computed(() => props.label || words.value.reel)
   background: var(--_regal-surface);
   color: var(--_regal-ink);
   cursor: pointer;
+}
+
+.reel-card__pause::before {
+  /* A 44 px touch target around the 28 px button (WCAG 2.5.5). */
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 
 .reel-card__pause:hover {

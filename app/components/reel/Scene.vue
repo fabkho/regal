@@ -24,7 +24,7 @@ const props = defineProps<{
 }>()
 
 const { camera, scene, renderer } = useTres()
-const { onBeforeRender, render } = useLoop()
+const { onBeforeRender, render, start, stop } = useLoop()
 
 const cameraRef = shallowRef<PerspectiveCamera | null>(null)
 const keyLight = shallowRef<DirectionalLight | null>(null)
@@ -39,6 +39,8 @@ markRegal('reel:tres')
 // The state machine runs first (ReelCard's tick), then the Books read where the arc is.
 onBeforeRender(({ delta }) => {
   props.ctx.tick(Math.min(100, (delta ?? 0.016) * 1000), performance.now())
+  // Off screen (and not broken out): no frame's work (the loop is stopped then too, below).
+  if (!props.ctx.visible.value) return
   const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (!camera3) return
   // `perspective-origin: 50% 40%`: the camera's axis 10 % of the stage above its middle.
@@ -165,6 +167,12 @@ watch(props.ctx.visible, (visible) => {
   if (visible) gate.invalidate()
 })
 onBeforeUnmount(() => gate.dispose())
+// The render loop runs only while the reel is on screen (or broken out): off screen,
+// in a hidden tab or a page kept alive away, no frame runs at all (ReelCard's visibility).
+watch(props.ctx.visible, (visible) => {
+  if (visible) start()
+  else stop()
+}, { immediate: true })
 
 onMounted(lightBothLayers)
 </script>

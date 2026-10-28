@@ -7,8 +7,10 @@
 // a cloth Cover until its front loads, a typeset Spine, page edges, flat faces
 // from `assets.color`), dressed from the reel's own faces (ReelContext.facesOf,
 // never the shared Library: a member's Book ids may equal the visitor's).
-// Covers load nearest the front first; a Book far from the front gives its
-// textures' GPU copies back (they upload again when it comes round).
+// Only the Books near the front are dressed (DRESS_REACH either side, and the
+// one taken out): their meshes, materials, Covers and drawn faces exist while
+// they are near and are freed (GPU and canvases) once they are DROP_REACH away,
+// so 300 Books cost what 7 do. Covers load nearest the front first.
 //
 // A Book taken out (the reel's own Pick, composables/useBookPick.ts) comes to
 // the Inspect pose over the viewport (utils/books/inspect.ts `inspectFrame`, in
@@ -40,7 +42,7 @@ import type { Book } from '#layers/regal/shared/types/book'
 import type { BookPose } from '#layers/regal/app/utils/books/pose'
 import { drawBack, drawSpine, spineFontsReady } from '#layers/regal/app/utils/covers/bookFaces'
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
-import { loadCover, loadFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
+import { loadFullCover, loadOwnedCover, releaseFullCover, releaseOwnedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import type { LoadedCover } from '#layers/regal/app/utils/covers/coverTextures'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { loadPicture } from '#layers/regal/app/utils/covers/images'
@@ -60,7 +62,7 @@ import { CLOTH_COLORS, hashString } from '#layers/regal/app/utils/bookcase/layou
 import { toHex } from '#layers/regal/app/utils/covers/palette'
 import { ART_HEIGHT, rowFaceInput } from '#layers/regal/app/utils/row/faces'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
-import { reelCameraInto, reelDistance, reelPoseInto } from '#layers/regal/app/utils/reel/layout'
+import { reelCameraInto, reelDistance, reelPoseInto, REEL_WRAP_FROM } from '#layers/regal/app/utils/reel/layout'
 import type { ReelCamera, ReelPose } from '#layers/regal/app/utils/reel/layout'
 import { REEL_BOOK, REEL_PX, REEL_SHADOW } from '#layers/regal/app/utils/reel/scene'
 
@@ -89,8 +91,10 @@ const RETURN_SECONDS = 0.8
 const FLIP_SECONDS = 0.7
 /** Px per ms a sideways release must reach to count as a flick (turns the Book over). */
 const FLICK_SPEED = 0.9
-/** Books this far from the front (or further) give their textures' GPU copies back. */
-const GPU_KEEP = 3.2
+/** Books this many places from the front (or nearer) are dressed: one beyond what shows (2.6). */
+const DRESS_REACH = 3
+/** Dressed Books this far from the front (or further) are freed: a margin, so a swipe to and fro doesn't redo them. */
+const DROP_REACH = 5
 /** The Spine is drawn at this share of its full 1024 px (the reel shows it under 200 CSS px tall). */
 const SPINE_RESOLUTION = 0.5
 
@@ -114,8 +118,6 @@ interface BookMaterials {
   fullCover: string | null
   /** Its front and Spine are in (or will never come): what `ready` waits for. */
   ready: boolean
-  /** The GPU holds its textures (it is near the front). */
-  resident: boolean
   backDrawn: boolean
   aborted: AbortController
 }
@@ -245,17 +247,20 @@ function materialsFor(pose: BookPose): Material[] {
     const shadow = new MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide, opacity: 0 })
     entry = {
       cover, back, spine, spineTexture, backTexture, edges, shadow,
-      set: null, loaded: null, drawnFront: null, fullCover: null, ready: false, resident: true, backDrawn: false,
+      set: null, loaded: null, drawnFront: null, fullCover: null, ready: false, backDrawn: false,
       aborted: new AbortController(),
       faces: [cover, back, head, tail, spine, fore],
     }
     materialsByBook.set(pose.bookId, entry)
+    // Its faces load and draw as soon as it is dressed.
+    void applyFaces(pose)
   }
   return entry.faces
 }
 
-function shadowFor(bookId: string): Material | undefined {
-  return materialsByBook.get(bookId)?.shadow
+function shadowFor(pose: BookPose): Material {
+  materialsFor(pose)
+  return materialsByBook.get(pose.bookId)!.shadow
 }
 
 function motionFor(bookId: string): Motion {
@@ -303,22 +308,27 @@ function printCover(entry: BookMaterials, texture: Texture) {
 
 // Load order: nearest the front first (shown), the rest in the background.
 setBands(LOAD_BANDS)
+function rankOf(bookId: string): number {
+  if (pickedId.value === bookId) return -3
+  const index = indexById.value.get(bookId)
+  if (index === undefined) return BACKGROUND + 50
+  const distance = Math.abs(reelDistance(index, ctx.focus.value, props.books.length))
+  return distance <= DRESS_REACH ? distance : BACKGROUND + distance
+}
+
+/** The load queue's priority of a Book's faces (asked again whenever the queue picks a job). */
 function priorityOf(bookId: string): Priority {
-  return () => {
-    if (pickedId.value === bookId) return -3
-    const index = indexById.value.get(bookId)
-    if (index === undefined) return BACKGROUND + 50
-    const distance = Math.abs(reelDistance(index, ctx.focus.value, props.books.length))
-    return distance <= 3 ? distance : BACKGROUND + distance
-  }
+  return () => rankOf(bookId)
 }
 
 // Draws (Spines, fronts, backs) wait for a frame with time to spare.
 const DRAW_BUDGET_MS = 6
-const drawQueue: { bookId: string, run: () => void }[] = []
+const drawQueue: { bookId: string, rank: number, run: () => void }[] = []
+const byRank = (a: { rank: number }, b: { rank: number }) => a.rank - b.rank
 function whenDrawn(entry: BookMaterials, bookId: string, draw: (entry: BookMaterials) => void): Promise<boolean> {
   return new Promise(resolve => drawQueue.push({
     bookId,
+    rank: 0,
     run: () => {
       const current = materialsByBook.get(bookId) === entry
       if (current) draw(entry)
@@ -329,7 +339,9 @@ function whenDrawn(entry: BookMaterials, bookId: string, draw: (entry: BookMater
 function drawPending() {
   if (!drawQueue.length) return
   const started = performance.now()
-  drawQueue.sort((a, b) => priorityOf(a.bookId)() - priorityOf(b.bookId)())
+  // Each Book's rank once per pass, then sort by it (no closure per comparison).
+  for (const item of drawQueue) item.rank = rankOf(item.bookId)
+  drawQueue.sort(byRank)
   while (drawQueue.length && performance.now() - started < DRAW_BUDGET_MS) drawQueue.shift()!.run()
 }
 
@@ -341,12 +353,17 @@ async function applyFaces(pose: BookPose) {
   entry.set = set
   const priority = priorityOf(pose.bookId)
   const fonts = spineFontsReady()
-  const front = (set?.pileFront ? loadCover(set.pileFront, priority) : Promise.resolve(null))
-    .then(loaded => loaded ?? (set?.front && set.front !== set.pileFront ? loadCover(set.front, priority) : null))
-  const spineArt = set?.spine ? loadPicture(set.spine, priority, set.entry.pile?.spine ? undefined : ART_HEIGHT, entry.aborted.signal) : Promise.resolve(null)
+  const signal = entry.aborted.signal
+  // Its own copy of the Cover (freed when the Book is far again), the pile copy first.
+  const front = (set?.pileFront ? loadOwnedCover(set.pileFront, priority, signal) : Promise.resolve(null))
+    .then(loaded => loaded ?? (set?.front && set.front !== set.pileFront ? loadOwnedCover(set.front, priority, signal) : null))
+  const spineArt = set?.spine ? loadPicture(set.spine, priority, set.entry.pile?.spine ? undefined : ART_HEIGHT, signal) : Promise.resolve(null)
   const [loaded, art] = await Promise.all([front, spineArt, fonts])
-  if (entry.aborted.signal.aborted) return closePicture(art)
-  await whenDrawn(entry, pose.bookId, (current) => {
+  if (signal.aborted) {
+    if (loaded) releaseOwnedCover(loaded)
+    return closePicture(art)
+  }
+  const drawn = await whenDrawn(entry, pose.bookId, (current) => {
     current.loaded = loaded
     const input = faceInput(pose, current)
     if (loaded) {
@@ -364,6 +381,7 @@ async function applyFaces(pose: BookPose) {
     }
     current.ready = true
   })
+  if (!drawn && loaded) releaseOwnedCover(loaded)
   closePicture(art)
 }
 
@@ -371,41 +389,88 @@ function closePicture(picture: Picture | null | undefined) {
   if (picture && 'close' in picture && typeof picture.close === 'function') picture.close()
 }
 
+/** Frees a Book's dress: materials and textures on the GPU, its Cover and drawn canvases. */
 function disposeEntry(entry: BookMaterials) {
   entry.aborted.abort()
-  entry.drawnFront?.dispose()
   for (const material of [entry.cover, entry.back, entry.spine, entry.shadow, ...entry.edges.materials]) material.dispose()
-  entry.spineTexture.dispose()
-  entry.backTexture.dispose()
-  for (const texture of entry.edges.textures) texture.dispose()
+  for (const texture of [entry.spineTexture, entry.backTexture, entry.drawnFront, ...entry.edges.textures]) {
+    if (!texture) continue
+    texture.dispose()
+    const canvas = texture.image as HTMLCanvasElement | undefined
+    if (canvas && 'width' in canvas) canvas.width = 0
+  }
+  if (entry.loaded) releaseOwnedCover(entry.loaded)
   if (entry.fullCover) releaseFullCover(entry.fullCover)
 }
 
-watch(poses, (list) => {
-  const keep = new Set(list.map(pose => pose.bookId))
-  for (const [bookId, entry] of materialsByBook) {
-    if (keep.has(bookId)) continue
-    disposeEntry(entry)
-    materialsByBook.delete(bookId)
-    motionByBook.delete(bookId)
-  }
-  for (const pose of list) {
-    if (materialsByBook.has(pose.bookId)) continue
-    materialsFor(pose)
-    void applyFaces(pose)
-  }
-}, { immediate: true })
+/**
+ * The Books dressed now (ids, in no particular order): DRESS_REACH either side
+ * of the front, the one taken out and one on its way back; a dressed Book stays
+ * until it is DROP_REACH away. Set from the frame loop when the front Book
+ * changes, so the meshes in the template change only then.
+ */
+const dressed = shallowRef<readonly string[]>([])
+const dressedSet = new Set<string>()
+let dressedCentre = Number.NaN
+let dressedPick: string | null = null
+const wanted = new Set<string>()
 
-/** Near the front its textures are on the GPU; far from it they give their copies back (uploaded again when it comes round). */
-function keepResident(entry: BookMaterials, near: boolean) {
-  if (entry.resident === near) return
-  entry.resident = near
-  if (near) return
-  const map = entry.cover.map
-  if (map && !entry.fullCover) map.dispose()
-  entry.spineTexture.dispose()
-  if (!entry.backDrawn) entry.backTexture.dispose()
+function updateDressing(focus: number) {
+  const n = props.books.length
+  const centre = Math.round(focus)
+  if (centre === dressedCentre && dressedPick === pickedId.value) return
+  dressedCentre = centre
+  dressedPick = pickedId.value
+  wanted.clear()
+  for (let step = -DRESS_REACH; step <= DRESS_REACH; step++) {
+    let index = centre + step
+    if (n >= REEL_WRAP_FROM) index = ((index % n) + n) % n
+    else if (index < 0 || index >= n) continue
+    wanted.add(props.books[index]!.id)
+  }
+  for (const id of dressedSet) {
+    const index = indexById.value.get(id)
+    const busy = id === pickedId.value || (motionByBook.get(id)?.pick.value ?? 0) > 0
+    if (busy || (index !== undefined && Math.abs(reelDistance(index, focus, n)) < DROP_REACH)) wanted.add(id)
+  }
+  if (pickedId.value && indexById.value.has(pickedId.value)) wanted.add(pickedId.value)
+  if (wanted.size === dressedSet.size && [...wanted].every(id => dressedSet.has(id))) return
+  dressedSet.clear()
+  for (const id of wanted) dressedSet.add(id)
+  dressed.value = [...wanted]
+  // Dev only: how many Books are dressed (a 300-Book reel must stay at a handful).
+  if (import.meta.dev) (window as { __regalReelDressed?: number }).__regalReelDressed = dressedSet.size
 }
+
+/** The dressed Books with their poses and places, for the template. */
+const dressedBooks = computed(() => dressed.value
+  .map(id => ({ id, index: indexById.value.get(id) ?? -1 }))
+  .filter(item => item.index >= 0)
+  .map(item => ({ ...item, pose: poses.value[item.index]! })))
+
+// Books no longer dressed are freed, after their meshes left the scene (the template
+// dresses the new ones: materialsFor).
+watch(dressed, (_, before) => {
+  for (const id of before ?? []) {
+    if (dressedSet.has(id)) continue
+    const entry = materialsByBook.get(id)
+    if (entry) disposeEntry(entry)
+    materialsByBook.delete(id)
+    motionByBook.delete(id)
+  }
+}, { flush: 'post' })
+
+// Another Library: everything is dressed anew around the front.
+watch(() => props.books, () => {
+  for (const entry of materialsByBook.values()) disposeEntry(entry)
+  materialsByBook.clear()
+  motionByBook.clear()
+  dressedSet.clear()
+  dressedCentre = Number.NaN
+  dressed.value = []
+  updateDressing(ctx.focus.value)
+})
+updateDressing(ctx.focus.value)
 
 // --- The Book taken out ----------------------------------------------------------------
 
@@ -437,6 +502,9 @@ function holdForReturn(bookId: string, motion: Motion) {
   motion.returnFrom = { position, quaternion }
 }
 
+/** The full Cover and drawn back of a Book put back go once it is home. */
+const releaseTimers = new Set<ReturnType<typeof setTimeout>>()
+
 watch(pickedId, (id, previous) => {
   const seconds = ctx.instantReturn.value ? 0 : RETURN_SECONDS
   if (previous) {
@@ -445,11 +513,13 @@ watch(pickedId, (id, previous) => {
     tween(motion.pick, 0, seconds)
     tween(motion.flip, 0, seconds)
     settleSpin(motion.spin, seconds)
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      releaseTimers.delete(timer)
       if (pickedId.value === previous) return
       setFullCover(previous, false)
       releaseBack(previous)
     }, seconds * 1000 + 100)
+    releaseTimers.add(timer)
   }
   tween(ctx.dim, id ? 1 : 0, id ? OUT_SECONDS * 0.6 : seconds)
   if (id) {
@@ -696,11 +766,14 @@ function inspectTarget(cam: PerspectiveCamera, into: Vector3) {
 }
 
 onBeforeRender(({ delta }) => {
+  // Off screen (and not broken out) nothing is drawn: no frame's work either (ReelScene stops the loop too).
+  if (!ctx.visible.value) return
   const seconds = delta ?? 0.016
-  drawPending()
   const cam = camera.value as PerspectiveCamera | undefined
   const n = props.books.length
   const focus = ctx.focus.value
+  updateDressing(focus)
+  drawPending()
   const height = sizes.height.value || 1
   followInsets(height, 1 - Math.exp(-seconds * 10))
 
@@ -712,21 +785,20 @@ onBeforeRender(({ delta }) => {
   world.compose(worldPosition, worldQuaternion, worldScale)
 
   let allReady = true
-  for (let index = 0; index < n; index++) {
-    const book = props.books[index]!
-    const mesh = meshes.get(book.id)
-    const shadowMesh = shadows.get(book.id)
+  // Only the dressed Books (around the front): the others have no mesh.
+  const list = dressedBooks.value
+  for (let item = 0; item < list.length; item++) {
+    const { id, index } = list[item]!
+    const mesh = meshes.get(id)
+    const shadowMesh = shadows.get(id)
     if (!mesh) continue
+    const book = props.books[index]!
     const entry = materialsByBook.get(book.id)
     const motion = motionFor(book.id)
     reelPoseInto(index, focus, n, arcPose)
     const pose = arcPose
     const shown = pose.opacity > 0
-    const near = Math.abs(pose.distance) < GPU_KEEP || pickedId.value === book.id
-    if (entry) {
-      keepResident(entry, near)
-      if (shown && !entry.ready) allReady = false
-    }
+    if (entry && shown && !entry.ready) allReady = false
 
     // CSS (y down) to the scene (y up), px to m; the Cover (+x) turned to the front (-90°).
     basePosition.set(pose.x * REEL_PX, -pose.y * REEL_PX, pose.z * REEL_PX).applyMatrix4(world)
@@ -789,6 +861,8 @@ onBeforeRender(({ delta }) => {
 })
 
 onBeforeUnmount(() => {
+  for (const timer of releaseTimers) clearTimeout(timer)
+  releaseTimers.clear()
   canvas()?.removeEventListener('pointerdown', onDown)
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
@@ -814,12 +888,12 @@ function setMesh(map: Map<string, Mesh>, bookId: string, element: unknown) {
 <template>
   <TresGroup name="reel-shadows">
     <TresMesh
-      v-for="book in books"
-      :key="book.id"
-      :ref="(element: unknown) => setMesh(shadows, book.id, element)"
-      :name="`shadow:${book.id}`"
+      v-for="item in dressedBooks"
+      :key="item.id"
+      :ref="(element: unknown) => setMesh(shadows, item.id, element)"
+      :name="`shadow:${item.id}`"
       :geometry="shadowGeometry"
-      :material="shadowFor(book.id)"
+      :material="shadowFor(item.pose)"
       :scale="[REEL_SHADOW.width * REEL_BOOK.width * REEL_PX, REEL_SHADOW.depth * REEL_PX, 1]"
       :render-order="-1"
       :visible="false"
@@ -830,14 +904,14 @@ function setMesh(map: Map<string, Mesh>, bookId: string, element: unknown) {
     name="reel-books"
   >
     <TresMesh
-      v-for="(pose, index) in poses"
-      :key="pose.bookId"
-      :ref="(element: unknown) => setMesh(meshes, pose.bookId, element)"
-      :name="`book:${pose.bookId}`"
-      :user-data="{ bookId: pose.bookId, index }"
+      v-for="item in dressedBooks"
+      :key="item.id"
+      :ref="(element: unknown) => setMesh(meshes, item.id, element)"
+      :name="`book:${item.id}`"
+      :user-data="{ bookId: item.id, index: item.index }"
       :geometry="geometry"
-      :material="materialsFor(pose)"
-      :scale="[pose.thickness, pose.height, pose.depth]"
+      :material="materialsFor(item.pose)"
+      :scale="[item.pose.thickness, item.pose.height, item.pose.depth]"
       @pointerenter="onEnter"
       @pointerleave="onLeave"
     />

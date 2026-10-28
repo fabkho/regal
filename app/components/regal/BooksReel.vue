@@ -170,6 +170,7 @@ const { rootAttrs } = provideRegalUi({
 .regal-books-reel {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   color: var(--_regal-ink);
   font-family: var(--_regal-font-body);
   font-size: var(--_regal-size-base);

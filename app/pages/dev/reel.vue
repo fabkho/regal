@@ -3,7 +3,7 @@
 // it, in the reel prototype's profile (libellus-ref/shared-books-reel-proto:
 // its colours, the hero, the eyebrow, the pills and caption in #tooltip, her
 // and your stars in #detail-meta). Synthetic Books (app/dev/reel/data.ts).
-// ?n=0|1|2|3|12 (default 12)  ?motion=reduce|full (default: the system's)
+// ?n=0|1|2|3|12|300 (default 12)  ?motion=reduce|full (default: the system's)
 // ?scheme=dark  ?autoplay=0  ?long=1 (a page to scroll, the reel lower down).
 // Not in a build.
 import type { Book } from '#layers/regal/shared/types/book'
@@ -35,7 +35,7 @@ onMounted(() => {
 })
 const library = computed(() => (base.value ? reelLibrary(count.value, base.value) : null))
 const samples = new Map(REEL_SAMPLES.map(sample => [sample.id, sample]))
-const sample = (book: Book) => samples.get(book.id)
+const sample = (book: Book) => samples.get(book.id.split('~')[0]!)
 
 // What the reel tells the host.
 const log = ref<string[]>([])

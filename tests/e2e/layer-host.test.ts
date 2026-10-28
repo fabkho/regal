@@ -795,8 +795,19 @@ describe('Regal as a Nuxt layer', async () => {
     expect(await reel.getAttribute('data-mode')).toBe('manual')
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
 
-    // Open book: the host hears `open`, the Book is back at once.
+    // The browser's Back puts it back too, and the page stays.
     await page.mouse.click(stage.x + stage.width / 2, y)
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
+    await page.goBack()
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+    expect(new URL(page.url()).pathname).toBe('/reel')
+    await expect.poll(() => page.locator('.reel-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+
+    // Open book: the host hears `open`, the Book is back at once.
+    await page.waitForTimeout(300)
+    const after = (await reel.locator('.reel-card__stage').boundingBox())!
+    await page.mouse.click(after.x + after.width / 2, after.y + after.height * 0.45)
     await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
     await page.getByRole('button', { name: /Open book/ }).click()
     await expect.poll(async () => (await events()).includes(`open:${picked}`), { timeout: 5_000 }).toBe(true)

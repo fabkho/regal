@@ -31,11 +31,12 @@ export const REEL_SAMPLES: readonly ReelSample[] = Object.freeze([
   { id: 'reel-12', title: 'The Long Forest', author: 'Greta Pohl', color: '#3d6b35', hers: 16, mine: 12 },
 ])
 
-/** How many Books the page can show: none, one, the arcs with ends, a ringing one. */
-export const REEL_COUNTS = [0, 1, 2, 3, 12] as const
+/** How many Books the page can show: none, one, the arcs with ends, a ringing one, and a long one (W6 tests 300). */
+export const REEL_COUNTS = [0, 1, 2, 3, 12, 300] as const
 
 /**
- * The first `count` samples as a library document (only what Libellus would
+ * The first `count` samples as a library document (past twelve they come round
+ * again, their ids and titles numbered) (only what Libellus would
  * send: id, title, author, status, its colour and front; no rating, no blurb).
  * `base`: the absolute URL the covers are under (an in-memory document's
  * images must be absolute).
@@ -46,9 +47,13 @@ export function reelLibrary(count: number, base: string): RegalLibraryFile {
     generatedAt: '2026-10-28T00:00:00Z',
     owner: 'Lena Hartmann',
     generator: 'Regal /dev/reel (synthetic)',
-    books: REEL_SAMPLES.slice(0, Math.max(0, count)).map(sample => ({
-      id: sample.id,
-      title: sample.title,
+    books: Array.from({ length: Math.max(0, count) }, (_, index) => {
+      const sample = REEL_SAMPLES[index % REEL_SAMPLES.length]!
+      const round = Math.floor(index / REEL_SAMPLES.length)
+      return { sample, id: round ? `${sample.id}~${round}` : sample.id, title: round ? `${sample.title} ${round + 1}` : sample.title }
+    }).map(({ sample, id, title }) => ({
+      id,
+      title,
       authors: [sample.author],
       status: 'read',
       rating: 0,

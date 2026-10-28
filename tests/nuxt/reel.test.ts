@@ -55,13 +55,14 @@ const SHARED: Book = {
   description: null,
 }
 
-type ReelOptions = NonNullable<Parameters<typeof mountSuspended<typeof RegalBooksReel>>[1]>
+/** Props are partial here: `library` has a default in mountReel. */
+type ReelOptions = { props?: Record<string, unknown>, slots?: Record<string, unknown> }
 const mounted: VueWrapper[] = []
 
 async function mountReel(options: ReelOptions = {}) {
   const wrapper = await mountSuspended(RegalBooksReel, {
-    ...options,
-    props: { library: libraryOf(3), autoplay: false, ...options.props },
+    slots: options.slots as never,
+    props: { library: libraryOf(3), autoplay: false, ...options.props } as never,
     global: { stubs: { TresCanvas: true } },
     attachTo: document.body,
   })
