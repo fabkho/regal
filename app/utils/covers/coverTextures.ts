@@ -66,27 +66,53 @@ export function loadCover(url: string, priority?: Priority): Promise<LoadedCover
   let pending = cache.get(url)
   if (!pending) {
     pending = fetchImage(url, priority)
-      .then(async (blob) => {
-        if (!blob) return null
-        const [preview, sample] = await Promise.all([
-          decodeImage(blob, { height: COVER_PREVIEW_HEIGHT }),
-          decodeImage(blob, { width: 48, height: 72 }),
-        ])
-        try {
-          if (!preview) return null
-          const canvas = toCanvas(preview, Math.min(preview.height, COVER_PREVIEW_HEIGHT))
-          return { texture: coverTexture(canvas, 4), image: canvas, palette: paletteOf(sample ?? canvas) }
-        }
-        finally {
-          // Copied (or of no use): the bitmaps go either way.
-          close(preview)
-          close(sample)
-        }
-      })
+      .then(blob => (blob ? decodeCover(blob) : null))
       .catch(() => null)
     cache.set(url, pending)
   }
   return pending
+}
+
+/** A Cover's small copy, its texture and its Spine colours, from its bytes. */
+async function decodeCover(blob: Blob): Promise<LoadedCover | null> {
+  const [preview, sample] = await Promise.all([
+    decodeImage(blob, { height: COVER_PREVIEW_HEIGHT }),
+    decodeImage(blob, { width: 48, height: 72 }),
+  ])
+  try {
+    if (!preview) return null
+    const canvas = toCanvas(preview, Math.min(preview.height, COVER_PREVIEW_HEIGHT))
+    return { texture: coverTexture(canvas, 4), image: canvas, palette: paletteOf(sample ?? canvas) }
+  }
+  finally {
+    // Copied (or of no use): the bitmaps go either way.
+    close(preview)
+    close(sample)
+  }
+}
+
+/**
+ * As loadCover, but kept by nobody: the caller owns the texture and its
+ * canvas and gives them back with releaseOwnedCover. For a view that shows a
+ * few Covers of many at a time (a reel of 300 Books), so what it no longer
+ * shows is freed instead of kept for the page. The bytes come from the
+ * browser's HTTP cache when the Cover comes round again.
+ */
+export async function loadOwnedCover(url: string, priority?: Priority, signal?: AbortSignal): Promise<LoadedCover | null> {
+  const blob = await fetchImage(url, priority, signal).catch(() => null)
+  if (!blob || signal?.aborted) return null
+  const cover = await decodeCover(blob).catch(() => null)
+  if (cover && signal?.aborted) {
+    releaseOwnedCover(cover)
+    return null
+  }
+  return cover
+}
+
+/** Frees a Cover from loadOwnedCover: its texture on the GPU and its canvas. */
+export function releaseOwnedCover(cover: LoadedCover) {
+  cover.texture.dispose()
+  ;(cover.image as HTMLCanvasElement).width = 0
 }
 
 const full = new Map<string, Promise<Texture | null>>()

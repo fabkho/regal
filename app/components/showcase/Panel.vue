@@ -41,6 +41,7 @@ const sidebarList = setting('sidebarList')
 const filterBar = setting('filterBar')
 const inspect = setting('inspect')
 const rowRotate = setting('rowRotate')
+const reelAutoplay = setting('reelAutoplay')
 const rowIntro = setting('rowIntro')
 const backButton = setting('backButton')
 const rowSize = setting('rowSize')
@@ -114,10 +115,13 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
         :options="[
           { value: 'stage', label: 'Stage (Stack)' },
           { value: 'row', label: 'Row (card)' },
+          { value: 'reel', label: 'Reel (card)' },
         ]"
         :hint="component === 'stage'
           ? 'RegalBooksStage: the 3D Stack; with RegalBooksSidebar and RegalBooksFilters beside it, all sharing one Pick and the sort & filters.'
-          : 'RegalBooksRow: the Stack turned 90° for a card in another page; its own Pick.'"
+          : component === 'row'
+            ? 'RegalBooksRow: the Stack turned 90° for a card in another page; its own Pick.'
+            : 'RegalBooksReel: the Books on an arc, one in front, playing one round; a tap on the front Book takes it out with the Stack\'s details. Its own Library (a document in memory) and Pick.'"
       />
     </section>
 
@@ -192,6 +196,28 @@ const rotates = [{ value: 'turntable', label: 'Turntable' }, { value: 'free', la
       </div>
       <p class="panel__hint">
         Narrow stages (≤ 560 px) show the details as a bottom sheet: try the phone frame below.
+      </p>
+    </section>
+
+    <section
+      v-else-if="component === 'reel'"
+      class="panel__section"
+    >
+      <h2 class="panel__heading">
+        <span class="panel__number">02</span> Reel props
+      </h2>
+      <ShowcaseToggle
+        v-model="reelAutoplay"
+        label="One round when it first shows"
+        code="autoplay"
+      />
+      <ShowcaseToggle
+        v-model="accessibleList"
+        label="The Books as a hidden list for assistive tech"
+        code="accessible-list"
+      />
+      <p class="panel__hint">
+        The newest twelve Books read of the library file, as a document in memory. Swipe, tap a neighbour, the arrow keys or Pause take over; Play plays.
       </p>
     </section>
 

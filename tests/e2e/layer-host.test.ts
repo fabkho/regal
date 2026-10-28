@@ -751,6 +751,80 @@ describe('Regal as a Nuxt layer', async () => {
     await page.close()
   })
 
+  it('shows a reel in a card: it plays once in view, a swipe takes over, a tap on the Book in front takes it out with the Stack\'s details', async () => {
+    const errors: string[] = []
+    const page = await createPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(url('/reel'), { waitUntil: 'networkidle' })
+    const reel = page.locator('section.reel-card')
+    await reel.locator('canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await reel.getAttribute('data-book-count')).toBe('4')
+    const events = () => page.locator('.reel-host__events li').allTextContents()
+    await reel.scrollIntoViewIfNeeded()
+    // In view: it plays (one round), the canvas fades in once its first frame with the faces is drawn.
+    await expect.poll(() => reel.getAttribute('data-mode'), { timeout: 10_000 }).toBe('playing')
+    await expect.poll(async () => (await events()).includes('ready'), { timeout: 20_000 }).toBe(true)
+    expect(await page.locator('.reel-card__pause').getAttribute('aria-label')).toBe('Pause')
+
+    // A sideways swipe takes over: Manual, `manual` once, Play on the button.
+    const stage = (await reel.locator('.reel-card__stage').boundingBox())!
+    const y = stage.y + stage.height * 0.45
+    await page.mouse.move(stage.x + stage.width / 2, y)
+    await page.mouse.down()
+    for (let step = 1; step <= 8; step++) await page.mouse.move(stage.x + stage.width / 2 - step * 18, y)
+    await page.mouse.up()
+    await expect.poll(() => reel.getAttribute('data-mode')).toBe('manual')
+    expect((await events()).filter(event => event === 'manual')).toHaveLength(1)
+    expect(await page.locator('.reel-card__pause').getAttribute('aria-label')).toBe('Play')
+    await page.waitForTimeout(1000)
+
+    // A tap on the Book in front: broken out over the viewport, the Stack's sheet, the page held.
+    await page.mouse.click(stage.x + stage.width / 2, y)
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
+    const picked = await reel.getAttribute('data-picked')
+    expect(await page.locator('body > .reel-card__view--out canvas').count()).toBe(1)
+    expect(await page.locator('body > .reel-card__details--sheet').count()).toBe(1)
+    expect(await page.locator('body > .reel-card__details--sheet').textContent()).toContain('(hers)')
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
+    // Its own Pick: the shared Library (the sidebar, same ids) has nothing out.
+    expect(await page.locator('.records__item').count()).toBeGreaterThan(0)
+    expect(await page.locator('.records__item[aria-pressed="true"]').count()).toBe(0)
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.locator('.reel-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    expect(await reel.getAttribute('data-mode')).toBe('manual')
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+
+    // The browser's Back puts it back too, and the page stays.
+    await page.mouse.click(stage.x + stage.width / 2, y)
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
+    await page.goBack()
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
+    expect(new URL(page.url()).pathname).toBe('/reel')
+    await expect.poll(() => page.locator('.reel-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+
+    // Open book: the host hears `open`, the Book is back at once.
+    await page.waitForTimeout(300)
+    const after = (await reel.locator('.reel-card__stage').boundingBox())!
+    await page.mouse.click(after.x + after.width / 2, after.y + after.height * 0.45)
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
+    await page.getByRole('button', { name: /Open book/ }).click()
+    await expect.poll(async () => (await events()).includes(`open:${picked}`), { timeout: 5_000 }).toBe(true)
+    expect(await reel.getAttribute('data-picked')).toBe('')
+
+    expect(errors).toEqual([])
+    await page.close()
+  })
+
+  it('has no serious or critical axe violations on the reel\'s page', async () => {
+    const page = await createAxePage()
+    await page.goto(url('/reel'), { waitUntil: 'networkidle' })
+    await page.locator('section.reel-card canvas').waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await seriousViolations(page)).toEqual([])
+    await page.context().close()
+  })
+
   it('leaves the host\'s global styles alone', async () => {
     const page = await createPage()
     await page.goto(url('/books'), { waitUntil: 'networkidle' })

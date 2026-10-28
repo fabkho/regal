@@ -15,7 +15,7 @@
 import { glideFocus, releaseGlide, REEL_DRAG_PX_PER_BOOK } from './drag'
 import type { ReelGlide } from './drag'
 import { reelDistance, REEL_WRAP_FROM } from './layout'
-import { clamp, REEL_BEAT, reelPhase, wholeBook } from './timeline'
+import { clamp, REEL_BEAT, reelBadge, reelFocus, wholeBook } from './timeline'
 
 export type ReelMode = 'playing' | 'manual' | 'detail'
 
@@ -69,7 +69,7 @@ export function canAutoPlay(state: Pick<ReelState, 'n' | 'reduced'>): boolean {
 
 /** The arc's live position: the clock's while Playing, the glide's while it snaps, `focus` otherwise. */
 export function frontFocus(state: ReelState): number {
-  if (state.mode === 'playing') return reelPhase(state.origin + state.elapsed).focus
+  if (state.mode === 'playing') return reelFocus(state.origin + state.elapsed)
   if (state.glide) return glideFocus(state.glide.glide, state.glide.elapsed).focus
   return state.focus
 }
@@ -90,7 +90,7 @@ export function pauseControl(state: ReelState): 'pause' | 'play' {
  * otherwise (after a takeover, in Manual and in Detail, they stay).
  */
 export function badgeOpacity(state: ReelState): number {
-  return state.mode === 'playing' ? reelPhase(state.origin + state.elapsed).badge : 1
+  return state.mode === 'playing' ? reelBadge(state.origin + state.elapsed) : 1
 }
 
 /** Playing → Manual, keeping the arc where the clock has it (or the glide, where it is). Catches a glide. Detail is untouched. */

@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, configSnippet, readSettings, styleSnippet, templateSnippet, tokensOf, writeSettings } from '../../app/showcase/settings'
 import { parseLibraryFile } from '../../shared/library/libraryFile'
+import { reelDocument } from '../../app/showcase/reel'
+import { readLibraryDocument } from '../../app/utils/library/libraryFile'
+import type { Book } from '../../shared/types/book'
 
 describe('playground settings', () => {
   it('reads the defaults from an empty query and writes nothing for them', () => {
@@ -63,5 +66,36 @@ describe('the showcase shelf', () => {
     expect(result.library.owner).toBe('Demo Reader')
     expect(result.library.generator).toContain('synthetic')
     expect(result.library.books.length).toBeGreaterThan(30)
+  })
+})
+
+describe('the playground\'s reel', () => {
+  it('reads and writes the reel as a component, with its own code', () => {
+    const settings = readSettings({ c: 'reel', rplay: '0' })
+    expect(settings.component).toBe('reel')
+    expect(settings.reelAutoplay).toBe(false)
+    expect(writeSettings(settings)).toMatchObject({ c: 'reel', rplay: '0' })
+    const code = templateSnippet(settings)
+    expect(code).toContain('<RegalBooksReel')
+    expect(code).toContain(':library="library"')
+    expect(code).toContain(':autoplay="false"')
+    expect(styleSnippet(settings)).toContain('.books-reel')
+  })
+
+  it('hands the reel the Library it shows as a valid document, its images absolute', () => {
+    const book = (id: string, dateRead: string): Book => ({
+      id, title: `Book ${id}`, seriesTitle: null, author: 'Ada Example', additionalAuthors: [], isbn10: null, isbn13: null,
+      pages: 100, binding: null, yearPublished: null, originalYear: null, rating: 4, status: 'read', tags: [],
+      dateRead, dateAdded: null, review: null, reviewHasSpoiler: false, readCount: 1, description: null,
+    })
+    const books = Array.from({ length: 15 }, (_, index) => book(`b${index}`, `2025-01-${String(index + 1).padStart(2, '0')}`))
+    const document = reelDocument(books, { b14: { front: 'covers/b14.jpg', color: '#336699' } }, 'https://example.org/shelf/library.json', 'https://example.org/playground')
+    expect(document.books).toHaveLength(12)
+    // Newest first, as the row.
+    expect(document.books[0]!.id).toBe('b14')
+    expect(document.books[0]!.assets?.front).toBe('https://example.org/shelf/covers/b14.jpg')
+    expect(document.books[0]!.assets?.color).toBe('#336699')
+    const read = readLibraryDocument(JSON.parse(JSON.stringify(document)))
+    expect(read.ok).toBe(true)
   })
 })

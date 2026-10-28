@@ -5,6 +5,7 @@
 // the slots a host could fill. The page owns the Library (playground.vue).
 import type { PlaygroundSettings } from '#layers/regal/app/showcase/settings'
 import { ROW_SIZES, TOKEN_PRESETS, tokensOf } from '#layers/regal/app/showcase/settings'
+import { reelDocument } from '#layers/regal/app/showcase/reel'
 
 const props = defineProps<{ settings: PlaygroundSettings }>()
 
@@ -14,6 +15,14 @@ const rowSize = computed(() => ROW_SIZES[props.settings.rowSize])
 const dark = computed(() => props.settings.theme === 'dark' || (props.settings.theme === 'auto' && props.settings.hostScheme === 'dark'))
 const page = computed(() => TOKEN_PRESETS[props.settings.tokens].page ?? (dark.value ? '#15140F' : null))
 
+// The reel takes the Library the playground shows as a document in memory (app/showcase/reel.ts).
+const library = useLibrary()
+const reelLibrary = computed(() => {
+  if (props.settings.component !== 'reel' || !import.meta.client || !library.source.value) return null
+  return reelDocument(library.books.value, library.assets.value, library.source.value.src, window.location.href, props.settings.limit)
+})
+const reelEvent = ref('')
+
 const stars = (rating: number) => '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
 const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : null)
 </script>
@@ -22,7 +31,7 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
   <div
     class="preview"
     :class="{
-      'preview--row': settings.component === 'row',
+      'preview--row': settings.component === 'row' || settings.component === 'reel',
       'preview--dark': dark || settings.tokens === 'night',
       'preview--unstyled': settings.unstyled,
       'preview--sidebar': settings.component === 'stage' && settings.sidebar,
@@ -122,6 +131,37 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
         :unstyled="settings.unstyled"
       />
     </template>
+
+    <figure
+      v-else-if="settings.component === 'reel'"
+      class="preview__figure"
+    >
+      <figcaption class="preview__caption">
+        RegalBooksReel · {{ reelLibrary?.books.length ?? 0 }} Books
+      </figcaption>
+      <RegalBooksReel
+        :key="`${settings.reelAutoplay}`"
+        class="preview__reel"
+        :library="reelLibrary"
+        :autoplay="settings.reelAutoplay"
+        :accessible-list="settings.accessibleList"
+        :label="settings.label"
+        :theme="settings.theme"
+        :unstyled="settings.unstyled"
+        @open="event => (reelEvent = `open: ${event.book.title}`)"
+        @manual="reelEvent = 'manual'"
+      >
+        <template
+          v-if="settings.slots !== 'none'"
+          #tooltip="{ book }"
+        >
+          <span class="host-tooltip"><strong>{{ book.title }}</strong><span v-if="book.author"> — {{ book.author }}</span></span>
+        </template>
+      </RegalBooksReel>
+      <p class="preview__note">
+        Swipe or drag sideways · tap the front Book to take it out · Esc or Back puts it back{{ reelEvent ? ` · ${reelEvent}` : '' }}
+      </p>
+    </figure>
 
     <figure
       v-else
@@ -245,6 +285,10 @@ const finished = (date: string | null) => (date ? new Date(`${date}T00:00:00`).t
 /* With the bar above, the sidebar's own filters would say the same twice (the portfolio hides them). */
 .preview__sidebar--bar :deep(.sidebar__filters) {
   display: none;
+}
+
+.preview__reel {
+  width: min(430px, 100%);
 }
 
 .preview--row {

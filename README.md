@@ -13,6 +13,7 @@ Regal is a [Nuxt](https://nuxt.com) layer built with [TresJS](https://tresjs.org
 - **The Stack** (`RegalBooksStage`): your Books as one pile you scroll through, sized by page count and binding, grouped by year or month, what you're reading on top. Hover a Book and it eases forward; click it and it comes out to you, front first, then the back, with your rating, review and the blurb beside it.
 - **The sidebar and the filter bar** (`RegalBooksSidebar`, `RegalBooksFilters`): the count, sort and filters (kept in the URL), and the Books as records linked to the 3D.
 - **The row** (`RegalBooksRow`): the Stack turned on its side for a card on another page (a profile, a year in review), the months marked above it.
+- **The reel** (`RegalBooksReel`): Books on an arc, one in front, the next coming forward every 3.2 s for one round (a friend's "You both read"); a swipe takes over, a tap on the front Book takes it out with the Stack's details.
 - **Phones**: the details become a bottom sheet, the row can break out to the whole screen, swipes and haptics feel native.
 - **Your look**: light, dark or following your site, every colour, frame and font a CSS token, your own markup in slots.
 
@@ -91,6 +92,7 @@ Env overrides work as usual: `NUXT_PUBLIC_REGAL_LIBRARY_SRC=…`, `NUXT_PUBLIC_R
 | `RegalBooksSidebar` | Count, sort & filters, the Books as records, linked to the Stack. | `heading`, `count-label`, `filters`, `list`, `theme`, `unstyled` |
 | `RegalBooksFilters` | The same sort & filters as one bar, for a phone. | – |
 | `RegalBooksRow` | The Stack turned 90° for a card; its own Pick. | `library`, `inspect` (`card`/`viewport`/`auto`), `limit`, `year`, `rotate`, `intro` (`visible`/`mount`/`none`: the Books come into place when the row first shows), `back-button`, `label`, `accessible-list`, `theme`, `unstyled`; slots `#tooltip`, `#detail…`, `#back` |
+| `RegalBooksReel` | A Library (a document in memory) as a reel for a card: the Books on an arc, one round of auto-play, a pause button; its own Library and Pick, the Stack's details. | `library`, `label`, `labels`, `reduced-motion`, `autoplay`, `rotate`, `accessible-list`, `theme`, `unstyled`; events `ready`, `focus`, `manual`, `open`; slots `#tooltip`, `#detail-meta`, `#detail-actions` |
 
 Both render a visually hidden list of the Books (a button each, taking it out) and open a Book as a real dialog; `accessible-list` turns the list off for a host with its own. Every prop, slot and behaviour, the composables, `preloadRegal()` and the host notes (lazy loading, PWA precache, CORS, fabkho.dev/books and Libellus as examples): **[docs/nuxt-layer.md](docs/nuxt-layer.md)**. To see them: the **[playground](https://fabkho.github.io/regal/playground)**.
 
@@ -137,7 +139,7 @@ The owner's shelf on [fabkho.dev/books](https://fabkho.dev/books) is published b
 
 ```bash
 pnpm install
-pnpm dev               # http://localhost:3000: the viewer (demo library file); /playground; /row; /?src=<url> views another file
+pnpm dev               # http://localhost:3000: the viewer (demo library file); /playground; /row; /dev/reel; /?src=<url> views another file
 pnpm lint
 pnpm test:unit         # pure modules
 pnpm test              # + Nuxt runtime + browser e2e (builds the app; WebGL in headless Chromium)
