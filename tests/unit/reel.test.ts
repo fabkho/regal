@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { bookTicks, dragFocus, glideFocus, REEL_DRAG_PX_PER_BOOK, releaseGlide, releaseVelocity, trackDrag } from '../../app/utils/reel/drag'
 import type { DragSample } from '../../app/utils/reel/drag'
 import { reelCamera, reelDistance, reelLayout, reelPose, REEL_FADE_AT, REEL_SPACING, REEL_STEP, REEL_TURN } from '../../app/utils/reel/layout'
-import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, step, takeOver, tapBook } from '../../app/utils/reel/state'
+import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '../../app/utils/reel/state'
 import type { ReelState } from '../../app/utils/reel/state'
 import { clamp, REEL_BADGE_IN, REEL_BEAT, REEL_CAMERA_Z, REEL_DOLLY_PX, REEL_EASE, REEL_MOVE, REEL_SNAP_MS, reelPhase, reelTotal, seg, wholeBook } from '../../app/utils/reel/timeline'
 
@@ -437,6 +437,49 @@ describe('state: glides, catches and live reads', () => {
     expect(caught.focus).toBeCloseTo(expected, 10)
     expect(caught.focus).not.toBe(0)
     expect(caught.focus).not.toBe(Math.round(expected))
+  })
+
+  it('settleOnBook: a takeover mid-move snaps to the nearest Book by a release\'s rule, and lands exactly', () => {
+    let s = advance(enterView(createReel(12)), REEL_BEAT + REEL_MOVE / 2)
+    const live = frontFocus(s)
+    expect(live % 1).not.toBe(0)
+    s = settleOnBook(s)
+    expect(s.mode).toBe('manual')
+    expect(s.glide).not.toBeNull()
+    expect(s.glide!.glide).toEqual(releaseGlide(live, REEL_DRAG_PX_PER_BOOK, 0, 12))
+    expect(s.glide!.glide.to).toBe(Math.round(live))
+    // From the live position (it does not jump), then rests on the Book.
+    expect(frontFocus(s)).toBeCloseTo(live, 4)
+    s = advance(s, REEL_MOVE)
+    expect(s.glide).toBeNull()
+    expect(s.focus).toBe(Math.round(live))
+    expect(settleOnBook(s)).toBe(s)
+  })
+
+  it('settleOnBook takes a snap in progress over and re-snaps from where it is; Reduce Motion lands at once', () => {
+    const playing = advance(enterView(createReel(12)), REEL_BEAT + 100)
+    const gliding = advance(release(playing, 0), 50)
+    const live = frontFocus(gliding)
+    expect(live % 1).not.toBe(0)
+    expect(settleOnBook(gliding).glide!.glide.from).toBeCloseTo(live, 10)
+    const still = settleOnBook(advance(enterView(createReel(12, { reduced: true })), 1))
+    expect(still.glide).toBeNull()
+    const mid = setReduced(advance(playing, 500), true)
+    expect(mid.glide).toBeNull()
+    expect(Number.isInteger(mid.focus)).toBe(true)
+    const caught = takeOver(advance(playing, 300))
+    expect(settleOnBook({ ...caught, reduced: true })).toMatchObject({ mode: 'manual', glide: null, focus: Math.round(caught.focus) })
+  })
+
+  it('settleOnBook keeps the target on the arc and leaves Detail and an empty reel alone', () => {
+    const few = settleOnBook({ ...createReel(5), focus: 3.6 })
+    expect(few.glide!.glide.to).toBe(4)
+    const edge = settleOnBook({ ...createReel(5), focus: 4.4 })
+    expect(edge.glide!.glide.to).toBe(4)
+    const detail = openDetail(createReel(12))
+    expect(settleOnBook(detail)).toBe(detail)
+    const none = createReel(0)
+    expect(settleOnBook(none)).toBe(none)
   })
 
   it('wholeBook never returns -0', () => {

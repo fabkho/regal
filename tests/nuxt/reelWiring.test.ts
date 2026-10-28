@@ -16,7 +16,7 @@ import type { Book } from '#layers/regal/shared/types/book'
 import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
 import type { ReelState } from '#layers/regal/app/utils/reel/state'
-import { REEL_BEAT } from '#layers/regal/app/utils/reel/timeline'
+import { REEL_BEAT, REEL_MOVE } from '#layers/regal/app/utils/reel/timeline'
 
 function libraryOf(count: number): RegalLibraryFile {
   return {
@@ -276,6 +276,61 @@ describe('takeovers', () => {
     await wrapper.find('.reel-card__pause').trigger('click')
     expect(attr(wrapper, 'data-mode')).toBe('manual')
     expect(wrapper.emitted('manual')).toHaveLength(2)
+  })
+
+  it('a tap beside the Books mid-move rests on the nearest Book, opens nothing, and a tap at the centre then hits the Book', async () => {
+    const wrapper = await mountReel()
+    inView(true)
+    await frames(wrapper, REEL_BEAT + REEL_MOVE / 2)
+    const vm = card(wrapper)
+    expect(vm.ctx.focus.value % 1).not.toBe(0)
+    vm.ctx.tap(-1)
+    await nextTick()
+    expect(attr(wrapper, 'data-mode')).toBe('manual')
+    expect(attr(wrapper, 'data-picked')).toBe('')
+    expect(wrapper.emitted('manual')).toHaveLength(1)
+    // It glides on from where it was, then rests on a Book.
+    await frames(wrapper, 100)
+    expect(vm.state.mode).toBe('manual')
+    await frames(wrapper, 1000)
+    expect(vm.state.glide).toBeNull()
+    expect(Number.isInteger(vm.state.focus)).toBe(true)
+    expect(vm.ctx.focus.value).toBe(vm.state.focus)
+    const front = Number(attr(wrapper, 'data-front'))
+    vm.ctx.tap(front)
+    await nextTick()
+    await nextTick()
+    expect(attr(wrapper, 'data-mode')).toBe('detail')
+    expect(attr(wrapper, 'data-picked')).toBe(`fx-wire-${front + 1}`)
+  })
+
+  it('Reduce Motion switched on mid-move: the arc is on a Book at once, no glide', async () => {
+    const wrapper = await mountReel()
+    inView(true)
+    await frames(wrapper, REEL_BEAT + REEL_MOVE / 2)
+    const vm = card(wrapper)
+    expect(vm.ctx.focus.value % 1).not.toBe(0)
+    setReduceMotion(true)
+    await nextTick()
+    expect(vm.state.glide).toBeNull()
+    expect(Number.isInteger(vm.state.focus)).toBe(true)
+    vm.ctx.tap(-1)
+    await nextTick()
+    expect(vm.state.glide).toBeNull()
+    expect(attr(wrapper, 'data-picked')).toBe('')
+  })
+
+  it('a finger that catches a gliding reel and lifts without a swipe leaves it on a Book', async () => {
+    const wrapper = await mountReel()
+    inView(true)
+    await frames(wrapper, 1000)
+    const view = wrapper.find('.reel-card__view').element
+    pointer('pointerdown', 300, view)
+    pointer('pointerup', 300)
+    await nextTick()
+    await frames(wrapper, 1000)
+    expect(card(wrapper).state.glide).toBeNull()
+    expect(Number.isInteger(card(wrapper).state.focus)).toBe(true)
   })
 
   it('a tap on the Book in front while it plays takes it out', async () => {

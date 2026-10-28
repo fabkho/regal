@@ -31,7 +31,7 @@ import { backgroundOf, parseCssColor } from '#layers/regal/app/utils/theme/color
 import { floorShadowStrength, VEIL_OPACITY_FULL, veilOpacity } from '#layers/regal/app/utils/theme/tokens'
 import { dragAxis, dragFocus, releaseVelocity, trackDrag } from '#layers/regal/app/utils/reel/drag'
 import type { DragAxis, DragSample } from '#layers/regal/app/utils/reel/drag'
-import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, step, takeOver, tapBook } from '#layers/regal/app/utils/reel/state'
+import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '#layers/regal/app/utils/reel/state'
 import type { ReelMode, ReelState } from '#layers/regal/app/utils/reel/state'
 import { REEL_MOVE, reelMoveClock } from '#layers/regal/app/utils/reel/timeline'
 import { fillLabel, jumpOffset, REEL_LABELS, REEL_STAGE_HEIGHT, reelShownIndex, rubberFocus, settleOffset } from '#layers/regal/app/utils/reel/scene'
@@ -223,7 +223,8 @@ function tap(index: number) {
   if (pickedId.value || state.mode === 'detail') return
   const from = ctx.focus.value
   if (index < 0) {
-    commit(takeOver(state), { user: true })
+    // Beside the Books: a takeover that opens nothing and rests on the nearest Book.
+    commit(settleOnBook(state), { from, user: true })
     return
   }
   const next = tapBook(state, index)
@@ -253,7 +254,7 @@ function onKey(event: KeyboardEvent) {
 const autoPlays = computed(() => canAutoPlay({ n: n.value, reduced: reduced.value }))
 const control = computed(() => (mode.value === 'playing' ? 'pause' : 'play'))
 function togglePlay() {
-  if (pauseControl(state) === 'pause') commit(takeOver(state), { user: true })
+  if (pauseControl(state) === 'pause') commit(settleOnBook(state), { from: ctx.focus.value, user: true })
   else commit(play(state))
 }
 
@@ -297,7 +298,11 @@ function onPointerUp(event: PointerEvent) {
   if (!drag || event.pointerId !== drag.id) return
   const ended = drag
   drag = null
-  if (ended.axis !== 'x') return
+  // A catch that never became a swipe (and opens nothing): it rests on the nearest Book.
+  if (ended.axis !== 'x') {
+    if (ctx.caught.value) commit(settleOnBook(state), { from: ctx.focus.value })
+    return
+  }
   // Cancelled (the page took the swipe): it snaps where it is.
   const velocity = event.type === 'pointerup' ? releaseVelocity(ended.samples, event.timeStamp) : 0
   const released = release(state, reduced.value ? 0 : velocity)
