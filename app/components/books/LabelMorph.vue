@@ -14,8 +14,8 @@ const box = ref<HTMLElement | null>(null)
 const labelLayer = ref<HTMLElement | null>(null)
 const cardLayer = ref<HTMLElement | null>(null)
 const morph = useLabelMorph()
-const { books } = useLibrary()
-const book = computed(() => books.value.find(item => item.id === morph.value.labelBookId) ?? null)
+const { bookById } = usePickContext()
+const book = computed(() => (morph.value.labelBookId ? bookById(morph.value.labelBookId) : null))
 
 useLabelMorphController({ stage: () => props.stage, box, labelLayer, cardLayer })
 // In <body>: the root's tokens come along.

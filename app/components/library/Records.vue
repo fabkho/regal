@@ -8,7 +8,7 @@ import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/
 const { books } = useLibrary()
 const { view } = useStackView()
 const { pickedId, pick, putAway } = useBookPick()
-const hovered = useState<string | null>('books:hovered', () => null)
+const hovered = useHoveredBook()
 const shown = computed(() => applyStackView(books.value, view.value))
 /** First Book of each date group → its header. */
 const headers = computed(() => new Map(stackGroups(shown.value, resolveGrouping(view.value))
