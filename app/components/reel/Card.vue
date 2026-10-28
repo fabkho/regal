@@ -108,6 +108,9 @@ let lastBadge = -1
 const announced = ref('')
 /** The first frame with the faces in view is drawn: the canvas fades in. */
 const ready = ref(false)
+/** The canvas is mounted (a task after the card, see onMounted). */
+const canvasUp = ref(false)
+let canvasTimer: ReturnType<typeof setTimeout> | undefined
 
 const ctx: ReelContext = {
   focus: { value: frontFocus(state) },
@@ -470,6 +473,8 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
+  // The 3D (the renderer, three's setup) comes up in a task of its own, after the card's hydration.
+  canvasTimer = setTimeout(() => (canvasUp.value = true))
   observer = new IntersectionObserver(([entry]) => {
     intersecting = !!entry?.isIntersecting
     enough = intersecting && (entry!.intersectionRatio >= PLAY_SHARE || entry!.intersectionRect.height >= window.innerHeight * PLAY_SHARE)
@@ -507,6 +512,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('popstate', onPopState)
   window.removeEventListener('keydown', onWindowKey)
+  clearTimeout(canvasTimer)
   clearTimeout(landing)
   clearTimeout(openTimer)
   if (broken.value) document.documentElement.style.overflow = ''
@@ -567,6 +573,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
         >
           <ClientOnly>
             <TresCanvas
+              v-if="canvasUp"
               class="reel-card__canvas"
               :alpha="true"
               :clear-alpha="0"

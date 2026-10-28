@@ -20,22 +20,16 @@
 // where it was shown. Reduce Motion: no flight, it appears in place.
 import {
   BoxGeometry,
-  CanvasTexture,
   Color,
-  DoubleSide,
   Euler,
   MathUtils,
   Matrix4,
-  MeshBasicMaterial,
-  MeshPhysicalMaterial,
-  MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   Quaternion,
-  SRGBColorSpace,
   Vector3,
 } from 'three'
-import type { Group, Material, Mesh, PerspectiveCamera, Texture } from 'three'
+import type { CanvasTexture, Group, Material, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, Texture } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import gsap from 'gsap'
 import type { Book } from '#layers/regal/shared/types/book'
@@ -64,6 +58,7 @@ import { ART_HEIGHT, rowFaceInput } from '#layers/regal/app/utils/row/faces'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
 import { reelCameraInto, reelDistance, reelPoseInto, REEL_WRAP_FROM } from '#layers/regal/app/utils/reel/layout'
 import type { ReelCamera, ReelPose } from '#layers/regal/app/utils/reel/layout'
+import { clothMaterial, COVER_ALBEDO, faceTexture, HEAD_DUST, pageEdgeMaterial, printedMaterial, shadowMaterial } from '#layers/regal/app/utils/reel/materials'
 import { REEL_BOOK, REEL_PX, REEL_SHADOW } from '#layers/regal/app/utils/reel/scene'
 
 const props = defineProps<{
@@ -76,13 +71,6 @@ const { pickedId, face, clickAt, flip: turnOver } = useBookPick()
 const pickContext = usePickContext()
 
 // --- Look (the row's Books, lighter: the prototype's covers show their own colours) ---
-
-const CLOTH_ALBEDO = 0.6
-const COVER_ALBEDO = 1
-const FACE_ALBEDO = 0.85
-const PAPER_ALBEDO = 0.78
-const HEAD_DUST = 0.9
-const PAGE_BUMP = 0.5
 
 const PULL_OUT = 0.04
 const PULL_PHASE = 0.3
@@ -154,13 +142,6 @@ const poses = computed(() => props.books.map(poseOf))
 const indexById = computed(() => new Map(props.books.map((book, index) => [book.id, index])))
 const booksById = computed(() => new Map(props.books.map(book => [book.id, book])))
 
-function faceTexture(canvas: HTMLCanvasElement) {
-  const texture = new CanvasTexture(canvas)
-  texture.colorSpace = SRGBColorSpace
-  texture.anisotropy = 8
-  return texture
-}
-
 /** The prototype's floor shadow: radial-gradient(closest-side, rgba(30,20,10,.28), transparent), stretched to the ellipse. */
 function shadowCanvasTexture(): CanvasTexture | null {
   if (!import.meta.client) return null
@@ -176,17 +157,6 @@ function shadowCanvasTexture(): CanvasTexture | null {
   context.fillStyle = gradient
   context.fillRect(0, 0, size, size)
   return faceTexture(canvas)
-}
-
-function cloth(color: string): MeshPhysicalMaterial {
-  const material = new MeshPhysicalMaterial({ roughness: 0.72, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 })
-  material.userData.cloth = color
-  material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
-  return material
-}
-
-function printed(texture: CanvasTexture): MeshPhysicalMaterial {
-  return new MeshPhysicalMaterial({ map: texture, color: new Color(1, 1, 1).multiplyScalar(FACE_ALBEDO), roughness: 0.68, metalness: 0, clearcoat: 0.15, clearcoatRoughness: 0.55, envMapIntensity: 0.35 })
 }
 
 function plainCanvas(color: string): HTMLCanvasElement {
@@ -221,30 +191,21 @@ function pageEdgesFor(pose: BookPose): BookMaterials['edges'] {
   const fore = head.clone()
   fore.repeat.set(1, 0.5)
   fore.offset.set(0, 0.25)
-  const edge = (texture: CanvasTexture, dust = 1) => new MeshStandardMaterial({
-    map: texture,
-    bumpMap: texture,
-    bumpScale: PAGE_BUMP,
-    color: new Color(1, 1, 1).multiplyScalar(PAPER_ALBEDO * dust),
-    roughness: 0.93,
-    metalness: 0,
-    envMapIntensity: 0.3,
-  })
-  return { plan, canvas, textures: [head, tail, fore], materials: [edge(head, HEAD_DUST), edge(tail), edge(fore)] }
+  return { plan, canvas, textures: [head, tail, fore], materials: [pageEdgeMaterial(head, HEAD_DUST), pageEdgeMaterial(tail), pageEdgeMaterial(fore)] }
 }
 
 function materialsFor(pose: BookPose): Material[] {
   let entry = materialsByBook.get(pose.bookId)
   if (!entry) {
     const color = colorOf(pose)
-    const cover = cloth(color)
+    const cover = clothMaterial(color)
     const spineTexture = faceTexture(plainCanvas(color))
     const backTexture = faceTexture(plainCanvas(color))
-    const spine = printed(spineTexture)
-    const back = printed(backTexture)
+    const spine = printedMaterial(spineTexture)
+    const back = printedMaterial(backTexture)
     const edges = pageEdgesFor(pose)
     const [head, tail, fore] = edges.materials as [MeshStandardMaterial, MeshStandardMaterial, MeshStandardMaterial]
-    const shadow = new MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide, opacity: 0 })
+    const shadow = shadowMaterial(shadowTexture)
     entry = {
       cover, back, spine, spineTexture, backTexture, edges, shadow,
       set: null, loaded: null, drawnFront: null, fullCover: null, ready: false, backDrawn: false,
