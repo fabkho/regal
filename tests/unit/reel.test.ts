@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { bookTicks, dragFocus, glideFocus, REEL_GLIDE_MAX_MS, REEL_GLIDE_MIN_MS, releaseGlide, releaseVelocity, trackDrag } from '../../app/utils/reel/drag'
+import { bookTicks, dragFocus, glideFocus, REEL_DRAG_PX_PER_BOOK, releaseGlide, releaseVelocity, trackDrag } from '../../app/utils/reel/drag'
 import type { DragSample } from '../../app/utils/reel/drag'
 import { reelCamera, reelDistance, reelLayout, reelPose, REEL_FADE_AT, REEL_SPACING, REEL_STEP, REEL_TURN } from '../../app/utils/reel/layout'
-import { advance, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, play, setVisible, step, takeOver, tapBook } from '../../app/utils/reel/state'
+import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, step, takeOver, tapBook } from '../../app/utils/reel/state'
 import type { ReelState } from '../../app/utils/reel/state'
-import { clamp, REEL_BADGE_IN, REEL_BEAT, REEL_CAMERA_Z, REEL_DOLLY_PX, REEL_EASE, REEL_MOVE, reelPhase, reelTotal, seg } from '../../app/utils/reel/timeline'
+import { clamp, REEL_BADGE_IN, REEL_BEAT, REEL_CAMERA_Z, REEL_DOLLY_PX, REEL_EASE, REEL_MOVE, REEL_SNAP_MS, reelPhase, reelTotal, seg, wholeBook } from '../../app/utils/reel/timeline'
 
 /** Every pose in a layout must be a finite number (no NaN from the wrap or the zero Book). */
 function expectFinite(poses: ReturnType<typeof reelLayout>) {
@@ -122,6 +122,57 @@ describe('layout (A · The Reel arc)', () => {
     expect(half.distance).toBeCloseTo(-0.5, 10)
     expect(Math.abs(half.x)).toBeCloseTo(REEL_SPACING / 2, 10)
     expect(Math.abs(half.rotateY)).toBeCloseTo(REEL_TURN / 2, 10)
+  })
+})
+
+describe('layout golden values (prototype formula, index.html render)', () => {
+  // n = 12, focus 0: x = sign(d)·(|d|<1 ? 132|d| : 132 + (|d|-1)·62), rotY = -clamp(d)·52 - sign(d)·clamp(|d|-1)·6,
+  // z = -min(|d|,1)·120 - max(0,|d|-1)·40, hidden past 2.6, shadow 1-0.3|d|, zIndex 100 - round(10|d|).
+  it('matches the prototype for d = 0, ±1, ±2, 2.6 and 3', () => {
+    const at = (d: number) => reelPose(0, -d, 12)
+    expect(at(0)).toMatchObject({ x: 0, rotateY: 0, z: 0, opacity: 1, zIndex: 100 })
+    expect(at(0).shadow).toBeCloseTo(1, 10)
+    expect(at(1)).toMatchObject({ x: 132, rotateY: -52, z: -120, opacity: 1, zIndex: 90 })
+    expect(at(1).shadow).toBeCloseTo(0.7, 10)
+    expect(at(2)).toMatchObject({ x: 194, rotateY: -58, z: -160, opacity: 1, zIndex: 80 })
+    expect(at(2).shadow).toBeCloseTo(0.4, 10)
+    expect(at(2.6)).toMatchObject({ opacity: 1, zIndex: 74 })
+    expect(at(2.6).x).toBeCloseTo(231.2, 10)
+    expect(at(2.6).rotateY).toBeCloseTo(-64, 10)
+    expect(at(2.6).z).toBeCloseTo(-184, 10)
+    expect(at(3)).toMatchObject({ opacity: 0, shadow: 0 })
+  })
+
+  it('mirrors the left side: x and rotateY flip sign, z stays', () => {
+    const left = reelPose(10, 0, 12)
+    expect(left.distance).toBe(-2)
+    expect(left.x).toBe(-194)
+    expect(left.rotateY).toBe(58)
+    expect(left.z).toBe(-160)
+  })
+})
+
+describe('0 and 1 Books', () => {
+  it('a layout of nothing is empty; one Book sits square in front', () => {
+    expect(reelLayout(0, 0)).toEqual([])
+    expect(reelLayout(0, 1)[0]).toMatchObject({ distance: 0, x: 0, opacity: 1 })
+  })
+
+  it('step, tap and play on one Book stay in place, or open its detail', () => {
+    const one = createReel(1)
+    expect(frontIndex(step(one, 1))).toBe(0)
+    expect(frontIndex(step(one, -1))).toBe(0)
+    expect(tapBook(one, 0).mode).toBe('detail')
+    expect(play(one)).toBe(one)
+    expect(enterView(one)).toBe(one)
+  })
+
+  it('zero Books: every event is a no-op on an empty reel', () => {
+    const none = createReel(0)
+    expect(step(none, 1)).toBe(none)
+    expect(tapBook(none, 0)).toBe(none)
+    expect(openDetail(none)).toBe(none)
+    expect(frontIndex(none)).toBe(0)
   })
 })
 
@@ -262,12 +313,148 @@ describe('state (section H table)', () => {
   })
 })
 
+describe('state: live position, wrap, visibility, reduced', () => {
+  it('stepped left three times, Play runs the full round on time (no frozen clock)', () => {
+    let s = step(step(step(createReel(12), -1), -1), -1)
+    expect(frontIndex(s)).toBe(9)
+    s = play(s)
+    expect(frontFocus(s)).toBeCloseTo(9, 10)
+    s = advance(s, REEL_BEAT + REEL_MOVE + 10)
+    expect(frontFocus(s)).toBeCloseTo(11, 10)
+    s = advance(s, 10 * REEL_BEAT)
+    expect(s.mode).toBe('playing')
+    s = advance(s, 2 * REEL_BEAT)
+    expect(s.mode).toBe('manual')
+    expect(frontIndex(s)).toBe(9)
+  })
+
+  it('a dragged-below-zero focus, then Play: the round ends on the Book it began on', () => {
+    let s = dragTo(createReel(12), -4.2)
+    s = play(s)
+    s = advance(s, 12 * REEL_BEAT)
+    expect(s.mode).toBe('manual')
+    expect(frontFocus(s)).toBe(20)
+    expect(frontIndex(s)).toBe(8)
+  })
+
+  it('a 2-Book reel opens on its first Book (no empty slot) and rests on the second', () => {
+    let s = enterView(createReel(2))
+    expect(s.mode).toBe('playing')
+    expect(frontIndex(s)).toBe(0)
+    expect(frontFocus(s)).toBeCloseTo(0, 10)
+    s = advance(s, REEL_BEAT)
+    expect(s.mode).toBe('manual')
+    expect(frontFocus(s)).toBe(1)
+  })
+
+  it('a 3-Book reel started from its last Book restarts at the first, never off the arc', () => {
+    const last = step(createReel(3), 1)
+    const s = step(step(last, 1), 1)
+    expect(frontIndex(s)).toBe(2)
+    const played = play(s)
+    expect(frontFocus(played)).toBeCloseTo(0, 10)
+    expect(advance(played, 2 * REEL_BEAT).focus).toBe(2)
+  })
+
+  it('a Playing reel that is hidden keeps its clock; shown again it does not restart the visit', () => {
+    let s = enterView(createReel(12))
+    s = advance(s, 1000)
+    s = setVisible(s, false)
+    s = setVisible(s, true)
+    expect(s.elapsed).toBe(1000)
+    expect(s.played).toBe(true)
+  })
+
+  it('a reel first shown on screen starts; one first shown hidden starts when it comes into view', () => {
+    const hidden = setVisible(createReel(12), false)
+    expect(hidden.mode).toBe('manual')
+    expect(setVisible(hidden, true).mode).toBe('playing')
+  })
+
+  it('Reduce Motion mid-visit takes a Playing reel over; off again, it may auto-play after a new visit', () => {
+    const playing = enterView(createReel(12))
+    const reduced = setReduced(advance(playing, 1200), true)
+    expect(reduced.mode).toBe('manual')
+    expect(frontFocus(reduced)).toBeCloseTo(0, 10)
+    const back = setReduced(reduced, false)
+    expect(enterView(newVisit(back)).mode).toBe('playing')
+  })
+
+  it('the pause button reads Pause while Playing, rests included, and Play otherwise', () => {
+    const playing = enterView(createReel(12))
+    expect(pauseControl(playing)).toBe('pause')
+    expect(pauseControl(setVisible(playing, false))).toBe('pause')
+    expect(pauseControl(takeOver(playing))).toBe('play')
+    expect(pauseControl(openDetail(takeOver(playing)))).toBe('play')
+  })
+
+  it('the caption stays after a takeover: badge is 1 in Manual and Detail', () => {
+    const playing = enterView(createReel(12))
+    expect(badgeOpacity(playing)).toBeLessThan(1)
+    const manual = takeOver(advance(playing, 1500))
+    expect(badgeOpacity(manual)).toBe(1)
+    expect(badgeOpacity(openDetail(manual))).toBe(1)
+  })
+})
+
+describe('state: glides, catches and live reads', () => {
+  it('a release glides, and arrows during the glide step from where the arc is now', () => {
+    let s = release(createReel(12), -2000)
+    expect(s.mode).toBe('manual')
+    expect(s.glide).not.toBeNull()
+    s = advance(s, (s.glide?.glide.duration ?? 0) / 2)
+    const live = frontFocus(s)
+    expect(live).toBeGreaterThan(Math.min(0, s.glide?.glide.to ?? 0))
+    const next = step(s, 1)
+    expect(next.glide).toBeNull()
+    expect(next.focus).toBe(Math.round(live) + 1)
+  })
+
+  it('a tap during a glide tapping the Book now in front opens its detail from the live position', () => {
+    let s = release(createReel(12), -2000)
+    s = advance(s, 1)
+    const live = Math.round(frontFocus(s))
+    const tapped = tapBook(s, ((live % 12) + 12) % 12)
+    expect(tapped.mode).toBe('detail')
+    expect(tapped.focus).toBe(live)
+  })
+
+  it('a drag that catches a glide takes its live focus, not the release target', () => {
+    let s = release(createReel(12), -2000)
+    s = advance(s, 60)
+    const at = frontFocus(s)
+    s = takeOver(s)
+    expect(s.glide).toBeNull()
+    expect(s.focus).toBeCloseTo(at, 10)
+  })
+
+  it('a real catch mid-move: a drag starts while the beat is moving and takes the arc where it is', () => {
+    const playing = enterView(createReel(12))
+    const midMove = advance(playing, REEL_BEAT + REEL_MOVE / 2)
+    const expected = reelPhase(REEL_BEAT + REEL_MOVE / 2).focus
+    expect(frontFocus(midMove)).toBeCloseTo(expected, 10)
+    const caught = takeOver(midMove)
+    expect(caught.focus).toBeCloseTo(expected, 10)
+    expect(caught.focus).not.toBe(0)
+    expect(caught.focus).not.toBe(Math.round(expected))
+  })
+
+  it('wholeBook never returns -0', () => {
+    expect(Object.is(wholeBook(-0.2), -0)).toBe(false)
+    expect(Object.is(releaseGlide(0.2, REEL_DRAG_PX_PER_BOOK, 0, 12).to, -0)).toBe(false)
+  })
+})
+
 describe('drag (Regal row drag, reused)', () => {
   it('follows the finger 1:1 past the slop, in the direction of the finger', () => {
-    // The first 8 px are the slop; the arc moves 1 Book per px-per-Book after.
-    expect(dragFocus(0, 0, 124)).toBe(0)
-    expect(dragFocus(0, 8 + 124, 124)).toBeCloseTo(-1, 10)
-    expect(dragFocus(0, -(8 + 124), 124)).toBeCloseTo(1, 10)
+    // The first 8 px are the slop, then one Book per REEL_DRAG_PX_PER_BOOK (132 px).
+    expect(dragFocus(0, 0)).toBe(0)
+    expect(dragFocus(0, 8 + 132)).toBeCloseTo(-1, 10)
+    expect(dragFocus(0, -(8 + 132))).toBeCloseTo(1, 10)
+  })
+
+  it('pxPerBook is the arc spacing: a neighbour\'s width of drag brings it to the front', () => {
+    expect(REEL_DRAG_PX_PER_BOOK).toBe(132)
   })
 
   it('counts one tick per Book passed', () => {
@@ -276,26 +463,39 @@ describe('drag (Regal row drag, reused)', () => {
     expect(bookTicks(0, -2.6)).toBe(3)
   })
 
-  it('a slow release snaps to the nearest Book where it stands', () => {
-    const glide = releaseGlide(2.3, 124, 10)
+  it('a slow release snaps to the nearest Book where it stands, for the duration per Book', () => {
+    const glide = releaseGlide(2.3, REEL_DRAG_PX_PER_BOOK, 10, 12)
     expect(glide.to).toBe(2)
-    expect(glide.duration).toBe(REEL_MOVE)
-    const up = releaseGlide(2.6, 124, -10)
+    expect(glide.duration).toBeCloseTo(REEL_SNAP_MS * 0.3, 6)
+    const up = releaseGlide(2.6, REEL_DRAG_PX_PER_BOOK, -10, 12)
     expect(up.to).toBe(3)
+    expect(releaseGlide(2.6, REEL_DRAG_PX_PER_BOOK, -10, 12).duration).toBeCloseTo(REEL_SNAP_MS * 0.4, 6)
+  })
+
+  it('one duration rule: a whole Book takes one move, a longer snap is capped at one move', () => {
+    expect(releaseGlide(0.45, REEL_DRAG_PX_PER_BOOK, 0, 12).duration).toBeCloseTo(REEL_SNAP_MS * 0.45, 6)
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, -3000, 12).duration).toBe(REEL_SNAP_MS)
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, 0, 12).duration).toBe(0)
   })
 
   it('a flick glides on and snaps to a Book (right flick: the previous Book comes in)', () => {
-    const glide = releaseGlide(0, 124, 800)
+    const glide = releaseGlide(0, REEL_DRAG_PX_PER_BOOK, 800, 12)
     expect(glide.to).toBeLessThan(0)
     expect(Number.isInteger(glide.to)).toBe(true)
-    expect(glide.duration).toBeGreaterThanOrEqual(REEL_GLIDE_MIN_MS)
-    expect(glide.duration).toBeLessThanOrEqual(REEL_GLIDE_MAX_MS)
-    const left = releaseGlide(0, 124, -800)
-    expect(left.to).toBeGreaterThan(0)
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, -800, 12).to).toBeGreaterThan(0)
+  })
+
+  it('the target stays on the arc: whole Books for n < 4, at most one lap away for a ring', () => {
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, 8000, 3).to).toBe(0)
+    expect(releaseGlide(2, REEL_DRAG_PX_PER_BOOK, -8000, 3).to).toBe(2)
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, 8000, 3).to).toBeGreaterThanOrEqual(0)
+    const ring = releaseGlide(0, REEL_DRAG_PX_PER_BOOK, -8000, 12)
+    expect(Math.abs(ring.to - 0)).toBeLessThanOrEqual(12)
+    expect(releaseGlide(0, REEL_DRAG_PX_PER_BOOK, -8000, 1).to).toBe(0)
   })
 
   it('a glide starts at the release and lands exactly on its Book', () => {
-    const glide = releaseGlide(0, 124, -2000)
+    const glide = releaseGlide(0, REEL_DRAG_PX_PER_BOOK, -2000, 12)
     expect(glideFocus(glide, 0).focus).toBeCloseTo(0, 3)
     const end = glideFocus(glide, glide.duration)
     expect(end.done).toBe(true)
@@ -307,7 +507,7 @@ describe('drag (Regal row drag, reused)', () => {
   })
 
   it('a glide with nowhere to go is done at once', () => {
-    expect(glideFocus({ from: 2, to: 2, pxPerBook: 124, duration: 300 }, 0)).toEqual({ focus: 2, done: true })
+    expect(glideFocus({ from: 2, to: 2, pxPerBook: 132, duration: 300 }, 0)).toEqual({ focus: 2, done: true })
   })
 
   it('the velocity from the samples: a finger moving 1000 px/s reads as about that', () => {

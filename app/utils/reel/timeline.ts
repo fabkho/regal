@@ -24,7 +24,11 @@ export const REEL_DOLLY_PX = 18
 export const REEL_CAMERA_Z = -40
 /** Auto-play rounds before the reel rests (the first round is one pass over the Books). */
 export const REEL_ROUNDS = 1
-/** A snap with no flick glides this long (ms): one move. */
+/**
+ * The snap's duration (ms) per Book it travels: one move (REEL_MOVE) for a whole
+ * Book, less for a part of one, never more than REEL_MOVE. The same rule for a
+ * flick and a slow release (see drag.ts `releaseGlide`).
+ */
 export const REEL_SNAP_MS = REEL_MOVE
 
 export type Easing = (x: number) => number
@@ -98,4 +102,9 @@ export function reelPhase(time: number): ReelPhase {
   const badge = REEL_EASE.standard(seg(local, REEL_MOVE, REEL_MOVE + REEL_BADGE_IN))
     * (1 - REEL_EASE.exit(seg(local, REEL_BEAT - REEL_BADGE_OUT, REEL_BEAT)))
   return { beat, focus: beat - 1 + move, badge, index: beat }
+}
+
+/** The nearest whole Book, as a number that is never -0 (so poses and tests see +0). */
+export function wholeBook(focus: number): number {
+  return Math.round(focus) + 0
 }

@@ -63,10 +63,10 @@ export function reelPose(index: number, focus: number, n: number): ReelPose {
   const hidden = ad > REEL_FADE_AT
   return {
     distance: d,
-    x: s * (ad < 1 ? ad * REEL_SPACING : REEL_SPACING + (ad - 1) * REEL_STEP),
+    x: s * (ad < 1 ? ad * REEL_SPACING : REEL_SPACING + (ad - 1) * REEL_STEP) + 0,
     y: REEL_LIFT,
-    z: -Math.min(ad, 1) * REEL_DEPTH - Math.max(0, ad - 1) * REEL_DEPTH_STEP,
-    rotateY: -clamp(d, -1, 1) * REEL_TURN - s * clamp(ad - 1, 0, 2) * REEL_TURN_STEP,
+    z: -Math.min(ad, 1) * REEL_DEPTH - Math.max(0, ad - 1) * REEL_DEPTH_STEP + 0,
+    rotateY: -clamp(d, -1, 1) * REEL_TURN - s * clamp(ad - 1, 0, 2) * REEL_TURN_STEP + 0,
     opacity: hidden ? 0 : 1,
     shadow: hidden ? 0 : 1 - ad * 0.3,
     zIndex: 100 - Math.round(ad * 10),
