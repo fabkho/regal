@@ -18,6 +18,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   SRGBColorSpace,
+  Vector4,
 } from 'three'
 import type { Material, PerspectiveCamera, Scene, WebGLRenderer } from 'three'
 
@@ -73,9 +74,9 @@ export function shadowMaterial(texture: CanvasTexture | null): MeshBasicMaterial
  * presented, so the browser may hold its drawing until the first time it is shown
  * and then make the page wait for all of it at once; waiting here, while nothing
  * depends on it, moves that cost off the frame that shows the canvas. Resolves at
- * once without WebGL 2 fences, and after `patience` ms at the latest.
+ * once without WebGL 2 fences, after `patience` ms at the latest, and when `signal` aborts.
  */
-export function gpuIdle(renderer: WebGLRenderer, patience = 1500): Promise<void> {
+export function gpuIdle(renderer: WebGLRenderer, patience = 1500, signal?: AbortSignal): Promise<void> {
   const gl = renderer.getContext() as WebGL2RenderingContext
   const sync = typeof gl.fenceSync === 'function' ? gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) : null
   if (!sync) return Promise.resolve()
@@ -85,7 +86,7 @@ export function gpuIdle(renderer: WebGLRenderer, patience = 1500): Promise<void>
     const poll = () => {
       let done: boolean
       try {
-        done = gl.isContextLost() || gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || performance.now() > until
+        done = signal?.aborted || gl.isContextLost() || gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || performance.now() > until
         if (done) gl.deleteSync(sync)
       }
       catch {
@@ -145,16 +146,22 @@ export function warmReelMaterials(renderer: WebGLRenderer, scene: Scene, camera:
     if (disposed) return
     const autoClear = renderer.autoClear
     const scissorTest = renderer.getScissorTest()
-    scene.add(group)
-    group.updateMatrixWorld(true)
-    camera.updateMatrixWorld()
-    renderer.autoClear = false
-    renderer.setScissorTest(true)
-    renderer.setScissor(0, 0, 1, 1)
-    renderer.render(scene, camera)
-    renderer.setScissorTest(scissorTest)
-    renderer.autoClear = autoClear
-    scene.remove(group)
+    const scissor = renderer.getScissor(new Vector4())
+    try {
+      scene.add(group)
+      group.updateMatrixWorld(true)
+      camera.updateMatrixWorld()
+      renderer.autoClear = false
+      renderer.setScissorTest(true)
+      renderer.setScissor(0, 0, 1, 1)
+      renderer.render(scene, camera)
+    }
+    finally {
+      renderer.setScissor(scissor.x, scissor.y, scissor.z, scissor.w)
+      renderer.setScissorTest(scissorTest)
+      renderer.autoClear = autoClear
+      scene.remove(group)
+    }
   }
   let ready: Promise<void>
   try {

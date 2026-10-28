@@ -4,7 +4,7 @@
 // without blocking, whatever the context can do.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PerspectiveCamera, Scene } from 'three'
-import type { Mesh, MeshPhysicalMaterial, MeshStandardMaterial, WebGLRenderer } from 'three'
+import type { Mesh, MeshPhysicalMaterial, MeshStandardMaterial, WebGLRenderer, Vector4 } from 'three'
 import { clothMaterial, gpuIdle, pageEdgeMaterial, printedMaterial, shadowMaterial, warmReelMaterials, faceTexture } from '#layers/regal/app/utils/reel/materials'
 
 function fakeGl(statuses: boolean[]) {
@@ -48,6 +48,18 @@ describe('gpuIdle', () => {
     expect(done).toBe(true)
   })
 
+  it('stops polling when its signal aborts', async () => {
+    const gl = fakeGl([false])
+    const controller = new AbortController()
+    let done = false
+    void gpuIdle(rendererOf(gl), 1500, controller.signal).then(() => (done = true))
+    await vi.advanceTimersByTimeAsync(20)
+    expect(done).toBe(false)
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(8)
+    expect(done).toBe(true)
+  })
+
   it('resolves at once without WebGL 2 fences', async () => {
     let done = false
     void gpuIdle(rendererOf({ flush: vi.fn() })).then(() => (done = true))
@@ -64,6 +76,7 @@ describe('warmReelMaterials', () => {
       autoClear: true,
       getScissorTest: () => false,
       setScissorTest: vi.fn(),
+      getScissor: (target: Vector4) => target.set(1, 2, 3, 4),
       setScissor: vi.fn(),
       compileAsync: vi.fn((group: { children: Mesh[] }, camera: unknown, target: unknown) => {
         calls.push({ group, camera, target })
@@ -104,6 +117,20 @@ describe('warmReelMaterials', () => {
     warmup.dispose()
     warmup.draw()
     expect(renders).toHaveLength(1)
+  })
+
+  it('a draw that throws still leaves the scene and the scissor as they were', () => {
+    const { renderer, spy } = fakeRenderer()
+    spy.render.mockImplementation(() => {
+      throw new Error('lost')
+    })
+    const scene = new Scene()
+    const warmup = warmReelMaterials(renderer, scene, new PerspectiveCamera())
+    expect(() => warmup.draw()).toThrow('lost')
+    expect(scene.children).toHaveLength(0)
+    expect(spy.setScissor).toHaveBeenLastCalledWith(1, 2, 3, 4)
+    expect(spy.setScissorTest).toHaveBeenLastCalledWith(false)
+    expect(spy.autoClear).toBe(true)
   })
 
   it('never rejects: a renderer that cannot compile ahead resolves', async () => {

@@ -8,7 +8,7 @@
 // row's RowScene). It renders only when something on screen changed
 // (utils/stage/frameGate.ts) and nothing while the reel is off screen.
 import type { DirectionalLight, Group, Mesh, MeshBasicMaterial, PerspectiveCamera } from 'three'
-import { MathUtils, Vector3 } from 'three'
+import { MathUtils, Vector3, WebGLRenderer } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { looksKey, motionKey } from '#layers/regal/app/utils/stage/frameState'
 import { createFrameGate } from '#layers/regal/app/utils/stage/frameGate'
@@ -151,23 +151,29 @@ let readySent = false
 // waits for that (at most WARM_PATIENCE_MS) instead of stalling on it, and the
 // warm-up holds the programs until the real Books have drawn.
 const WARM_PATIENCE_MS = 700
+/** `ready` waits this long at most for the GPU to be done with the first frame. */
+const REVEAL_PATIENCE_MS = 500
+/** The reel needs three's WebGL renderer (Tres may hand a WebGPU one): otherwise no warm-up, no fence. */
+const gl = renderer instanceof WebGLRenderer ? renderer : null
+const lifetime = new AbortController()
 let warmup: ReelWarmup | null = null
 let warmed = false
 let warmTimer: ReturnType<typeof setTimeout> | undefined
 let warmStart: ReturnType<typeof setTimeout> | undefined
 function warmUp() {
   const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
-  if (!camera3) {
+  if (!camera3 || !gl) {
     warmed = true
     return
   }
-  warmup = warmReelMaterials(renderer, scene.value, camera3)
+  warmup = warmReelMaterials(gl, scene.value, camera3)
   warmTimer = setTimeout(() => (warmed = true), WARM_PATIENCE_MS)
   void warmup.ready
     .then(() => {
       warmup?.draw()
-      return gpuIdle(renderer, WARM_PATIENCE_MS)
+      return gpuIdle(gl, WARM_PATIENCE_MS, lifetime.signal)
     })
+    .catch(() => {})
     .then(() => {
       clearTimeout(warmTimer)
       warmed = true
@@ -194,7 +200,8 @@ render((notify) => {
   }
   if (!readySent && props.ctx.facesReady.value) {
     revealing = true
-    void gpuIdle(renderer).then(() => {
+    void (gl ? gpuIdle(gl, REVEAL_PATIENCE_MS, lifetime.signal) : Promise.resolve()).catch(() => {}).then(() => {
+      if (lifetime.signal.aborted) return
       readySent = true
       markRegal('reel:ready')
       props.ctx.ready()
@@ -208,6 +215,7 @@ watch(props.ctx.visible, (visible) => {
   if (visible) gate.invalidate()
 })
 onBeforeUnmount(() => {
+  lifetime.abort()
   clearTimeout(warmStart)
   clearTimeout(warmTimer)
   warmup?.dispose()
