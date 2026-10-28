@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { LabelKind, MorphFrame, MorphLeg, Rect, ShownLabel } from '#layers/regal/app/utils/books/labelMorph'
+import type { LabelMorphFlags, LabelSource } from '#layers/regal/app/utils/books/pickContext'
 import {
   closeTarget, clamp01, followRect, labelFor, legLanded, MORPH_MS, needsCardCopy, pickChange, planClose, planOpen, sampleLeg, toStage,
 } from '#layers/regal/app/utils/books/labelMorph'
@@ -13,41 +14,16 @@ import {
 // Animation for that reason, and so a click mid-way retargets from wherever
 // the box is.
 
-export interface LabelMorphFlags {
-  /** A morph is under way (the ghost box shows). */
-  active: boolean
-  /** The card is laid out but hidden: the box is still on its way to it. */
-  cardHidden: boolean
-  /** The card comes and goes with its own fade (no morph). */
-  cardFade: boolean
-  /** The labels hold back: the box is or will become the label. */
-  labelsHidden: boolean
-  /** The Book whose title the box shows while it is (or becomes) a label. */
-  labelBookId: string | null
-}
+export type { LabelMorphFlags }
 
-/** Reactive state of the morph, for the labels, the card and the ghost box. */
+/** Reactive state of the morph, for the labels, the card and the ghost box (of the view's Pick). */
 export function useLabelMorph() {
-  return useState<LabelMorphFlags>('books:label-morph', () => ({
-    active: false,
-    cardHidden: false,
-    cardFade: true,
-    labelsHidden: false,
-    labelBookId: null,
-  }))
+  return usePickContext().morph
 }
-
-interface LabelSource {
-  kind: LabelKind
-  read: () => { bookId: string, el: HTMLElement } | null
-}
-
-// Elements on the page, registered on mount (client only).
-const labelSources = new Set<LabelSource>()
-const cardSources = new Set<() => HTMLElement | null>()
 
 /** A label (hover or focus) registers what it shows, so the morph can start or land on it. */
 export function useLabelMorphLabel(kind: LabelKind, read: LabelSource['read']) {
+  const { labelSources } = usePickContext()
   const source = { kind, read }
   onMounted(() => labelSources.add(source))
   onBeforeUnmount(() => labelSources.delete(source))
@@ -55,6 +31,7 @@ export function useLabelMorphLabel(kind: LabelKind, read: LabelSource['read']) {
 
 /** The details card registers its root element. */
 export function useLabelMorphCard(read: () => HTMLElement | null) {
+  const { cardSources } = usePickContext()
   onMounted(() => cardSources.add(read))
   onBeforeUnmount(() => cardSources.delete(read))
 }
@@ -67,7 +44,7 @@ function rectOf(element: Element): Rect {
 type SeenLabel = ShownLabel & { el: HTMLElement }
 
 /** The labels rendered right now (hidden ones too: where they would show). */
-function shownLabels(): SeenLabel[] {
+function shownLabelsOf(labelSources: Set<LabelSource>): SeenLabel[] {
   const shown: SeenLabel[] = []
   for (const source of labelSources) {
     const label = source.read()
@@ -76,7 +53,7 @@ function shownLabels(): SeenLabel[] {
   return shown
 }
 
-function cardElement(): HTMLElement | null {
+function cardElementOf(cardSources: Set<() => HTMLElement | null>): HTMLElement | null {
   for (const read of cardSources) {
     const element = read()
     if (element?.isConnected) return element
@@ -142,7 +119,10 @@ export function useLabelMorphController(elements: {
   labelLayer: Ref<HTMLElement | null>
   cardLayer: Ref<HTMLElement | null>
 }) {
-  const flags = useLabelMorph()
+  const context = usePickContext()
+  const flags = context.morph
+  const shownLabels = () => shownLabelsOf(context.labelSources)
+  const cardElement = () => cardElementOf(context.cardSources)
   const reducedMotion = usePreferredReducedMotion()
 
   let leg: MorphLeg | null = null
@@ -381,7 +361,7 @@ export function useLabelMorphController(elements: {
       else if (change === 'close' && previous) close(previous)
       // A swap keeps the card (it swaps its content itself; mid-open the box copies the new one).
       else if (change === 'swap' && next) swap(next)
-    })
+    }, context)
   })
   onBeforeUnmount(() => {
     unregister?.()

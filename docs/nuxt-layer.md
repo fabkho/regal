@@ -95,6 +95,8 @@ The look is the decided one: re-sorts move by hand when up to 3 Books move, as a
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
 
+The shared Pick is the default of `useBookPick()`, `BooksDetails` and the label morph. A view that needs a Pick of its own (a Book out there must not count as out elsewhere, though Book ids may be equal) calls `providePickContext()` in its setup (`app/composables/useBookPick.ts`, `app/utils/books/pickContext.ts`): everything below it (also inside a `TresCanvas`, which passes provides on) reads and writes that Pick, its morph state and its label/card registries. Nothing in the layer's own views provides one yet.
+
 ## In-memory library
 
 A host that builds a Library on the device (an app showing each member her own shelf) passes it as a
