@@ -4,11 +4,11 @@
 // for hovering a record in the Book list, and not once the user scrolls (the
 // scroll focus label takes over, see FocusLabel.vue).
 
-const hovered = useState<string | null>('books:hovered', () => null)
-const { books } = useLibrary()
+const hovered = useHoveredBook()
+const { bookById } = usePickContext()
 const { pickedId } = useBookPick()
 const { scrollLed } = useScrollLead()
-const book = computed(() => (hovered.value ? books.value.find(item => item.id === hovered.value) : null))
+const book = computed(() => (hovered.value ? bookById(hovered.value) : null))
 const position = reactive({ x: 0, y: 0, overCanvas: false })
 
 // Taking the Book out, this label grows into the details card; putting it

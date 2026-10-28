@@ -7,10 +7,10 @@
 
 const focused = useFocusedBook()
 const anchor = useFocusAnchor()
-const { books } = useLibrary()
+const { bookById } = usePickContext()
 const { pickedId } = useBookPick()
 
-const book = computed(() => (focused.value ? books.value.find(item => item.id === focused.value) : null))
+const book = computed(() => (focused.value ? bookById(focused.value) : null))
 
 /** Gap between the Book's end (or the stage edge) and the label, in pixels. */
 const GAP = 12

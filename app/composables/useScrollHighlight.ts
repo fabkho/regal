@@ -32,9 +32,9 @@ export function useScrollLead() {
   }
 }
 
-/** The Book the scroll focus is on (null when there is none), shared with the focus label. */
+/** The Book the scroll focus is on (null when there is none), shared with the focus label (of the view's Pick). */
 export function useFocusedBook() {
-  return useState<string | null>('books:focused', () => null)
+  return usePickContext().focused
 }
 
 /** A finger is scrolling the Stack, or its flick is still gliding (set by the Stack scene; the scroll haptics read it). */

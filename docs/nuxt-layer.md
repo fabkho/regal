@@ -95,7 +95,12 @@ The look is the decided one: re-sorts move by hand when up to 3 Books move, as a
 
 Regal's composables (`useLibrary`, `useBookPick`, `useStackView`, `useRegalConfig` …) are auto-imported into the host too; avoid those names in the host.
 
-The shared Pick is the default of `useBookPick()`, `BooksDetails` and the label morph. A view that needs a Pick of its own (a Book out there must not count as out elsewhere, though Book ids may be equal) calls `providePickContext()` in its setup (`app/composables/useBookPick.ts`, `app/utils/books/pickContext.ts`): everything below it (also inside a `TresCanvas`, which passes provides on) reads and writes that Pick, its morph state and its label/card registries. Nothing in the layer's own views provides one yet.
+The shared Pick is the default of `useBookPick()`, `BooksDetails` and the label morph. A view that needs a Pick of its own (a Book out there must not count as out elsewhere, though Book ids may be equal) calls `providePickContext(createPickContext({ books }))` in its setup (`app/composables/useBookPick.ts`, `app/utils/books/pickContext.ts`). Everything below it (also inside a `TresCanvas`, which passes provides on) reads and writes that context: the picked Book, the hovered and the scroll-focused Book (`useHoveredBook()`, `useFocusedBook()`), the inspect insets (`useInspectInsets()`: where a sheet's top edge is), the morph state and the label/card registries, and it finds a Book by id in the context's own `books` (the shared one: the library from `useLibrary()`; a created one with no `books` finds none, so a Book of another Library with an equal id can never show up). Rules for a reel:
+
+- Mount its own `<BooksDetails>` and `<BooksLabelMorph>` (the morph's ghost box) below the provider; the shared ones, mounted elsewhere on the page, show the shared Pick.
+- `inject` never sees the same component's `provide`: the providing component uses the context `providePickContext()` returned (`useBookPick(context)`), or puts the views below in a child component.
+- `usePickContext()` outside setup warns in dev and falls back to the shared Pick; `onBeforePickChange(listener, context)` takes the context explicitly.
+- Not per context (Stack only, never used by a reel): the scroll focus anchor, the touch-scroll flag, and the Book faces of `BooksMeshes` (`useLibrary().facesOf`). Nothing in the layer's own views provides a context yet.
 
 ## In-memory library
 

@@ -16,10 +16,10 @@ const props = withDefaults(defineProps<{
   returnFocus?: HTMLElement | null
 }>(), { sheet: false, maxHeight: 0, returnFocus: null })
 
-const { books } = useLibrary()
+const { bookById } = usePickContext()
 const { pickedId, face, flip, putAway } = useBookPick()
 
-const book = computed(() => books.value.find(candidate => candidate.id === pickedId.value) ?? null)
+const book = computed(() => (pickedId.value ? bookById(pickedId.value) : null))
 const titleId = useId()
 
 // The host's theme and slots (#detail, #detail-header, #detail-meta,

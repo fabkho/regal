@@ -70,7 +70,7 @@ const props = withDefaults(defineProps<{
 }>(), { aside: true, shuffle: 'instant', debugLoads: false, rotate: 'turntable' })
 
 /** Hovered Book, shared with the hover label and the Book list (hovering a record lifts its Book). */
-const hoveredBook = useState<string | null>('books:hovered', () => null)
+const hoveredBook = useHoveredBook()
 /** Each Book's faces from the library file, URLs resolved. */
 const { facesOf } = useLibrary()
 
