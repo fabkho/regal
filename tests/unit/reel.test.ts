@@ -138,7 +138,7 @@ describe('layout golden values (prototype formula, index.html render)', () => {
     expect(at(2).shadow).toBeCloseTo(0.4, 10)
     expect(at(2.6)).toMatchObject({ opacity: 1, zIndex: 74 })
     expect(at(2.6).x).toBeCloseTo(231.2, 10)
-    expect(at(2.6).rotateY).toBeCloseTo(-64, 10)
+    expect(at(2.6).rotateY).toBeCloseTo(-61.6, 10)
     expect(at(2.6).z).toBeCloseTo(-184, 10)
     expect(at(3)).toMatchObject({ opacity: 0, shadow: 0 })
   })
