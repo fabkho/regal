@@ -62,6 +62,31 @@ export function createReel(n: number, options: { reduced?: boolean } = {}): Reel
   }
 }
 
+/**
+ * The reel before it shows: still, where its first round will begin (so it
+ * doesn't jump when it starts). The card's state at mount, and the one the
+ * first frame (the canvas's, and the poster standing in for it) is drawn from.
+ */
+export function initialReel(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): ReelState {
+  const start = setVisible(createReel(n, { reduced: options.reduced ?? false }), false)
+  if (options.autoplay === false) return { ...start, played: true }
+  const preview = enterView({ ...start, visible: true })
+  return preview.mode === 'playing' ? { ...start, focus: frontFocus(preview) } : start
+}
+
+/**
+ * Where the first frame stands: the arc's `focus` and the dolly's clock (ms) of
+ * `initialReel`, as the canvas draws its first frame and the poster draws the
+ * same one. The clock is the one the auto-play begins on (a beat's start, where the
+ * desktop's clock and the phones' move clock are the same number).
+ */
+export function reelStartFrame(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): { focus: number, dolly: number } {
+  const state = initialReel(n, options)
+  const preview = enterView({ ...state, visible: true })
+  const playing = preview.mode === 'playing' && !state.reduced
+  return { focus: frontFocus(state), dolly: playing ? preview.origin : 0 }
+}
+
 /** Auto-play can run: at least two Books, and no Reduce Motion. */
 export function canAutoPlay(state: Pick<ReelState, 'n' | 'reduced'>): boolean {
   return state.n >= 2 && !state.reduced

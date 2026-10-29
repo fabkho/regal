@@ -5,6 +5,9 @@
 // and your stars in #detail-meta). Synthetic Books (app/dev/reel/data.ts).
 // ?n=0|1|2|3|12|300 (default 12)  ?motion=reduce|full (default: the system's)
 // ?scheme=dark  ?autoplay=0  ?long=1 (a page to scroll, the reel lower down).
+// ?slow=1 mounts the 3D 6 s late (?slow=<n>: n s) to look at the loading state: the reel's own
+// poster, its first frame, then the canvas fading in over it and the intro. ?poster=0 turns the
+// poster off (nothing until the canvas fades in). The page renders the reel on the server too.
 // Not in a build.
 import type { Book } from '#layers/regal/shared/types/book'
 import type { ReelBookEvent } from '#layers/regal/app/utils/reel/context'
@@ -25,15 +28,19 @@ const count = computed(() => {
 const motion = computed(() => (route.query.motion === 'reduce' ? true : route.query.motion === 'full' ? false : undefined))
 const dark = computed(() => route.query.scheme === 'dark')
 const autoplay = computed(() => route.query.autoplay !== '0')
+const poster = computed(() => route.query.poster !== '0')
+/** ms the 3D is held back: ?slow=1 is 6 s, ?slow=<n> n s. */
+const canvasDelay = computed(() => {
+  const slow = Number(route.query.slow ?? 0)
+  return slow > 0 ? (slow === 1 ? 6000 : slow * 1000) : 0
+})
 const long = computed(() => route.query.long === '1')
 const set = (patch: Record<string, string | number | undefined>) => router.replace({ query: { ...route.query, ...patch } })
 
-// The document is built in the browser: its covers must be absolute URLs (this page's origin).
-const base = ref('')
-onMounted(() => {
-  base.value = new URL(useRuntimeConfig().app.baseURL || '/', window.location.href).href
-})
-const library = computed(() => (base.value ? reelLibrary(count.value, base.value) : null))
+// The covers must be absolute URLs (this page's origin, also on the server: the poster is in its HTML).
+const requestUrl = useRequestURL()
+const base = new URL(useRuntimeConfig().app.baseURL || '/', requestUrl.href).href
+const library = computed(() => reelLibrary(count.value, base))
 const samples = new Map(REEL_SAMPLES.map(sample => [sample.id, sample]))
 const sample = (book: Book) => samples.get(book.id.split('~')[0]!)
 
@@ -85,11 +92,14 @@ function onOpen(event: ReelBookEvent) {
           <span>You both read</span><span>{{ count }}</span>
         </div>
         <RegalBooksReel
+          :key="`${canvasDelay}-${poster}`"
           class="reel-dev__reel"
           :library="library"
           label="Books you both read"
           :reduced-motion="motion"
           :autoplay="autoplay"
+          :poster="poster"
+          :canvas-delay="canvasDelay"
           :theme="dark ? 'dark' : 'light'"
           @ready="note('ready')"
           @focus="event => note(`focus ${event.index + 1} ${event.book.title}`)"
@@ -191,6 +201,23 @@ function onOpen(event: ReelBookEvent) {
             @click="set({ long: long ? undefined : '1' })"
           >
             long page
+          </button>
+        </div>
+        <div class="reel-dev__row">
+          <span>Loading</span>
+          <button
+            type="button"
+            :aria-pressed="canvasDelay > 0"
+            @click="set({ slow: canvasDelay > 0 ? undefined : '1' })"
+          >
+            slow (3D 6 s late)
+          </button>
+          <button
+            type="button"
+            :aria-pressed="!poster"
+            @click="set({ poster: poster ? '0' : undefined })"
+          >
+            no poster
           </button>
         </div>
         <ol

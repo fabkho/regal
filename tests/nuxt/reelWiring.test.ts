@@ -99,7 +99,7 @@ function setReduceMotion(value: boolean) {
 
 // --- Mounting and driving ----------------------------------------------------------------
 
-type CardVm = { ctx: ReelContext, state: ReelState }
+type CardVm = { ctx: ReelContext, state: ReelState, handed: boolean }
 const mounted: VueWrapper[] = []
 
 async function mountReel(props: Record<string, unknown> = {}) {
@@ -116,9 +116,14 @@ async function mountReel(props: Record<string, unknown> = {}) {
 const card = (wrapper: VueWrapper) => wrapper.findComponent(ReelCard).vm as unknown as CardVm
 const attr = (wrapper: VueWrapper, name: string) => wrapper.find('.reel-card').attributes(name)
 let clock = 0
-/** Runs the reel's frames for `ms` (what ReelScene does, 16 ms at a time). */
+/**
+ * Runs the reel's frames for `ms` (what ReelScene does, 16 ms at a time). The canvas is
+ * stubbed, so the handover (the clock waits for it, see reelHandover.test.ts) is done by hand.
+ */
 async function frames(wrapper: VueWrapper, ms: number) {
-  const { ctx } = card(wrapper)
+  const vm = card(wrapper)
+  vm.handed = true
+  const { ctx } = vm
   for (let t = 0; t < ms; t += 16) {
     clock += 16
     ctx.tick(16, clock)

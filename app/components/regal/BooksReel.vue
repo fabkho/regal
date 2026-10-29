@@ -21,8 +21,7 @@ import type { Book } from '#layers/regal/shared/types/book'
 import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 import type { Face } from '#layers/regal/app/utils/books/pick'
 import type { RegalTheme } from '#layers/regal/app/utils/theme/tokens'
-import { memorySource, readLibraryDocument, resolveLibraryUrl } from '#layers/regal/app/utils/library/libraryFile'
-import { assetFaces } from '#layers/regal/app/utils/covers/bookAssets'
+import { readReelLibrary, reelFacesOf } from '#layers/regal/app/utils/reel/library'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { createPickContext } from '#layers/regal/app/utils/books/pickContext'
 import { REEL_LABELS } from '#layers/regal/app/utils/reel/scene'
@@ -54,7 +53,15 @@ const props = withDefaults(defineProps<{
   rotate?: 'free' | 'turntable'
   /** The Books for assistive technology: a visually hidden list of buttons beside the canvas. `false` for a host with its own. */
   accessibleList?: boolean
-}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true })
+  /**
+   * The reel's own first frame (its Books on the arc, as the canvas will draw them) stands in
+   * until the 3D has taken over, so a host draws no poster of its own. `false`: nothing there
+   * until the canvas fades in.
+   */
+  poster?: boolean
+  /** Mounts the 3D this many ms later than it would (ms): to look at the poster, e.g. `/dev/reel?slow=1`. */
+  canvasDelay?: number
+}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0 })
 
 const emit = defineEmits<{
   /** The first frame with the faces of the Books in view is drawn (show the canvas over a poster now). */
@@ -78,20 +85,13 @@ defineSlots<{
 
 // --- Its own Library -----------------------------------------------------------------
 
-const read = computed(() => (props.library ? readLibraryDocument(props.library) : null))
-const books = computed<Book[]>(() => (read.value?.ok ? read.value.library.books : []))
-const error = computed(() => (read.value && !read.value.ok ? read.value.error : null))
+const reelLibrary = computed(() => readReelLibrary(props.library))
+const books = computed<Book[]>(() => reelLibrary.value.books)
+const error = computed(() => reelLibrary.value.error)
 
 /** A Book's faces, its images resolved against the document (only absolute http(s) URLs load). */
-function facesOf(bookId: string): AssetFaces | null {
-  const result = read.value
-  if (!result?.ok || !import.meta.client || !props.library) return null
-  const entry = result.library.assets[bookId]
-  if (!entry) return null
-  const src = memorySource(props.library)
-  const page = window.location.href
-  return assetFaces(entry, reference => resolveLibraryUrl(reference, src, page))
-}
+const faces = computed(() => reelFacesOf(props.library, reelLibrary.value.read))
+const facesOf = (bookId: string): AssetFaces | null => faces.value(bookId)
 
 // --- Its own Pick, theme and slots ---------------------------------------------------
 
@@ -152,6 +152,8 @@ const { rootAttrs } = provideRegalUi({
       :autoplay="props.autoplay"
       :rotate="props.rotate"
       :accessible-list="props.accessibleList"
+      :poster="props.poster"
+      :canvas-delay="props.canvasDelay"
       @ready="emit('ready')"
       @focus="event => emit('focus', event)"
       @manual="emit('manual')"
