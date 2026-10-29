@@ -108,8 +108,8 @@ describe('the Covers asked for ahead', () => {
   it('are the first frame\'s: the Book in front first at high priority, no more than the arc shows, each once', () => {
     const requests = reelCoverRequests(library(300))
     expect(requests.length).toBeLessThanOrEqual(5)
-    // The reel plays: it opens with the last Book in front.
-    expect(requests[0]).toEqual({ url: 'https://covers.example/c-299.jpg', priority: 'high' })
+    // Every first frame has Book 0 in front, playing or not.
+    expect(requests[0]).toEqual({ url: 'https://covers.example/c-0.jpg', priority: 'high' })
     expect(requests.slice(1).every(request => request.priority === 'auto')).toBe(true)
     expect(new Set(requests.map(request => request.url)).size).toBe(requests.length)
     // Still (autoplay off): the first Book.
@@ -136,16 +136,16 @@ describe('the Covers asked for ahead', () => {
     const doc = library(12)
     await preloadReelCovers(doc)
     expect(fetched.length).toBeGreaterThan(0)
-    expect(fetched[0]).toBe('https://covers.example/c-11.jpg high')
+    expect(fetched[0]).toBe('https://covers.example/c-0.jpg high')
     const count = fetched.length
     // A second call for the same Library does nothing more.
     await preloadReelCovers(doc)
     expect(fetched.length).toBe(count)
     // The canvas's texture load takes the bytes (no new request), once; then the queue's own request.
-    const blob = await fetchImage('https://covers.example/c-11.jpg')
-    expect(await blob!.text()).toBe('https://covers.example/c-11.jpg')
+    const blob = await fetchImage('https://covers.example/c-0.jpg')
+    expect(await blob!.text()).toBe('https://covers.example/c-0.jpg')
     expect(fetched.length).toBe(count)
-    await fetchImage('https://covers.example/c-11.jpg')
+    await fetchImage('https://covers.example/c-0.jpg')
     expect(fetched.length).toBe(count + 1)
   })
 

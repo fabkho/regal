@@ -9,9 +9,9 @@ import { Euler, MathUtils, Matrix4, PerspectiveCamera, Quaternion, Vector3 } fro
 import { reelCamera, reelCameraInto, reelPose } from '../../app/utils/reel/layout'
 import type { ReelCamera } from '../../app/utils/reel/layout'
 import { posterBooks, posterBookTransform, posterShade, posterShadowTransform, posterWorldTransform, projectPosterPoint } from '../../app/utils/reel/poster'
-import { REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_RISE, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
-import { enterView, frontFocus, initialReel, reelStartFrame, setReduced } from '../../app/utils/reel/state'
-import { REEL_BEAT } from '../../app/utils/reel/timeline'
+import { reelShownIndex, REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_RISE, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
+import { advance, enterView, frontFocus, frontIndex, initialReel, reelStartFrame, setReduced } from '../../app/utils/reel/state'
+import { REEL_BEAT, REEL_MOVE } from '../../app/utils/reel/timeline'
 
 const stage = { width: 390, height: 330 }
 
@@ -57,7 +57,7 @@ describe('the poster stands where the canvas draws (CSS perspective vs the canva
   ].map(([x, y, z]) => ({ x: x!, y: y!, z: z! }))
 
   it.each([
-    { name: 'the first frame, a ringing arc (the last Book in front)', n: 12, focus: -1, time: 0, rise: REEL_RISE },
+    { name: 'the first frame of a ringing arc (the first Book in front, the dolly at its first beat)', n: 12, focus: 0, time: REEL_BEAT, rise: REEL_RISE },
     { name: 'the first frame of an arc with ends', n: 3, focus: 0, time: REEL_BEAT, rise: REEL_RISE },
     { name: 'a Book in front, the camera at its dolly\'s widest sway', n: 12, focus: 4, time: (REEL_BEAT * 3) / 4, rise: REEL_RISE },
     { name: 'mid-move, mid-dolly', n: 7, focus: 2.37, time: 5234, rise: REEL_RISE },
@@ -140,14 +140,35 @@ describe('the poster\'s Books are the layout\'s', () => {
 })
 
 describe('the first frame is where the auto-play begins (no jump when the intro starts)', () => {
-  it('a ringing arc opens with the last Book in front and the first coming in from the right', () => {
-    expect(reelStartFrame(12)).toEqual({ focus: -1, dolly: 0 })
-    // The last Book in front, the first at the first neighbour's place.
-    expect(reelPose(11, -1, 12).x).toBe(0)
-    expect(reelPose(0, -1, 12).x).toBe(132)
+  it('every arc opens with the first Book in front, whatever the mode: the same front, caption and dot', () => {
+    for (const n of [1, 2, 3, 4, 12, 300]) {
+      for (const options of [{}, { autoplay: false }, { reduced: true }, { autoplay: false, reduced: true }]) {
+        const { focus } = reelStartFrame(n, options)
+        expect(focus, `${n} ${JSON.stringify(options)}`).toBe(0)
+        // What the caption and the dots show: the poster/still/canvas at rest, and the canvas once it plays.
+        expect(reelShownIndex(focus, n, false)).toBe(0)
+        expect(reelShownIndex(focus, n, true)).toBe(0)
+        expect(frontIndex(initialReel(n, options))).toBe(0)
+        // The poster draws it in front, square to you, with its neighbours either side.
+        expect(reelPose(0, focus, n).x).toBe(0)
+        expect(reelPose(0, focus, n).rotateY).toBe(0)
+      }
+    }
+    // Ringing: the last Book is the left neighbour, the second Book the right one.
+    expect(reelPose(11, 0, 12).x).toBe(-132)
+    expect(reelPose(1, 0, 12).x).toBe(132)
   })
 
-  it('an arc with ends opens on its first Book, the clock at the second beat', () => {
+  it('a reel that plays opens on the same frame and its first move is to the second Book', () => {
+    for (const n of [2, 4, 12]) {
+      const playing = enterView({ ...initialReel(n), visible: true })
+      expect(playing.mode).toBe('playing')
+      expect(reelShownIndex(frontFocus(playing), n, true)).toBe(0)
+      expect(frontIndex(advance(playing, REEL_MOVE + 1))).toBe(1)
+    }
+  })
+
+  it('a playing reel opens with the clock at its first beat\'s end (the first Book in front), whatever the arc', () => {
     expect(reelStartFrame(3)).toEqual({ focus: 0, dolly: REEL_BEAT })
     expect(reelStartFrame(2)).toEqual({ focus: 0, dolly: REEL_BEAT })
   })
@@ -171,7 +192,7 @@ describe('the first frame is where the auto-play begins (no jump when the intro 
     }
     expect(reelStartFrame(3)).toEqual({ focus: 0, dolly: REEL_BEAT })
     expect(reelStartFrame(3, { reduced: true })).toEqual({ focus: 0, dolly: 0 })
-    expect(reelStartFrame(12, { reduced: true })).toEqual({ focus: -1, dolly: 0 })
+    expect(reelStartFrame(12, { reduced: true })).toEqual({ focus: 0, dolly: 0 })
     // And it does not play.
     expect(enterView({ ...initialReel(12, { reduced: true }), visible: true }).mode).toBe('manual')
   })

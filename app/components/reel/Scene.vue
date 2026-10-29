@@ -113,6 +113,9 @@ watch(() => props.ctx.breakout.active, () => {
   const camera3 = (cameraRef.value ?? camera.value) as PerspectiveCamera | undefined
   if (!box || !camera3 || !box.width || !box.height) return
   renderer.setSize(box.width, box.height, false)
+  // The canvas's own box too, now: Tres follows its container a frame later, and a tap in that frame would aim by the old box.
+  canvas.style.width = `${box.width}px`
+  canvas.style.height = `${box.height}px`
   project(camera3, box)
   camera3.updateMatrixWorld()
   if (props.ctx.breakout.active) renderBrokenOut(camera3)

@@ -113,12 +113,37 @@ describe('the poster before the canvas', () => {
     const { focus, dolly } = reelStartFrame(6)
     const expected = posterBooks(6, focus)
     const { world, books } = drawn(wrapper)
-    expect(focus).toBe(-1)
+    expect(focus).toBe(0)
     expect(books.map(book => book.id)).toEqual(expected.map(book => `fx-hand-${book.index + 1}`))
     expect(books.map(book => book.style)).toEqual(expect.arrayContaining(expected.map(book => expect.stringContaining(book.transform))))
     expect(world).toContain(posterWorldTransform(reelCamera(dolly)))
     // The caption under it is the front Book's, as the canvas will show it.
-    expect(wrapper.find('.reel-caption__title').text()).toBe('Handover 6')
+    expect(wrapper.find('.reel-caption__title').text()).toBe('Handover 1')
+    // The first Book in front, its dot lit: the same as the canvas starts on, in every mode.
+    expect(wrapper.find('.reel-card').attributes('data-front')).toBe('0')
+    expect(wrapper.findAll('.reel-card__dot').map(dot => dot.classes('reel-card__dot--on'))).toEqual([true, false, false, false, false, false])
+  })
+
+  it('starts the canvas on the same front Book: the caption and dots do not change when the clock starts', async () => {
+    const wrapper = await mountReel()
+    inView()
+    await nextTick()
+    const caption = () => wrapper.find('.reel-caption__title').text()
+    const lit = () => wrapper.findAll('.reel-card__dot').findIndex(dot => dot.classes('reel-card__dot--on'))
+    expect(card(wrapper).state.mode).toBe('playing')
+    expect([caption(), lit(), wrapper.find('.reel-card').attributes('data-front')]).toEqual(['Handover 1', 0, '0'])
+    card(wrapper).ctx.ready()
+    await frames(wrapper, 100)
+    await sleep(340)
+    await frames(wrapper, 16)
+    // Playing from the first frame: still Book 0 while its caption goes out (200 ms), the first move already under way.
+    expect([caption(), lit(), wrapper.find('.reel-card').attributes('data-front')]).toEqual(['Handover 1', 0, '0'])
+    await frames(wrapper, 150)
+    expect(card(wrapper).ctx.focus.value).toBeGreaterThan(0)
+    expect([caption(), lit()]).toEqual(['Handover 1', 0])
+    // Then the second Book's, while the captions are out.
+    await frames(wrapper, 300)
+    expect([caption(), lit()]).toEqual(['Handover 2', 1])
   })
 
   it('holds the clock: the beat does not move the arc under the poster, even in view and ticking', async () => {
@@ -153,7 +178,7 @@ describe('the poster before the canvas', () => {
     expect(wrapper.find('[data-reel-poster]').exists()).toBe(false)
     expect(vm.handed).toBe(true)
     // The intro: the arc's first move, from the poster's frame.
-    expect(first).toBe(-1)
+    expect(first).toBe(0)
     await frames(wrapper, 100)
     expect(vm.state.elapsed).toBeGreaterThan(0)
     expect(vm.ctx.focus.value).toBeGreaterThan(first)
@@ -167,7 +192,7 @@ describe('the poster before the canvas', () => {
     await frames(wrapper, 900)
     const after = drawn(wrapper)
     expect(after).not.toEqual(before)
-    expect(after.books.map(book => book.id)).toEqual(posterBooks(6, 0).map(book => `fx-hand-${book.index + 1}`))
+    expect(after.books.map(book => book.id)).toEqual(posterBooks(6, 1).map(book => `fx-hand-${book.index + 1}`))
   })
 
   it('is not drawn with `poster` off: nothing under the canvas, the clock held all the same', async () => {
@@ -215,14 +240,15 @@ describe('Reduce Motion, a new Library, the controls', () => {
   })
 
   it('a new Library starts from its own first frame: the focus and the camera\'s clock', async () => {
-    const wrapper = await mountReel({ library: libraryOf(3) })
+    // One Book doesn't play: the camera at rest; Books to play do: the clock at its first beat.
+    const wrapper = await mountReel({ library: libraryOf(1) })
     const vm = card(wrapper)
-    expect(vm.ctx.dolly.value).toBe(REEL_BEAT)
+    expect(vm.ctx.dolly.value).toBe(0)
     await wrapper.setProps({ library: libraryOf(6) })
     await nextTick()
-    expect(vm.ctx.dolly.value).toBe(0)
-    expect(drawn(wrapper).world).toContain(posterWorldTransform(reelCamera(0)))
-    expect(drawn(wrapper).books.map(book => book.id)).toEqual(posterBooks(6, -1).map(book => `fx-hand-${book.index + 1}`))
+    expect(vm.ctx.dolly.value).toBe(REEL_BEAT)
+    expect(drawn(wrapper).world).toContain(posterWorldTransform(reelCamera(REEL_BEAT)))
+    expect(drawn(wrapper).books.map(book => book.id)).toEqual(posterBooks(6, 0).map(book => `fx-hand-${book.index + 1}`))
   })
 
   it('the pause button and dots are inert until the canvas has taken over and the clock runs (never, without the 3D)', async () => {
@@ -247,9 +273,9 @@ describe('a Book without a Cover', () => {
 
   it('shows the title block the canvas draws, on its colour', async () => {
     const wrapper = await mountReel()
-    const front = wrapper.find('[data-book="fx-hand-6"] .reel-poster__front')
+    const front = wrapper.find('[data-book="fx-hand-1"] .reel-poster__front')
     expect(front.find('img').exists()).toBe(false)
-    expect(front.find('.reel-poster__title-text').text()).toBe('Handover 6')
+    expect(front.find('.reel-poster__title-text').text()).toBe('Handover 1')
     expect(front.find('.reel-poster__title-author').text()).toBe('Ada Example')
     expect(front.attributes('style')).toContain('background-color')
   })
@@ -283,7 +309,7 @@ describe('the default entrance (\'pop\', the Stack\'s)', () => {
     const vm = card(wrapper) as unknown as CardVm & { ctx: ReelContext }
     expect(vm.ctx.entrance).toMatchObject({ mode: 'pop', startedAt: -1, done: false })
     // The 3D plans the entrance on its first frame (stubbed here): the Stack's, 0.75 s for five Books.
-    vm.ctx.entrance.plan = planReelEntrance('pop', posterBooks(6, -1).map(book => ({ index: book.index, x: book.pose.x })))
+    vm.ctx.entrance.plan = planReelEntrance('pop', posterBooks(6, 0).map(book => ({ index: book.index, x: book.pose.x })))
     await frames(wrapper, REEL_BEAT)
     expect(vm.state.elapsed).toBe(0)
     vm.ctx.ready()
@@ -340,7 +366,7 @@ describe('the still for a host\'s fallbacks (RegalBooksReelStill)', () => {
     const reel = await mountReel()
     const still = await mountStill()
     expect(drawn(still)).toEqual(drawn(reel))
-    expect(still.find('.reel-caption__title').text()).toBe('Handover 6')
+    expect(still.find('.reel-caption__title').text()).toBe('Handover 1')
     expect(still.find('canvas').exists()).toBe(false)
     expect(still.find('button').exists()).toBe(false)
     expect(still.find('section').attributes('aria-label')).toBe('Books')
@@ -352,7 +378,7 @@ describe('the still for a host\'s fallbacks (RegalBooksReelStill)', () => {
     const reduced = await mountReel({ reducedMotion: true })
     expect(drawn(await mountStill({ reducedMotion: true }))).toEqual(drawn(reduced))
     // Reduce Motion never moves the arc (the server and the first render don't know it yet): the same frame.
-    expect((await mountStill({ reducedMotion: true })).find('.reel-caption__title').text()).toBe('Handover 6')
+    expect((await mountStill({ reducedMotion: true })).find('.reel-caption__title').text()).toBe('Handover 1')
   })
 
   it('takes the host\'s `#tooltip` slot, and says so when there is nothing to show', async () => {

@@ -6,9 +6,9 @@
 // script of Regal's beyond this component: it renders on the server.
 //
 // Give it the props you give the reel (`library`, `autoplay`, `reduced-motion`, `theme`):
-// the composition follows them the way the reel's first frame does (a reel that plays
-// opens with its last Book in front and the first coming in; one that doesn't, or
-// under Reduce Motion, rests on the first).
+// the composition is the reel's first frame for them: the first Book in front, its
+// caption and dot, whether or not the reel plays and with or without Reduce Motion
+// (Reduce Motion only rests the camera).
 import { useSlots } from 'vue'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
@@ -51,6 +51,9 @@ const reduced = computed(() => props.reducedMotion ?? mediaReduced.value === 're
 const start = computed(() => reelStartFrame(books.value.length, { reduced: reduced.value, autoplay: props.autoplay }))
 const shown = computed(() => reelShownIndex(start.value.focus, books.value.length, false))
 const shownBook = computed(() => books.value[shown.value] ?? null)
+
+/** Up to this many Books a dot each, more a count (the reel's). */
+const MAX_DOTS = 24
 
 const words = computed<ReelLabels>(() => ({ ...REEL_LABELS, ...props.labels }))
 const ariaLabel = computed(() => props.label || words.value.reel)
@@ -97,6 +100,28 @@ const shadowStrength = computed(() => floorShadowStrength(ui.tokens.value, ui.sc
           <ReelCaption :book="shownBook" />
         </BooksHostSlot>
       </div>
+      <!-- The dots and count of the reel's controls row (no pause button: nothing moves here). -->
+      <div class="reel-still__controls">
+        <div
+          v-if="books.length > 1 && books.length <= MAX_DOTS"
+          class="reel-still__dots"
+          aria-hidden="true"
+        >
+          <i
+            v-for="(book, index) in books"
+            :key="book.id"
+            class="reel-still__dot"
+            :class="{ 'reel-still__dot--on': index === shown }"
+          />
+        </div>
+        <p
+          v-else-if="books.length > MAX_DOTS"
+          class="reel-still__count"
+          aria-hidden="true"
+        >
+          {{ shown + 1 }} / {{ books.length }}
+        </p>
+      </div>
     </section>
   </div>
 </template>
@@ -132,6 +157,39 @@ const shadowStrength = computed(() => floorShadowStrength(ui.tokens.value, ui.sc
 }
 
 /* As the reel's slot under the Book in front. */
+.reel-still__controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  margin-top: 2px;
+}
+
+.reel-still__count {
+  margin: 0;
+  color: var(--_regal-ink-faint);
+  font-size: var(--_regal-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.reel-still__dots {
+  display: flex;
+  gap: 5px;
+}
+
+.reel-still__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--_regal-hairline);
+}
+
+.reel-still__dot--on {
+  width: 14px;
+  border-radius: 3px;
+  background: var(--_regal-ink);
+}
+
 .reel-still__focus {
   position: relative;
   z-index: 1;

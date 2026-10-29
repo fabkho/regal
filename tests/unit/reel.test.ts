@@ -182,7 +182,9 @@ describe('state (section H table)', () => {
   it('enters Playing once per visit, from the opening pose', () => {
     const first = enterView(twelve())
     expect(first.mode).toBe('playing')
-    expect(frontFocus(first)).toBeCloseTo(-1, 10)
+    // The first Book in front, as the first frame and the caption show it (no swing-in).
+    expect(frontFocus(first)).toBeCloseTo(0, 10)
+    expect(frontIndex(first)).toBe(0)
     const after = takeOver(first)
     expect(enterView(after).mode).toBe('manual')
     expect(enterView(newVisit(after)).mode).toBe('playing')
@@ -190,7 +192,8 @@ describe('state (section H table)', () => {
 
   it('auto-plays for one round, then rests in Manual on the last Book', () => {
     let s = enterView(twelve())
-    s = advance(s, reelTotal(12) - 1)
+    // The first Book is in front at the start: n - 1 beats take the arc to the last one.
+    s = advance(s, reelTotal(11) - 1)
     expect(s.mode).toBe('playing')
     s = advance(s, 1)
     expect(s.mode).toBe('manual')
@@ -201,8 +204,8 @@ describe('state (section H table)', () => {
   it('tells the beat from the clock, so a phase is exact at every ms', () => {
     let s = enterView(twelve())
     s = advance(s, REEL_BEAT + 100)
-    expect(frontFocus(s)).toBeCloseTo(reelPhase(REEL_BEAT + 100).focus, 10)
-    expect(frontIndex(s)).toBe(0)
+    expect(frontFocus(s)).toBeCloseTo(reelPhase(2 * REEL_BEAT + 100).focus, 10)
+    expect(frontIndex(s)).toBe(1)
   })
 
   it('rests off screen and resumes where it stopped', () => {
@@ -375,7 +378,8 @@ describe('state: live position, wrap, visibility, reduced', () => {
     const playing = enterView(createReel(12))
     const reduced = setReduced(advance(playing, 1200), true)
     expect(reduced.mode).toBe('manual')
-    expect(frontFocus(reduced)).toBeCloseTo(0, 10)
+    // The first move (Book 0 to Book 1) is over by 1.2 s: it rests on Book 1.
+    expect(frontFocus(reduced)).toBeCloseTo(1, 10)
     const back = setReduced(reduced, false)
     expect(enterView(newVisit(back)).mode).toBe('playing')
   })
@@ -430,7 +434,8 @@ describe('state: glides, catches and live reads', () => {
 
   it('a real catch mid-move: a drag starts while the beat is moving and takes the arc where it is', () => {
     const playing = enterView(createReel(12))
-    const midMove = advance(playing, REEL_BEAT + REEL_MOVE / 2)
+    // The clock opens at one beat (the first Book in front): half a move in is a beat and half a move.
+    const midMove = advance(playing, REEL_MOVE / 2)
     const expected = reelPhase(REEL_BEAT + REEL_MOVE / 2).focus
     expect(frontFocus(midMove)).toBeCloseTo(expected, 10)
     const caught = takeOver(midMove)

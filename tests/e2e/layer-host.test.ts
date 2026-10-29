@@ -769,20 +769,40 @@ describe('Regal as a Nuxt layer', async () => {
     // The Books pop in (the Stack's entrance), then it is live: the controls and the canvas answer.
     await expect.poll(() => page.locator('.reel-card__controls').getAttribute('inert'), { timeout: 15_000 }).toBeNull()
 
-    // A sideways swipe takes over: Manual, `manual` once, Play on the button.
-    const stage = (await reel.locator('.reel-card__stage').boundingBox())!
-    const y = stage.y + stage.height * 0.45
-    await page.mouse.move(stage.x + stage.width / 2, y)
+    // Where the Book in front is on screen, once the page and the arc have settled (the page's layout moves when a
+    // Book is taken out and put back: scrollbar, scroll restoration, so it is measured each time, never kept).
+    const front = async () => {
+      await expect.poll(() => reel.getAttribute('data-resting'), { timeout: 10_000 }).toBe('true')
+      let last = ''
+      await expect.poll(async () => {
+        const box = (await reel.locator('.reel-card__stage').boundingBox())!
+        const now = JSON.stringify(box)
+        const same = now === last
+        last = now
+        return same
+      }, { timeout: 5_000 }).toBe(true)
+      const box = (await reel.locator('.reel-card__stage').boundingBox())!
+      // The canvas is back in the card's box too (it follows its container a frame after the Book lands).
+      await expect.poll(() => reel.locator('canvas').evaluate((canvas, width) => Math.abs(canvas.clientWidth - width) < 1, box.width), { timeout: 5_000 }).toBe(true)
+      return { x: box.x + box.width / 2, y: box.y + box.height * 0.45, width: box.width }
+    }
+    // A sideways swipe takes over a reel that is playing: Manual, `manual` once, Play on the button.
+    const playing = (await reel.locator('.reel-card__stage').boundingBox())!
+    const stage = { x: playing.x + playing.width / 2, y: playing.y + playing.height * 0.45 }
+    await page.mouse.move(stage.x, stage.y)
     await page.mouse.down()
-    for (let step = 1; step <= 8; step++) await page.mouse.move(stage.x + stage.width / 2 - step * 18, y)
+    for (let step = 1; step <= 8; step++) await page.mouse.move(stage.x - step * 18, stage.y)
     await page.mouse.up()
     await expect.poll(() => reel.getAttribute('data-mode')).toBe('manual')
     expect((await events()).filter(event => event === 'manual')).toHaveLength(1)
     expect(await page.locator('.reel-card__pause').getAttribute('aria-label')).toBe('Play')
-    await page.waitForTimeout(1000)
 
-    // A tap on the Book in front: broken out over the viewport, the Stack's sheet, the page held.
-    await page.mouse.click(stage.x + stage.width / 2, y)
+    // A tap on the Book in front (once the swipe's snap is over): broken out over the viewport, the Stack's sheet, the page held.
+    const tapFront = async () => {
+      const at = await front()
+      await page.mouse.click(at.x, at.y)
+    }
+    await tapFront()
     await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).not.toBe('')
     const picked = await reel.getAttribute('data-picked')
     expect(await page.locator('body > .reel-card__view--out canvas').count()).toBe(1)
@@ -793,23 +813,25 @@ describe('Regal as a Nuxt layer', async () => {
     expect(await page.locator('.records__item').count()).toBeGreaterThan(0)
     expect(await page.locator('.records__item[aria-pressed="true"]').count()).toBe(0)
     await page.keyboard.press('Escape')
+    await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
     await expect.poll(() => page.locator('.reel-card__view--out').count(), { timeout: 5_000 }).toBe(0)
+    // Putting it back also pops its history entry (the browser's traversal is asynchronous): a new tap waits for that.
+    await expect.poll(() => page.evaluate(() => !history.state?.regalReelPick), { timeout: 5_000 }).toBe(true)
     expect(await reel.getAttribute('data-mode')).toBe('manual')
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
 
     // The browser's Back puts it back too, and the page stays.
-    await page.mouse.click(stage.x + stage.width / 2, y)
+    await tapFront()
     await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
     await page.goBack()
     await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe('')
     expect(new URL(page.url()).pathname).toBe('/reel')
     await expect.poll(() => page.locator('.reel-card__view--out').count(), { timeout: 5_000 }).toBe(0)
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+    await expect.poll(() => page.evaluate(() => !history.state?.regalReelPick), { timeout: 5_000 }).toBe(true)
 
     // Open book: the host hears `open`, the Book is back at once.
-    await page.waitForTimeout(300)
-    const after = (await reel.locator('.reel-card__stage').boundingBox())!
-    await page.mouse.click(after.x + after.width / 2, after.y + after.height * 0.45)
+    await tapFront()
     await expect.poll(() => reel.getAttribute('data-picked'), { timeout: 5_000 }).toBe(picked)
     await page.getByRole('button', { name: /Open book/ }).click()
     await expect.poll(async () => (await events()).includes(`open:${picked}`), { timeout: 5_000 }).toBe(true)
@@ -865,8 +887,19 @@ describe('Regal as a Nuxt layer', async () => {
       // The images are in (JS off: the poster's own <img>s); the fonts a moment later.
       await page.waitForTimeout(600)
       const png = await page.locator('.reel-card__stage, .reel-still__stage').screenshot({ type: 'png' })
-      return { png, page, context }
+      return { png, page, context, front: await frontOf(page) }
     }
+
+    /** Which Book is in front, as the caption, the dots and the card say (the poster, the still and the canvas must say the same). */
+    const FIRST = { front: '0', caption: 'The Paper Lighthouse (hers)', lit: 0 }
+    const frontOf = (page: Page) => page.evaluate(() => {
+      const dots = [...document.querySelectorAll('.reel-card__dot, .reel-still__dot')]
+      return {
+        front: document.querySelector('[data-front]')?.getAttribute('data-front') ?? null,
+        caption: document.querySelector('.reel-caption__title')?.textContent ?? null,
+        lit: dots.findIndex(dot => /--on\b/.test(dot.className)),
+      }
+    })
 
     /** Mean per-channel difference (0..255) and the share of channels that differ by more than 64, between two PNGs of one size. */
     async function pixelDiff(page: Page, a: Buffer, b: Buffer) {
@@ -907,6 +940,8 @@ describe('Regal as a Nuxt layer', async () => {
     it.each(WIDTHS)('at %i px wide: the poster (the server\'s HTML) and the canvas at rest are one picture, with no hydration warning', async (width) => {
       const poster = await stagePng(width, false)
       await poster.context.close()
+      // The poster's front Book, caption and dot are the first Book's.
+      expect(poster.front).toEqual(FIRST)
 
       const warnings: string[] = []
       const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 } })
@@ -919,6 +954,7 @@ describe('Regal as a Nuxt layer', async () => {
       await expect.poll(() => page.locator('[data-reel-poster]').count(), { timeout: 5_000 }).toBe(0)
       await page.waitForTimeout(300)
       const canvas = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      expect(await frontOf(page)).toEqual(FIRST)
       const diff = await pixelDiff(page, poster.png, canvas)
       expect(diff.mean, JSON.stringify(diff)).toBeLessThan(MEAN)
       expect(diff.big, JSON.stringify(diff)).toBeLessThan(BIG)
@@ -930,6 +966,10 @@ describe('Regal as a Nuxt layer', async () => {
       const html = await $fetch<string>('/reel?autoplay=0')
       expect(html).not.toContain('data-reel-poster')
       expect(html).toContain('reel-card__stage')
+      // The caption and dots before the pop are the first Book's too.
+      expect(html).toContain('data-front="0"')
+      expect(html).toContain('The Paper Lighthouse (hers)')
+      expect(html.match(/<i [^>]*class="[^"]*reel-card__dot[^"]*"/g)?.[0]).toContain('reel-card__dot--on')
       const requests: string[] = []
       const page = await createPage()
       page.on('request', request => /front\.webp/.test(request.url()) && requests.push(new URL(request.url()).pathname))
@@ -942,9 +982,31 @@ describe('Regal as a Nuxt layer', async () => {
       await page.close()
     })
 
+    it.each(['', '&entrance=settle', '&entrance=none'])('a reel that plays starts on the first Book in the server\'s HTML, when the canvas takes over and as the Books come in (%s)', async (mode) => {
+      const html = await $fetch<string>(`/reel?x=1${mode}`)
+      expect(html).toContain('data-front="0"')
+      expect(html).toContain('The Paper Lighthouse (hers)')
+      const page = await createPage()
+      await page.setViewportSize({ width: 390, height: 900 })
+      await page.goto(url(`/reel?x=1${mode}`), { waitUntil: 'networkidle' })
+      await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
+      // From the takeover on, through the entrance, until the first move: Book 0.
+      const seen: string[] = []
+      // (The default entrance holds the arc for a second; the others start their first move a few hundred ms after.)
+      for (let tick = 0; tick < (mode === '' ? 8 : 3); tick++) {
+        const now = await frontOf(page)
+        seen.push(JSON.stringify(now))
+        await page.waitForTimeout(100)
+      }
+      expect(new Set(seen).size, seen.join('\n')).toBe(1)
+      expect(JSON.parse(seen[0]!)).toEqual(FIRST)
+      await page.close()
+    })
+
     it.each(WIDTHS)('at %i px wide: the still (the fallback) is the picture the default entrance ends on', async (width) => {
       const still = await stagePng(width, false, 'autoplay=0&still=1')
       await still.context.close()
+      expect(still.front).toEqual(FIRST)
       const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 } })
       const page = await context.newPage()
       await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
@@ -953,6 +1015,7 @@ describe('Regal as a Nuxt layer', async () => {
       await expect.poll(() => page.locator('.reel-card__controls').getAttribute('inert'), { timeout: 15_000 }).toBeNull()
       await page.waitForTimeout(400)
       const canvas = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      expect(await frontOf(page)).toEqual(FIRST)
       const diff = await pixelDiff(page, still.png, canvas)
       expect(diff.mean, JSON.stringify(diff)).toBeLessThan(MEAN)
       expect(diff.big, JSON.stringify(diff)).toBeLessThan(BIG)

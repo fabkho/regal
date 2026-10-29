@@ -171,19 +171,19 @@ export function play(state: ReelState): ReelState {
 }
 
 /**
- * The first time the reel is in view this visit: Playing. A ringing arc opens
- * with the prototype's swing-in (the last Book comes in from the right). An arc
- * with ends opens on its first Book and runs to its last.
+ * The first time the reel is in view this visit: Playing. Whatever the arc, it
+ * opens on its first Book in front (index 0: what the first frame, the poster, the
+ * still, the caption and the dots show) and runs to its last, the next Book
+ * coming to the front every beat; the round rests on the last Book.
  * Once per visit (`newVisit`), and only while visible.
  */
 export function enterView(state: ReelState): ReelState {
   if (state.played || !state.visible || state.mode !== 'manual' || !canAutoPlay(state)) return state
-  if (state.n >= REEL_WRAP_FROM) return startRun(state, 0, state.n, true)
   return startRun(state, REEL_BEAT, state.n - 1, true)
 }
 
 function startRun(state: ReelState, origin: number, span: number, first = false): ReelState {
-  return { ...state, mode: 'playing', played: true, origin, span, elapsed: 0, glide: null, focus: first ? -1 : state.focus }
+  return { ...state, mode: 'playing', played: true, origin, span, elapsed: 0, glide: null, focus: first ? 0 : state.focus }
 }
 
 /** A new visit to the page: the reel may auto-play once again. */

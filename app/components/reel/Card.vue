@@ -109,6 +109,8 @@ const shownBook = computed(() => props.books[shown.value] ?? null)
 /** The Book nearest the front, for the haptic ticks while a finger moves the reel. */
 const frontId = ref<string | null>(null)
 const touchScrolling = ref(false)
+/** Nothing moves the arc: not the beat, not a glide or a jump's ease, not a finger (`data-resting`: a tap then hits the Book in front). */
+const resting = ref(true)
 let lastBadge = -1
 /** What the live region reads out: the Book in front once the reel rests on it in Manual. */
 const announced = ref('')
@@ -122,7 +124,7 @@ let canvasTimer: ReturnType<typeof setTimeout> | undefined
 // Until the canvas has drawn its first frame the reel's own poster shows it (components/reel/Poster.vue:
 // the same Books at the same places, the same camera). The canvas fades in over it (`ready`), and only
 // when that is done does the poster go and the clock run (`handed`): the intro, the arc's first
-// move (the last Book swings in from the right, 0.8 s on `standard`) and the dolly, starts from the very
+// move (the second Book comes to the front, 0.8 s on `standard`) and the dolly, starts from the very
 // frame the poster stood in. Held till then, the beat can't have moved the arc under the poster.
 const HANDOVER_MS = 300
 /** Where the first frame stands for the Books and props now (utils/reel/state.ts). */
@@ -253,8 +255,10 @@ function update(now: number) {
   }
   if (mode.value !== state.mode) mode.value = state.mode
   const count = n.value
+  // The first Book's caption goes out (the intro, over `exit`) before the second's takes its place.
+  const holding = opening && playing && handed.value && state.elapsed < REEL_BADGE_OUT
   const index = reelShownIndex(focus, count, playing)
-  if (count && shown.value !== index) {
+  if (count && !holding && shown.value !== index) {
     shown.value = index
     const book = props.books[index]
     if (book) emit('focus', { id: book.id, index, book })
@@ -262,6 +266,8 @@ function update(now: number) {
   const front = count ? props.books[reelShownIndex(focus, count, false)]?.id ?? null : null
   if (frontId.value !== front) frontId.value = front
   if (touchScrolling.value && !drag && !state.glide) touchScrolling.value = false
+  const rest = state.mode !== 'playing' && !state.glide && !settle && !drag
+  if (resting.value !== rest) resting.value = rest
   // Read out once the reel has come to rest on a Book (not every Book a swipe passes).
   if (state.mode === 'manual' && !drag && !state.glide && !settle && announced.value !== slideText.value) announced.value = slideText.value
   // The pills and caption fade with the beat: straight on the element, no render.
@@ -658,6 +664,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
     aria-roledescription="carousel"
     :aria-label="ariaLabel"
     :data-mode="mode"
+    :data-resting="resting"
     :data-front="shown"
     :data-picked="pickedId ?? ''"
     :data-book-count="books.length"
