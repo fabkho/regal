@@ -26,6 +26,14 @@ export const REEL_AXIS_Y = 0.4
 export const REEL_STAGE_HEIGHT = 330
 
 /**
+ * How far the arc stands higher in the stage than the prototype's (CSS px): the world's origin is
+ * this far above the stage's middle, so there is less empty stage above the Books (a host's heading
+ * stands closer to them). The camera and its perspective stay where they were; the poster, the still
+ * and the canvas all move by it (`--regal-reel-rise`, default this).
+ */
+export const REEL_RISE = 40
+
+/**
  * The soft floor shadow under each Book (index.html `shadows`, base.css
  * `.shadow`): an ellipse 1.25 Book widths wide and 26 px deep, its middle
  * `drop` px under the Book's middle, tilted back 80°, a radial gradient of
@@ -151,6 +159,8 @@ export interface ReelLabels {
   showFront: string
   /** The details' put back action. */
   putBack: string
+  /** The loading indicator's name (read out while the Books are waited for). */
+  loading: string
 }
 
 export const REEL_LABELS: Readonly<ReelLabels> = Object.freeze({
@@ -164,6 +174,7 @@ export const REEL_LABELS: Readonly<ReelLabels> = Object.freeze({
   showBack: 'Show back',
   showFront: 'Show front',
   putBack: 'Put back',
+  loading: 'Loading books',
 })
 
 /** Fills `{n}` and `{count}` (and any other `{key}`) in a label. */

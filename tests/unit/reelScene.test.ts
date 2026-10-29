@@ -80,7 +80,7 @@ describe('allocation-free helpers read every frame', () => {
   })
 
   it('reelPoseInto writes reelPose into the given object', () => {
-    const out: ReelPose = { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, shadow: 0, zIndex: 0 }
+    const out: ReelPose = { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, edge: 0, shadow: 0, zIndex: 0 }
     for (const focus of [-1, 0, 0.4, 5.5, 11.9]) {
       for (let index = 0; index < 12; index++) {
         expect(reelPoseInto(index, focus, 12, out)).toBe(out)

@@ -15,7 +15,7 @@
 import { glideFocus, releaseGlide, REEL_DRAG_PX_PER_BOOK } from './drag'
 import type { ReelGlide } from './drag'
 import { reelDistance, REEL_WRAP_FROM } from './layout'
-import { clamp, REEL_BEAT, reelBadge, reelFocus, wholeBook } from './timeline'
+import { clamp, REEL_BADGE_OUT, REEL_BEAT, REEL_EASE, REEL_OPENING_HOLD, reelBadge, reelFocus, seg, wholeBook } from './timeline'
 
 export type ReelMode = 'playing' | 'manual' | 'detail'
 
@@ -41,6 +41,8 @@ export interface ReelState {
   readonly span: number
   /** ms of auto-play since `origin`. */
   readonly elapsed: number
+  /** ms the run waits before its first move (the first Book's full beat, `REEL_OPENING_HOLD`): the arc's clock starts after it. */
+  readonly lead: number
   /** Where the arc stands when not Playing or gliding (whole Books at rest). */
   readonly focus: number
   /** A snap in progress (manual only), or null. */
@@ -57,9 +59,43 @@ export function createReel(n: number, options: { reduced?: boolean } = {}): Reel
     origin: 0,
     span: 0,
     elapsed: 0,
+    lead: 0,
     focus: 0,
     glide: null,
   }
+}
+
+/**
+ * The reel before it shows: still, where its first round will begin (so it
+ * doesn't jump when it starts). The card's state at mount, and the one the
+ * first frame (the canvas's, and the poster standing in for it) is drawn from.
+ *
+ * Where the arc stands does not depend on Reduce Motion: a host (and the
+ * server) often learns it only after mount (`prefers-reduced-motion` is read in
+ * the browser), so the first frame, the poster and the still must be the same
+ * either way, or the page would jump when it is known. Reduce Motion only
+ * keeps the reel from playing and the camera at rest (`reelStartFrame`).
+ */
+export function initialReel(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): ReelState {
+  const base = setVisible(createReel(n, { reduced: false }), false)
+  const start = { ...base, reduced: options.reduced ?? false }
+  if (options.autoplay === false) return { ...start, played: true }
+  const preview = enterView({ ...base, visible: true })
+  return preview.mode === 'playing' ? { ...start, focus: frontFocus(preview) } : start
+}
+
+/**
+ * Where the first frame stands: the arc's `focus` and the dolly's clock (ms) of
+ * `initialReel`, as the canvas draws its first frame and the poster draws the
+ * same one. The clock is the one the auto-play begins on (a beat's start, where the
+ * desktop's clock and the phones' move clock are the same number); with Reduce
+ * Motion the camera rests (0), as the canvas draws it.
+ */
+export function reelStartFrame(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): { focus: number, dolly: number } {
+  const state = initialReel(n, options)
+  const preview = enterView({ ...state, reduced: false, visible: true })
+  const playing = preview.mode === 'playing' && !state.reduced
+  return { focus: frontFocus(state), dolly: playing ? preview.origin : 0 }
 }
 
 /** Auto-play can run: at least two Books, and no Reduce Motion. */
@@ -69,9 +105,19 @@ export function canAutoPlay(state: Pick<ReelState, 'n' | 'reduced'>): boolean {
 
 /** The arc's live position: the clock's while Playing, the glide's while it snaps, `focus` otherwise. */
 export function frontFocus(state: ReelState): number {
-  if (state.mode === 'playing') return reelFocus(state.origin + state.elapsed)
+  if (state.mode === 'playing') return reelFocus(playClock(state))
   if (state.glide) return glideFocus(state.glide.glide, state.glide.elapsed).focus
   return state.focus
+}
+
+/** The arc's clock (ms, see `reelPhase`) while Playing: it starts once the run's lead is over. */
+export function playClock(state: Pick<ReelState, 'origin' | 'elapsed' | 'lead'>): number {
+  return state.origin + Math.max(0, state.elapsed - state.lead)
+}
+
+/** The camera's clock (ms) while Playing: the dolly runs through the lead, from where the arc's clock begins. */
+export function dollyClock(state: Pick<ReelState, 'origin' | 'elapsed'>): number {
+  return state.origin + state.elapsed
 }
 
 /** The Book in front (whole Books, wrapped to 0..n-1). */
@@ -87,10 +133,14 @@ export function pauseControl(state: ReelState): 'pause' | 'play' {
 
 /**
  * The caption's and pills' opacity (0..1): the beat's badge while Playing, 1
- * otherwise (after a takeover, in Manual and in Detail, they stay).
+ * otherwise (after a takeover, in Manual and in Detail, they stay). In the run's
+ * lead (the first Book's hold) they are in, and go out over `exit` before the
+ * first move, as at the end of every beat.
  */
 export function badgeOpacity(state: ReelState): number {
-  return state.mode === 'playing' ? reelBadge(state.origin + state.elapsed) : 1
+  if (state.mode !== 'playing') return 1
+  if (state.elapsed < state.lead) return 1 - REEL_EASE.exit(seg(state.elapsed, state.lead - REEL_BADGE_OUT, state.lead))
+  return reelBadge(playClock(state))
 }
 
 /** Playing → Manual, keeping the arc where the clock has it (or the glide, where it is). Catches a glide. Detail is untouched. */
@@ -138,19 +188,20 @@ export function play(state: ReelState): ReelState {
 }
 
 /**
- * The first time the reel is in view this visit: Playing. A ringing arc opens
- * with the prototype's swing-in (the last Book comes in from the right). An arc
- * with ends opens on its first Book and runs to its last.
+ * The first time the reel is in view this visit: Playing. Whatever the arc, it
+ * opens on its first Book in front (index 0: what the first frame, the poster, the
+ * still, the caption and the dots show) and runs to its last, the next Book
+ * coming to the front every beat; the round rests on the last Book.
  * Once per visit (`newVisit`), and only while visible.
  */
 export function enterView(state: ReelState): ReelState {
   if (state.played || !state.visible || state.mode !== 'manual' || !canAutoPlay(state)) return state
-  if (state.n >= REEL_WRAP_FROM) return startRun(state, 0, state.n, true)
   return startRun(state, REEL_BEAT, state.n - 1, true)
 }
 
 function startRun(state: ReelState, origin: number, span: number, first = false): ReelState {
-  return { ...state, mode: 'playing', played: true, origin, span, elapsed: 0, glide: null, focus: first ? -1 : state.focus }
+  // The first run of a visit holds its first Book a full beat before it moves on; Play (after a takeover) moves at once.
+  return { ...state, mode: 'playing', played: true, origin, span, elapsed: 0, lead: first ? REEL_OPENING_HOLD : 0, glide: null, focus: first ? 0 : state.focus }
 }
 
 /** A new visit to the page: the reel may auto-play once again. */
@@ -181,7 +232,7 @@ export function advance(state: ReelState, dt: number): ReelState {
   let next = state
   if (state.mode === 'playing' && state.visible) {
     const elapsed = state.elapsed + dt
-    const total = state.span * REEL_BEAT
+    const total = state.lead + state.span * REEL_BEAT
     if (elapsed >= total) {
       return {
         ...state,

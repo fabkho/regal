@@ -8,24 +8,29 @@ import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 
 useHead({ title: 'Reel — host' })
 
-const library = ref<RegalLibraryFile | null>(null)
-onMounted(() => {
-  const at = (path: string) => new URL(path, window.location.href).href
-  const titles = ['The Paper Lighthouse', 'A Grammar of Small Moons', 'Notes on Weather', 'The Last Ferry']
-  library.value = {
-    version: 2,
-    generatedAt: '2026-10-28T00:00:00Z',
-    owner: 'A friend',
-    books: titles.map((title, index) => ({
-      id: `fx-00${index + 1}`,
-      title: `${title} (hers)`,
-      authors: ['Ada Quillfeather'],
-      status: 'read',
-      rating: 0,
-      assets: { color: ['#2F4858', '#B93E2E', '#D4B06A', '#3D6B35'][index], front: at(`/books/fx-00${index + 1}/front.webp`) },
-    })),
-  }
-})
+// Built on the server too (the request's origin): the reel's poster is part of the server's HTML.
+const requestUrl = useRequestURL()
+const at = (path: string) => new URL(path, requestUrl.href).href
+const titles = ['The Paper Lighthouse', 'A Grammar of Small Moons', 'Notes on Weather', 'The Last Ferry']
+const library: RegalLibraryFile = {
+  version: 2,
+  generatedAt: '2026-10-28T00:00:00Z',
+  owner: 'A friend',
+  books: titles.map((title, index) => ({
+    id: `fx-00${index + 1}`,
+    title: `${title} (hers)`,
+    authors: ['Ada Quillfeather'],
+    status: 'read',
+    rating: 0,
+    assets: { color: ['#2F4858', '#B93E2E', '#D4B06A', '#3D6B35'][index], front: at(`/books/fx-00${index + 1}/front.webp`) },
+  })),
+}
+// ?autoplay=0: the reel starts still (a first frame to compare the poster with).
+const query = useRoute().query
+const autoplay = query.autoplay !== '0'
+// ?entrance=none|settle|pop: how the Books come in (default pop: no poster); ?still=1: the still instead of the reel.
+const entrance = (['none', 'settle', 'pop'] as const).find(mode => mode === query.entrance) ?? 'pop'
+const still = query.still === '1'
 const events = ref<string[]>([])
 </script>
 
@@ -34,9 +39,18 @@ const events = ref<string[]>([])
     <RegalBooksSidebar class="reel-host__shelf" />
     <section class="reel-host__card">
       <h2>You both read</h2>
-      <RegalBooksReel
+      <RegalBooksReelStill
+        v-if="still"
         :library="library"
         label="Books you both read"
+        :autoplay="autoplay"
+      />
+      <RegalBooksReel
+        v-else
+        :library="library"
+        label="Books you both read"
+        :autoplay="autoplay"
+        :entrance="entrance"
         @ready="events.push('ready')"
         @focus="event => events.push(`focus:${event.id}`)"
         @manual="events.push('manual')"

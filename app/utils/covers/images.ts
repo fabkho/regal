@@ -9,8 +9,43 @@ import type { Priority } from './loadQueue'
 /** A decoded picture, ready to draw on a canvas. */
 export type Picture = CanvasImageSource & { width: number, height: number }
 
+/**
+ * Images fetched ahead of their texture (`preloadImage`: the reel's Covers, asked for as soon as a
+ * host has its Library): `fetchImage` takes their bytes instead of asking again, once each, and an
+ * unused one is let go after `PRELOAD_KEEP` ms.
+ */
+const preloaded = new Map<string, Promise<Blob | null>>()
+const PRELOAD_KEEP = 60_000
+
+/**
+ * Fetches an image now, outside the load queue (a few Covers the first frame shows, so the queue's
+ * other jobs don't stand before them), for `fetchImage` to take. Same request as the queue's, so the
+ * texture and the page's own <img> of it share one download. Resolves null when it isn't there.
+ */
+export function preloadImage(url: string, priority: 'high' | 'auto' = 'auto'): Promise<Blob | null> {
+  const known = preloaded.get(url)
+  if (known) return known
+  const pending = fetch(url, { mode: 'cors', credentials: 'same-origin', priority } as RequestInit)
+    .then(response => (response.ok ? response.blob() : null))
+    .catch(() => null)
+  preloaded.set(url, pending)
+  setTimeout(() => preloaded.get(url) === pending && preloaded.delete(url), PRELOAD_KEEP)
+  return pending
+}
+
+/** Forgets what was preloaded (tests). */
+export function clearPreloadedImages() {
+  preloaded.clear()
+}
+
 /** Fetches an image's bytes in the load queue; null when it isn't there or was dropped (`signal`). */
 export function fetchImage(url: string, priority?: Priority, signal?: AbortSignal): Promise<Blob | null> {
+  const early = preloaded.get(url)
+  if (early) {
+    preloaded.delete(url)
+    // What was fetched ahead, if it came; otherwise the queue's own try.
+    return early.then(blob => blob ?? fetchImage(url, priority, signal))
+  }
   return schedule(async () => {
     // Same-origin or CORS (a CDN bucket): the canvases it is drawn on must stay untainted.
     const response = await fetch(url, { mode: 'cors', credentials: 'same-origin', signal })
