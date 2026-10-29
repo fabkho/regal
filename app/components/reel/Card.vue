@@ -119,7 +119,9 @@ let canvasTimer: ReturnType<typeof setTimeout> | undefined
 // move (the last Book swings in from the right, 0.8 s on `standard`) and the dolly, starts from the very
 // frame the poster stood in. Held till then, the beat can't have moved the arc under the poster.
 const HANDOVER_MS = 300
-const start = reelStartFrame(n.value, { reduced: reduced.value, autoplay: props.autoplay })
+/** Where the first frame stands for the Books and props now (utils/reel/state.ts). */
+const startFrame = () => reelStartFrame(n.value, { reduced: reduced.value, autoplay: props.autoplay })
+const start = startFrame()
 /** What the poster draws: the live arc and dolly (they change before the handover only by the reader's hand). */
 const posterFocus = ref(start.focus)
 const posterTime = ref(start.dolly)
@@ -206,7 +208,8 @@ function update(now: number) {
   ctx.focus.value = focus
   if (posterOn.value) {
     posterFocus.value = focus
-    posterTime.value = ctx.dolly.value
+    // Reduce Motion: the canvas holds the camera at rest (ReelBooks), whatever the clock says.
+    posterTime.value = reduced.value ? 0 : ctx.dolly.value
   }
   const playing = state.mode === 'playing'
   if (playing && state.visible && !reduced.value) {
@@ -260,6 +263,8 @@ function commit(next: ReelState, options: { from?: number, user?: boolean } = {}
 watch(() => props.books, () => {
   if (pickedId.value) putAway()
   state = initialState()
+  // The first frame of the new Library: where its round begins, the camera where that clock starts.
+  ctx.dolly.value = startFrame().dolly
   opening = !handed.value
   settle = null
   ctx.facesReady.value = false
@@ -670,7 +675,11 @@ const ariaLabel = computed(() => props.label || words.value.reel)
       </BooksHostSlot>
     </div>
 
-    <div class="reel-card__controls">
+    <!-- Nothing to pause or follow until the canvas has taken over and the clock runs (and never, without WebGL). -->
+    <div
+      class="reel-card__controls"
+      :inert="!handed"
+    >
       <div
         v-if="books.length > 1 && books.length <= MAX_DOTS"
         class="reel-card__dots"

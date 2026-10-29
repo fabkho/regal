@@ -851,4 +851,96 @@ describe('Regal as a Nuxt layer', async () => {
     expect(sidebarFont).toContain('IBM Plex Mono')
     await page.close()
   })
+
+  describe('the reel\'s poster is the canvas\'s first frame', () => {
+    const WIDTHS = [320, 390, 900]
+
+    /** The reel's stage as a PNG, in a context of `width` px (JS off: the server's HTML only, i.e. the poster). */
+    async function stagePng(width: number, javaScriptEnabled: boolean) {
+      const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 }, javaScriptEnabled })
+      const page = await context.newPage()
+      await page.goto(url('/reel?autoplay=0'), { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' })
+      // The images are in (JS off: the poster's own <img>s); the fonts a moment later.
+      await page.waitForTimeout(600)
+      const png = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      return { png, page, context }
+    }
+
+    /** Mean per-channel difference (0..255) and the share of channels that differ by more than 64, between two PNGs of one size. */
+    async function pixelDiff(page: Page, a: Buffer, b: Buffer) {
+      return page.evaluate(async ([first, second]) => {
+        const read = async (data: string) => {
+          const image = new Image()
+          image.src = `data:image/png;base64,${data}`
+          await image.decode()
+          const canvas = document.createElement('canvas')
+          canvas.width = image.width
+          canvas.height = image.height
+          const context = canvas.getContext('2d')!
+          context.drawImage(image, 0, 0)
+          return { width: image.width, height: image.height, data: context.getImageData(0, 0, image.width, image.height).data }
+        }
+        const [x, y] = await Promise.all([read(first!), read(second!)])
+        if (x.width !== y.width || x.height !== y.height) return { size: [x.width, x.height, y.width, y.height], mean: 255, big: 1 }
+        let sum = 0
+        let big = 0
+        let channels = 0
+        for (let index = 0; index < x.data.length; index += 4) {
+          for (let channel = 0; channel < 3; channel++) {
+            const difference = Math.abs(x.data[index + channel]! - y.data[index + channel]!)
+            sum += difference
+            if (difference > 64) big++
+            channels++
+          }
+        }
+        return { size: [x.width, x.height], mean: sum / channels, big: big / channels }
+      }, [a.toString('base64'), b.toString('base64')] as const)
+    }
+
+    // The tolerance is for the two renderings' anti-aliasing, shading and the typeset Spine (measured in headless
+    // Chromium: ~3 / 255 on average and under 0.5 % of channels off); a Book out of place is far more.
+    const MEAN = 5
+    const BIG = 0.02
+
+    it.each(WIDTHS)('at %i px wide: the poster (the server\'s HTML) and the canvas at rest are one picture, with no hydration warning', async (width) => {
+      const poster = await stagePng(width, false)
+      await poster.context.close()
+
+      const warnings: string[] = []
+      const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 } })
+      const page = await context.newPage()
+      page.on('console', message => /hydrat/i.test(message.text()) && warnings.push(message.text()))
+      page.on('pageerror', error => warnings.push(error.message))
+      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
+      // The poster is gone once the canvas has faded in over it: what shows is the canvas alone.
+      await expect.poll(() => page.locator('[data-reel-poster]').count(), { timeout: 5_000 }).toBe(0)
+      await page.waitForTimeout(300)
+      const canvas = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      const diff = await pixelDiff(page, poster.png, canvas)
+      expect(diff.mean, JSON.stringify(diff)).toBeLessThan(MEAN)
+      expect(diff.big, JSON.stringify(diff)).toBeLessThan(BIG)
+      expect(warnings).toEqual([])
+      await context.close()
+    })
+
+    it('after a width change the canvas still stands where the poster of that width stands', async () => {
+      const context = await (await getBrowser()).newContext({ viewport: { width: 390, height: 900 } })
+      const page = await context.newPage()
+      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
+      await expect.poll(() => page.locator('[data-reel-poster]').count(), { timeout: 5_000 }).toBe(0)
+      for (const width of [900, 320, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        await page.waitForTimeout(800)
+        const canvas = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+        const poster = await stagePng(width, false)
+        await poster.context.close()
+        const diff = await pixelDiff(page, poster.png, canvas)
+        expect(diff.mean, `${width}: ${JSON.stringify(diff)}`).toBeLessThan(MEAN)
+        expect(diff.big, `${width}: ${JSON.stringify(diff)}`).toBeLessThan(BIG)
+      }
+      await context.close()
+    })
+  })
 })

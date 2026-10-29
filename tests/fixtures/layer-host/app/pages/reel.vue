@@ -8,24 +8,25 @@ import type { RegalLibraryFile } from '#layers/regal/shared/types/libraryFile'
 
 useHead({ title: 'Reel — host' })
 
-const library = ref<RegalLibraryFile | null>(null)
-onMounted(() => {
-  const at = (path: string) => new URL(path, window.location.href).href
-  const titles = ['The Paper Lighthouse', 'A Grammar of Small Moons', 'Notes on Weather', 'The Last Ferry']
-  library.value = {
-    version: 2,
-    generatedAt: '2026-10-28T00:00:00Z',
-    owner: 'A friend',
-    books: titles.map((title, index) => ({
-      id: `fx-00${index + 1}`,
-      title: `${title} (hers)`,
-      authors: ['Ada Quillfeather'],
-      status: 'read',
-      rating: 0,
-      assets: { color: ['#2F4858', '#B93E2E', '#D4B06A', '#3D6B35'][index], front: at(`/books/fx-00${index + 1}/front.webp`) },
-    })),
-  }
-})
+// Built on the server too (the request's origin): the reel's poster is part of the server's HTML.
+const requestUrl = useRequestURL()
+const at = (path: string) => new URL(path, requestUrl.href).href
+const titles = ['The Paper Lighthouse', 'A Grammar of Small Moons', 'Notes on Weather', 'The Last Ferry']
+const library: RegalLibraryFile = {
+  version: 2,
+  generatedAt: '2026-10-28T00:00:00Z',
+  owner: 'A friend',
+  books: titles.map((title, index) => ({
+    id: `fx-00${index + 1}`,
+    title: `${title} (hers)`,
+    authors: ['Ada Quillfeather'],
+    status: 'read',
+    rating: 0,
+    assets: { color: ['#2F4858', '#B93E2E', '#D4B06A', '#3D6B35'][index], front: at(`/books/fx-00${index + 1}/front.webp`) },
+  })),
+}
+// ?autoplay=0: the reel starts still (a first frame to compare the poster with).
+const autoplay = useRoute().query.autoplay !== '0'
 const events = ref<string[]>([])
 </script>
 
@@ -37,6 +38,7 @@ const events = ref<string[]>([])
       <RegalBooksReel
         :library="library"
         label="Books you both read"
+        :autoplay="autoplay"
         @ready="events.push('ready')"
         @focus="event => events.push(`focus:${event.id}`)"
         @manual="events.push('manual')"

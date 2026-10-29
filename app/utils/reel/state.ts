@@ -66,11 +66,18 @@ export function createReel(n: number, options: { reduced?: boolean } = {}): Reel
  * The reel before it shows: still, where its first round will begin (so it
  * doesn't jump when it starts). The card's state at mount, and the one the
  * first frame (the canvas's, and the poster standing in for it) is drawn from.
+ *
+ * Where the arc stands does not depend on Reduce Motion: a host (and the
+ * server) often learns it only after mount (`prefers-reduced-motion` is read in
+ * the browser), so the first frame, the poster and the still must be the same
+ * either way, or the page would jump when it is known. Reduce Motion only
+ * keeps the reel from playing and the camera at rest (`reelStartFrame`).
  */
 export function initialReel(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): ReelState {
-  const start = setVisible(createReel(n, { reduced: options.reduced ?? false }), false)
+  const base = setVisible(createReel(n, { reduced: false }), false)
+  const start = { ...base, reduced: options.reduced ?? false }
   if (options.autoplay === false) return { ...start, played: true }
-  const preview = enterView({ ...start, visible: true })
+  const preview = enterView({ ...base, visible: true })
   return preview.mode === 'playing' ? { ...start, focus: frontFocus(preview) } : start
 }
 
@@ -78,11 +85,12 @@ export function initialReel(n: number, options: { reduced?: boolean, autoplay?: 
  * Where the first frame stands: the arc's `focus` and the dolly's clock (ms) of
  * `initialReel`, as the canvas draws its first frame and the poster draws the
  * same one. The clock is the one the auto-play begins on (a beat's start, where the
- * desktop's clock and the phones' move clock are the same number).
+ * desktop's clock and the phones' move clock are the same number); with Reduce
+ * Motion the camera rests (0), as the canvas draws it.
  */
 export function reelStartFrame(n: number, options: { reduced?: boolean, autoplay?: boolean } = {}): { focus: number, dolly: number } {
   const state = initialReel(n, options)
-  const preview = enterView({ ...state, visible: true })
+  const preview = enterView({ ...state, reduced: false, visible: true })
   const playing = preview.mode === 'playing' && !state.reduced
   return { focus: frontFocus(state), dolly: playing ? preview.origin : 0 }
 }

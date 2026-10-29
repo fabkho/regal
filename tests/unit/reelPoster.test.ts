@@ -10,7 +10,7 @@ import { reelCamera, reelCameraInto, reelPose } from '../../app/utils/reel/layou
 import type { ReelCamera } from '../../app/utils/reel/layout'
 import { posterBooks, posterBookTransform, posterShade, posterShadowTransform, posterWorldTransform, projectPosterPoint } from '../../app/utils/reel/poster'
 import { REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
-import { enterView, frontFocus, initialReel, reelStartFrame } from '../../app/utils/reel/state'
+import { enterView, frontFocus, initialReel, reelStartFrame, setReduced } from '../../app/utils/reel/state'
 import { REEL_BEAT } from '../../app/utils/reel/timeline'
 
 const stage = { width: 390, height: 330 }
@@ -146,11 +146,28 @@ describe('the first frame is where the auto-play begins (no jump when the intro 
     expect(reelStartFrame(2)).toEqual({ focus: 0, dolly: REEL_BEAT })
   })
 
-  it('still (autoplay off, Reduce Motion, one Book, none): the first Book, the camera at rest', () => {
+  it('still (autoplay off, one Book, none): the first Book, the camera at rest', () => {
     expect(reelStartFrame(12, { autoplay: false })).toEqual({ focus: 0, dolly: 0 })
-    expect(reelStartFrame(12, { reduced: true })).toEqual({ focus: 0, dolly: 0 })
     expect(reelStartFrame(1)).toEqual({ focus: 0, dolly: 0 })
     expect(reelStartFrame(0)).toEqual({ focus: 0, dolly: 0 })
+  })
+
+  it('Reduce Motion rests the camera but never moves the arc: the first frame is the same whether or not it is known yet', () => {
+    // `prefers-reduced-motion` is read in the browser, after the server's HTML and the first render.
+    // A reel that learns it later (setReduced) stands where one that knew from the start does.
+    for (const n of [2, 3, 4, 12]) {
+      const known = reelStartFrame(n, { reduced: true })
+      const unknown = reelStartFrame(n)
+      expect(known.focus).toBe(unknown.focus)
+      expect(known.dolly).toBe(0)
+      expect(frontFocus(setReduced(initialReel(n), true))).toBe(known.focus)
+      expect(frontFocus(initialReel(n, { reduced: true }))).toBe(known.focus)
+    }
+    expect(reelStartFrame(3)).toEqual({ focus: 0, dolly: REEL_BEAT })
+    expect(reelStartFrame(3, { reduced: true })).toEqual({ focus: 0, dolly: 0 })
+    expect(reelStartFrame(12, { reduced: true })).toEqual({ focus: -1, dolly: 0 })
+    // And it does not play.
+    expect(enterView({ ...initialReel(12, { reduced: true }), visible: true }).mode).toBe('manual')
   })
 
   it.each([2, 3, 4, 5, 12, 300])('with %i Books: the reel\'s state at mount, the state when it first plays and the poster agree', (n) => {

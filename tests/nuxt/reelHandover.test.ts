@@ -194,6 +194,78 @@ describe('the poster before the canvas', () => {
   })
 })
 
+describe('Reduce Motion, a new Library, the controls', () => {
+  it('learning Reduce Motion after mount rests the camera and keeps the arc: poster, still and canvas agree', async () => {
+    const wrapper = await mountReel({ library: libraryOf(3), reducedMotion: false })
+    // Three Books: an arc with ends, the clock at its second beat (the dolly 3200 ms in).
+    expect(drawn(wrapper).world).not.toContain('rotateY(0deg)')
+    await wrapper.setProps({ reducedMotion: true })
+    await nextTick()
+    const vm = card(wrapper)
+    expect(drawn(wrapper).world).toContain(posterWorldTransform(reelCamera(0)))
+    // What a reel that knew from the start draws, and what the still draws.
+    const known = await mountReel({ library: libraryOf(3), reducedMotion: true })
+    expect(drawn(wrapper)).toEqual(drawn(known))
+    const still = await mountSuspended(RegalBooksReelStill, { props: { library: libraryOf(3), reducedMotion: true } as never, attachTo: document.body }) as VueWrapper
+    mounted.push(still)
+    expect(drawn(still)).toEqual(drawn(wrapper))
+    expect(vm.state.mode).toBe('manual')
+  })
+
+  it('a new Library starts from its own first frame: the focus and the camera\'s clock', async () => {
+    const wrapper = await mountReel({ library: libraryOf(3) })
+    const vm = card(wrapper)
+    expect(vm.ctx.dolly.value).toBe(REEL_BEAT)
+    await wrapper.setProps({ library: libraryOf(6) })
+    await nextTick()
+    expect(vm.ctx.dolly.value).toBe(0)
+    expect(drawn(wrapper).world).toContain(posterWorldTransform(reelCamera(0)))
+    expect(drawn(wrapper).books.map(book => book.id)).toEqual(posterBooks(6, -1).map(book => `fx-hand-${book.index + 1}`))
+  })
+
+  it('the pause button and dots are inert until the canvas has taken over and the clock runs (never, without the 3D)', async () => {
+    const wrapper = await mountReel()
+    const controls = wrapper.find('.reel-card__controls')
+    expect(controls.attributes('inert')).toBeDefined()
+    await sleep(60)
+    expect(controls.attributes('inert')).toBeDefined()
+    card(wrapper).ctx.ready()
+    await sleep(340)
+    await nextTick()
+    expect(controls.attributes('inert')).toBeUndefined()
+  })
+})
+
+describe('a Book without a Cover', () => {
+  const withFront = (front: string): RegalLibraryFile => ({
+    version: 2,
+    generatedAt: '2026-10-28T00:00:00Z',
+    books: [{ id: 'fx-cover-1', title: 'Covered', authors: ['Ada Example'], status: 'read', rating: 0, assets: { color: '#336699', front } }],
+  })
+
+  it('shows the title block the canvas draws, on its colour', async () => {
+    const wrapper = await mountReel()
+    const front = wrapper.find('[data-book="fx-hand-6"] .reel-poster__front')
+    expect(front.find('img').exists()).toBe(false)
+    expect(front.find('.reel-poster__title-text').text()).toBe('Handover 6')
+    expect(front.find('.reel-poster__title-author').text()).toBe('Ada Example')
+    expect(front.attributes('style')).toContain('background-color')
+  })
+
+  it('shows the Cover while it is there, the title block when the image fails', async () => {
+    // The test DOM has no image decoder: an image that has size is one that loaded.
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(100)
+    const wrapper = await mountReel({ library: withFront('http://localhost/never.jpg'), autoplay: false })
+    const front = () => wrapper.find('[data-book="fx-cover-1"] .reel-poster__front')
+    expect(front().find('img').exists()).toBe(true)
+    expect(front().find('.reel-poster__title').exists()).toBe(false)
+    await front().find('img').trigger('error')
+    await nextTick()
+    expect(front().find('img').exists()).toBe(false)
+    expect(front().find('.reel-poster__title-text').text()).toBe('Covered')
+  })
+})
+
 describe('the still for a host\'s fallbacks (RegalBooksReelStill)', () => {
   async function mountStill(props: Record<string, unknown> = {}) {
     const wrapper = await mountSuspended(RegalBooksReelStill, { props: { library: libraryOf(6), ...props } as never, attachTo: document.body }) as VueWrapper
@@ -216,7 +288,8 @@ describe('the still for a host\'s fallbacks (RegalBooksReelStill)', () => {
     expect(drawn(await mountStill({ autoplay: false }))).toEqual(drawn(reel))
     const reduced = await mountReel({ reducedMotion: true })
     expect(drawn(await mountStill({ reducedMotion: true }))).toEqual(drawn(reduced))
-    expect((await mountStill({ reducedMotion: true })).find('.reel-caption__title').text()).toBe('Handover 1')
+    // Reduce Motion never moves the arc (the server and the first render don't know it yet): the same frame.
+    expect((await mountStill({ reducedMotion: true })).find('.reel-caption__title').text()).toBe('Handover 6')
   })
 
   it('takes the host\'s `#tooltip` slot, and says so when there is nothing to show', async () => {

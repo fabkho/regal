@@ -8,7 +8,7 @@
 import type { Book } from '#layers/regal/shared/types/book'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { CLOTH_COLORS, hashString } from '#layers/regal/app/utils/bookcase/layout'
-import { toHex } from '#layers/regal/app/utils/covers/palette'
+import { fromHex, readableOn, toHex } from '#layers/regal/app/utils/covers/palette'
 import { reelCamera } from '#layers/regal/app/utils/reel/layout'
 import { posterBooks, posterWorldTransform } from '#layers/regal/app/utils/reel/poster'
 import { REEL_BOOK, REEL_PERSPECTIVE, REEL_SHADOW } from '#layers/regal/app/utils/reel/scene'
@@ -39,10 +39,15 @@ interface Item {
   spine: boolean
   spineColor: string
   spineInk: string
+  /** The ink of the title block on a front without a Cover. */
+  ink: string
 }
 
 /** A URL as a CSS value (quotes and backslashes escaped). */
 const cssUrl = (url: string) => `url("${url.replace(/["\\]/g, '\\$&')}")`
+
+/** The ink that reads on a colour. */
+const inkOn = (hex: string) => toHex(readableOn(fromHex(hex)))
 
 const items = computed<Item[]>(() => posterBooks(props.books.length, props.focus).map(({ index, transform, shadowTransform, shadowOpacity, shade }) => {
   const book = props.books[index]!
@@ -62,9 +67,23 @@ const items = computed<Item[]>(() => posterBooks(props.books.length, props.focus
     spineImage: faces?.spine ? cssUrl(faces.spine) : undefined,
     spine: Boolean(faces?.spine),
     spineColor: palette ? toHex(palette.background) : color,
-    spineInk: palette ? toHex(palette.text) : '#F5F2EB',
+    spineInk: palette ? toHex(palette.text) : inkOn(color),
+    ink: palette ? toHex(palette.text) : inkOn(color),
   }
 }))
+
+/**
+ * Books whose Cover didn't load (the canvas draws their title block instead, as it does for a Book
+ * without a Cover). An image that failed before hydration is found once mounted.
+ */
+const failed = ref(new Set<string>())
+const root = ref<HTMLElement | null>(null)
+const fails = (id: string) => failed.value.add(id)
+onMounted(() => {
+  for (const img of root.value?.querySelectorAll<HTMLImageElement>('img[data-cover]') ?? []) {
+    if (img.complete && img.naturalWidth === 0) failed.value.add(img.dataset.cover!)
+  }
+})
 
 const world = computed(() => posterWorldTransform(reelCamera(props.time)))
 const size = {
@@ -79,6 +98,7 @@ const size = {
 
 <template>
   <div
+    ref="root"
     class="reel-poster"
     :style="size"
     aria-hidden="true"
@@ -106,12 +126,26 @@ const size = {
             :style="{ backgroundColor: item.color }"
           >
             <img
-              v-if="item.front"
+              v-if="item.front && !failed.has(item.id)"
               :src="item.front"
+              :data-cover="item.id"
               alt=""
               decoding="async"
               draggable="false"
+              @error="fails(item.id)"
             >
+            <!-- No Cover (or none that loads): the title block the canvas draws on its colour. -->
+            <div
+              v-else
+              class="reel-poster__title"
+              :style="{ color: item.ink }"
+            >
+              <span class="reel-poster__title-text">{{ item.title }}</span>
+              <span
+                v-if="item.author"
+                class="reel-poster__title-author"
+              >{{ item.author }}</span>
+            </div>
           </div>
           <div
             class="reel-poster__face reel-poster__back"
@@ -200,6 +234,35 @@ const size = {
 
 .reel-poster__front {
   transform: translateZ(calc(var(--reel-t) / 2));
+}
+
+/* The canvas's drawn front (bookFaces.ts drawClassicBack): the title at 7 % of the width, the author under it, from 8.5 % in and 6 % down. */
+.reel-poster__title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  width: 100%;
+  height: 100%;
+  padding: 6% 8.5%;
+  overflow: hidden;
+  font: 600 calc(var(--reel-w) * 0.07) / 1.3 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+
+.reel-poster__title-text,
+.reel-poster__title-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reel-poster__title-text {
+  opacity: 0.95;
+}
+
+.reel-poster__title-author {
+  font-size: 0.62em;
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 /* The Cover stretched over the front, as the canvas's texture is. */
