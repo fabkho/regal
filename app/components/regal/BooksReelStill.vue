@@ -135,8 +135,8 @@ const shadowStrength = computed(() => floorShadowStrength(ui.tokens.value, ui.sc
 .reel-still__focus {
   position: relative;
   z-index: 1;
-  margin-top: calc(-1 * var(--regal-reel-overlap, 46px));
-  min-height: var(--regal-reel-overlap, 46px);
+  margin-top: calc(-1 * var(--regal-reel-overlap, calc(46px + var(--regal-reel-rise, 40px))));
+  min-height: var(--regal-reel-overlap, calc(46px + var(--regal-reel-rise, 40px)));
   text-align: center;
   pointer-events: none;
 }

@@ -9,7 +9,7 @@ import { Euler, MathUtils, Matrix4, PerspectiveCamera, Quaternion, Vector3 } fro
 import { reelCamera, reelCameraInto, reelPose } from '../../app/utils/reel/layout'
 import type { ReelCamera } from '../../app/utils/reel/layout'
 import { posterBooks, posterBookTransform, posterShade, posterShadowTransform, posterWorldTransform, projectPosterPoint } from '../../app/utils/reel/poster'
-import { REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
+import { REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_RISE, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
 import { enterView, frontFocus, initialReel, reelStartFrame, setReduced } from '../../app/utils/reel/state'
 import { REEL_BEAT } from '../../app/utils/reel/timeline'
 
@@ -29,17 +29,17 @@ function canvasCamera() {
 }
 
 /** The world ReelBooks composes every frame from the dolly: pushed by its z, turned by the sway and the tilt. */
-function canvasWorld(dolly: ReelCamera) {
+function canvasWorld(dolly: ReelCamera, rise: number) {
   const quaternion = new Quaternion().setFromEuler(new Euler(MathUtils.degToRad(-dolly.rotateX), MathUtils.degToRad(dolly.rotateY), 0, 'YXZ'))
-  return new Matrix4().compose(new Vector3(0, 0, dolly.z * REEL_PX), quaternion, new Vector3(1, 1, 1))
+  return new Matrix4().compose(new Vector3(0, rise * REEL_PX, dolly.z * REEL_PX), quaternion, new Vector3(1, 1, 1))
 }
 
 /** Where the canvas draws a point of a Book's box (CSS px from the stage's middle; y down; the Book's own frame turned by `rotateY`°). */
-function canvasPixels(camera: PerspectiveCamera, point: { x: number, y: number, z: number }, pose: { x: number, y: number, z: number, rotateY: number }, dolly: ReelCamera) {
+function canvasPixels(camera: PerspectiveCamera, point: { x: number, y: number, z: number }, pose: { x: number, y: number, z: number, rotateY: number }, dolly: ReelCamera, rise: number) {
   const turn = new Matrix4().makeRotationY(MathUtils.degToRad(pose.rotateY))
   // CSS (y down) to the scene (y up), px to m.
   const local = new Vector3(point.x, -point.y, point.z).applyMatrix4(turn).add(new Vector3(pose.x, -pose.y, pose.z))
-  const world = local.multiplyScalar(REEL_PX).applyMatrix4(canvasWorld(dolly))
+  const world = local.multiplyScalar(REEL_PX).applyMatrix4(canvasWorld(dolly, rise))
   const ndc = world.project(camera)
   return { x: ((ndc.x + 1) / 2) * stage.width, y: ((1 - ndc.y) / 2) * stage.height }
 }
@@ -57,11 +57,13 @@ describe('the poster stands where the canvas draws (CSS perspective vs the canva
   ].map(([x, y, z]) => ({ x: x!, y: y!, z: z! }))
 
   it.each([
-    { name: 'the first frame, a ringing arc (the last Book in front)', n: 12, focus: -1, time: 0 },
-    { name: 'the first frame of an arc with ends', n: 3, focus: 0, time: REEL_BEAT },
-    { name: 'a Book in front, the camera at its dolly\'s widest sway', n: 12, focus: 4, time: (REEL_BEAT * 3) / 4 },
-    { name: 'mid-move, mid-dolly', n: 7, focus: 2.37, time: 5234 },
-  ])('$name: every corner of every Book lands on the same pixel', ({ n, focus, time }) => {
+    { name: 'the first frame, a ringing arc (the last Book in front)', n: 12, focus: -1, time: 0, rise: REEL_RISE },
+    { name: 'the first frame of an arc with ends', n: 3, focus: 0, time: REEL_BEAT, rise: REEL_RISE },
+    { name: 'a Book in front, the camera at its dolly\'s widest sway', n: 12, focus: 4, time: (REEL_BEAT * 3) / 4, rise: REEL_RISE },
+    { name: 'mid-move, mid-dolly', n: 7, focus: 2.37, time: 5234, rise: REEL_RISE },
+    { name: 'a host\'s own rise (--regal-reel-rise: 12px)', n: 12, focus: -1, time: 1200, rise: 12 },
+    { name: 'no rise (the prototype\'s stage)', n: 12, focus: 3, time: 4000, rise: 0 },
+  ])('$name: every corner of every Book lands on the same pixel', ({ n, focus, time, rise }) => {
     const camera = canvasCamera()
     const dolly = reelCamera(time)
     for (const { pose } of posterBooks(n, focus)) {
@@ -71,8 +73,10 @@ describe('the poster stands where the canvas draws (CSS perspective vs the canva
           { x: pose.x + corner.x * Math.cos(MathUtils.degToRad(pose.rotateY)) + corner.z * Math.sin(MathUtils.degToRad(pose.rotateY)), y: pose.y + corner.y, z: pose.z - corner.x * Math.sin(MathUtils.degToRad(pose.rotateY)) + corner.z * Math.cos(MathUtils.degToRad(pose.rotateY)) },
           dolly,
           stage,
+          REEL_PERSPECTIVE,
+          rise,
         )
-        const canvas = canvasPixels(camera, corner, pose, dolly)
+        const canvas = canvasPixels(camera, corner, pose, dolly, rise)
         expect(css.x).toBeCloseTo(canvas.x, 2)
         expect(css.y).toBeCloseTo(canvas.y, 2)
       }
@@ -81,9 +85,11 @@ describe('the poster stands where the canvas draws (CSS perspective vs the canva
 
   it('the stage\'s middle on its own plane is the stage\'s middle, the origin of the perspective 40 % down', () => {
     const flat: ReelCamera = { z: 0, rotateY: 0, rotateX: 0 }
-    expect(projectPosterPoint({ x: 0, y: 0, z: 0 }, flat, stage)).toEqual({ x: 195, y: 165, scale: 1 })
+    expect(projectPosterPoint({ x: 0, y: 0, z: 0 }, flat, stage, REEL_PERSPECTIVE, 0)).toEqual({ x: 195, y: 165, scale: 1 })
+    // The arc's origin stands `REEL_RISE` higher by default: the Books are that much nearer the stage's top.
+    expect(projectPosterPoint({ x: 0, y: 0, z: 0 }, flat, stage)).toEqual({ x: 195, y: 165 - REEL_RISE, scale: 1 })
     // On the axis (40 % down) a point moves only by the scale; a point 100 px forward is 900/800 larger.
-    const axis = projectPosterPoint({ x: 100, y: stage.height * REEL_AXIS_Y - stage.height / 2, z: 100 }, flat, stage)
+    const axis = projectPosterPoint({ x: 100, y: stage.height * REEL_AXIS_Y - stage.height / 2 + REEL_RISE, z: 100 }, flat, stage)
     expect(axis.y).toBeCloseTo(stage.height * REEL_AXIS_Y, 6)
     expect(axis.scale).toBeCloseTo(REEL_PERSPECTIVE / (REEL_PERSPECTIVE - 100), 6)
     expect(axis.x).toBeCloseTo(195 + 100 * axis.scale, 6)

@@ -10,7 +10,7 @@
 
 import { reelPose } from './layout'
 import type { ReelCamera, ReelPose } from './layout'
-import { REEL_AXIS_Y, REEL_PERSPECTIVE, REEL_SHADOW } from './scene'
+import { REEL_AXIS_Y, REEL_PERSPECTIVE, REEL_RISE, REEL_SHADOW } from './scene'
 
 /** One Book of the poster: it is on screen (not hidden by the arc) and where. */
 export interface PosterBook {
@@ -97,14 +97,16 @@ export interface PosterPoint {
  * a `width` × `height` stage; y down, z towards the viewer) after the world's
  * transform `camera`: the point is turned (rotateX, then rotateY), pushed by
  * `camera.z`, and scaled from the perspective origin (50 % across, 40 % down)
- * by `perspective / (perspective - z)`. The canvas draws what this says (the
- * test projects the same point through its three.js camera).
+ * by `perspective / (perspective - z)`. The world's origin stands `rise` px above
+ * the stage's middle (`REEL_RISE`; the turn is about that origin). The canvas
+ * draws what this says (the test projects the same point through its three.js camera).
  */
 export function projectPosterPoint(
   point: { x: number, y: number, z: number },
   camera: ReelCamera,
   stage: { width: number, height: number },
   perspective = REEL_PERSPECTIVE,
+  rise = REEL_RISE,
 ): PosterPoint {
   const rx = (camera.rotateX * Math.PI) / 180
   const ry = (camera.rotateY * Math.PI) / 180
@@ -119,7 +121,7 @@ export function projectPosterPoint(
   const originY = stage.height * REEL_AXIS_Y
   return {
     x: stage.width / 2 + x2 * scale,
-    y: originY + (stage.height / 2 + y1 - originY) * scale,
+    y: originY + (stage.height / 2 - rise + y1 - originY) * scale,
     scale,
   }
 }

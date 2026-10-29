@@ -19,6 +19,7 @@ import { gpuIdle, warmReelMaterials } from '#layers/regal/app/utils/reel/materia
 import type { ReelWarmup } from '#layers/regal/app/utils/reel/materials'
 import { REEL_AXIS_Y, REEL_PERSPECTIVE, REEL_PX, reelWindow } from '#layers/regal/app/utils/reel/scene'
 import type { ReelWindow } from '#layers/regal/app/utils/reel/scene'
+import { REEL_COVER_PATIENCE } from '#layers/regal/app/utils/reel/entrance'
 
 const props = defineProps<{
   books: Book[]
@@ -184,10 +185,22 @@ function warmUp() {
 // drawn no frame is drawn (nobody could see it), and `ready` waits for the GPU to be
 // done with the first one, so showing the canvas is not where the page waits for it.
 let revealing = false
+/**
+ * The Books' Covers are waited for only so long (REEL_COVER_PATIENCE, from when the first frame could be
+ * drawn) in the entrance that has no poster to stand in: past it the Books come in on their colours and
+ * the Covers swap in as they arrive.
+ */
+let coversSince = 0
+function coversIn(): boolean {
+  if (props.ctx.facesReady.value) return true
+  if (props.ctx.entrance.mode !== 'pop') return false
+  if (!coversSince) coversSince = performance.now()
+  return performance.now() - coversSince >= REEL_COVER_PATIENCE
+}
 render((notify) => {
   const camera3 = camera.value
   if (!camera3 || !props.ctx.visible.value || !warmed) return
-  if (!readySent && (revealing || !props.ctx.facesReady.value)) return
+  if (!readySent && (revealing || !coversIn())) return
   const canvas = renderer.domElement as HTMLCanvasElement
   if (!gate.due(motionKey(scene.value, camera3, canvas.width, canvas.height), () => looksKey(scene.value, camera3))) return
   if (props.ctx.breakout.active) renderBrokenOut(camera3 as PerspectiveCamera)
@@ -198,7 +211,7 @@ render((notify) => {
     warmup?.dispose()
     warmup = null
   }
-  if (!readySent && props.ctx.facesReady.value) {
+  if (!readySent) {
     revealing = true
     void (gl ? gpuIdle(gl, REVEAL_PATIENCE_MS, lifetime.signal) : Promise.resolve()).catch(() => {}).then(() => {
       if (lifetime.signal.aborted) return

@@ -766,6 +766,8 @@ describe('Regal as a Nuxt layer', async () => {
     await expect.poll(() => reel.getAttribute('data-mode'), { timeout: 10_000 }).toBe('playing')
     await expect.poll(async () => (await events()).includes('ready'), { timeout: 20_000 }).toBe(true)
     expect(await page.locator('.reel-card__pause').getAttribute('aria-label')).toBe('Pause')
+    // The Books pop in (the Stack's entrance), then it is live: the controls and the canvas answer.
+    await expect.poll(() => page.locator('.reel-card__controls').getAttribute('inert'), { timeout: 15_000 }).toBeNull()
 
     // A sideways swipe takes over: Manual, `manual` once, Play on the button.
     const stage = (await reel.locator('.reel-card__stage').boundingBox())!
@@ -855,14 +857,14 @@ describe('Regal as a Nuxt layer', async () => {
   describe('the reel\'s poster is the canvas\'s first frame', () => {
     const WIDTHS = [320, 390, 900]
 
-    /** The reel's stage as a PNG, in a context of `width` px (JS off: the server's HTML only, i.e. the poster). */
-    async function stagePng(width: number, javaScriptEnabled: boolean) {
+    /** The reel's stage as a PNG, in a context of `width` px (JS off: the server's HTML only, i.e. the poster or the still). */
+    async function stagePng(width: number, javaScriptEnabled: boolean, query = 'autoplay=0&entrance=none') {
       const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 }, javaScriptEnabled })
       const page = await context.newPage()
-      await page.goto(url('/reel?autoplay=0'), { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' })
+      await page.goto(url(`/reel?${query}`), { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' })
       // The images are in (JS off: the poster's own <img>s); the fonts a moment later.
       await page.waitForTimeout(600)
-      const png = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      const png = await page.locator('.reel-card__stage, .reel-still__stage').screenshot({ type: 'png' })
       return { png, page, context }
     }
 
@@ -911,7 +913,7 @@ describe('Regal as a Nuxt layer', async () => {
       const page = await context.newPage()
       page.on('console', message => /hydrat/i.test(message.text()) && warnings.push(message.text()))
       page.on('pageerror', error => warnings.push(error.message))
-      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.goto(url('/reel?autoplay=0&entrance=none'), { waitUntil: 'networkidle' })
       await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
       // The poster is gone once the canvas has faded in over it: what shows is the canvas alone.
       await expect.poll(() => page.locator('[data-reel-poster]').count(), { timeout: 5_000 }).toBe(0)
@@ -924,10 +926,43 @@ describe('Regal as a Nuxt layer', async () => {
       await context.close()
     })
 
+    it('the default entrance (pop) has no poster: the server\'s HTML holds an empty stage, and the Covers are not asked for twice', async () => {
+      const html = await $fetch<string>('/reel?autoplay=0')
+      expect(html).not.toContain('data-reel-poster')
+      expect(html).toContain('reel-card__stage')
+      const requests: string[] = []
+      const page = await createPage()
+      page.on('request', request => /front\.webp/.test(request.url()) && requests.push(new URL(request.url()).pathname))
+      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(1500)
+      // One download each of the Covers on the first frame (the canvas takes the bytes the card fetched ahead).
+      expect(requests.length).toBeGreaterThan(0)
+      expect(new Set(requests).size).toBe(requests.length)
+      await page.close()
+    })
+
+    it.each(WIDTHS)('at %i px wide: the still (the fallback) is the picture the default entrance ends on', async (width) => {
+      const still = await stagePng(width, false, 'autoplay=0&still=1')
+      await still.context.close()
+      const context = await (await getBrowser()).newContext({ viewport: { width, height: 900 } })
+      const page = await context.newPage()
+      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
+      // The Books are home and the clock runs (the controls are live again).
+      await expect.poll(() => page.locator('.reel-card__controls').getAttribute('inert'), { timeout: 15_000 }).toBeNull()
+      await page.waitForTimeout(400)
+      const canvas = await page.locator('.reel-card__stage').screenshot({ type: 'png' })
+      const diff = await pixelDiff(page, still.png, canvas)
+      expect(diff.mean, JSON.stringify(diff)).toBeLessThan(MEAN)
+      expect(diff.big, JSON.stringify(diff)).toBeLessThan(BIG)
+      await context.close()
+    })
+
     it('after a width change the canvas still stands where the poster of that width stands', async () => {
       const context = await (await getBrowser()).newContext({ viewport: { width: 390, height: 900 } })
       const page = await context.newPage()
-      await page.goto(url('/reel?autoplay=0'), { waitUntil: 'networkidle' })
+      await page.goto(url('/reel?autoplay=0&entrance=none'), { waitUntil: 'networkidle' })
       await page.locator('.reel-card--ready').waitFor({ timeout: 20_000 })
       await expect.poll(() => page.locator('[data-reel-poster]').count(), { timeout: 5_000 }).toBe(0)
       for (const width of [900, 320, 390]) {

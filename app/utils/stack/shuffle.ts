@@ -118,12 +118,12 @@ const APPEAR_SPREAD = 0.3
 const APPEAR_JITTER = 0.04
 /** Swaps: one Book's slide or settle, and how long a cascade through a whole pile may take. */
 const SWAP_SLIDE = 0.7
-const SWAP_SETTLE = 0.45
-const SWAP_CASCADE = 0.3
+export const SWAP_SETTLE = 0.45
+export const SWAP_CASCADE = 0.3
 /** How far the old pile slides out, at least (beyond the picture's edge on a wide view). */
 const SWEEP_REACH = 0.7
 /** How far above its place a new Book settles from. */
-const SETTLE_DROP = 0.05
+export const SETTLE_DROP = 0.05
 
 const vec = (value: readonly number[]): Vec3 => [value[0] ?? 0, value[1] ?? 0, value[2] ?? 0]
 const poseNode = (pose: BookPose): Node => ({ position: [pose.x, pose.y, pose.z], rotation: vec(pose.rotation) })

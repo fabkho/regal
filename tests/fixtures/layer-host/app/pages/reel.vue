@@ -26,7 +26,11 @@ const library: RegalLibraryFile = {
   })),
 }
 // ?autoplay=0: the reel starts still (a first frame to compare the poster with).
-const autoplay = useRoute().query.autoplay !== '0'
+const query = useRoute().query
+const autoplay = query.autoplay !== '0'
+// ?entrance=none|settle|pop: how the Books come in (default pop: no poster); ?still=1: the still instead of the reel.
+const entrance = (['none', 'settle', 'pop'] as const).find(mode => mode === query.entrance) ?? 'pop'
+const still = query.still === '1'
 const events = ref<string[]>([])
 </script>
 
@@ -35,10 +39,18 @@ const events = ref<string[]>([])
     <RegalBooksSidebar class="reel-host__shelf" />
     <section class="reel-host__card">
       <h2>You both read</h2>
-      <RegalBooksReel
+      <RegalBooksReelStill
+        v-if="still"
         :library="library"
         label="Books you both read"
         :autoplay="autoplay"
+      />
+      <RegalBooksReel
+        v-else
+        :library="library"
+        label="Books you both read"
+        :autoplay="autoplay"
+        :entrance="entrance"
         @ready="events.push('ready')"
         @focus="event => events.push(`focus:${event.id}`)"
         @manual="events.push('manual')"

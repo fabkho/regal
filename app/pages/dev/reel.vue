@@ -7,7 +7,8 @@
 // ?scheme=dark  ?autoplay=0  ?long=1 (a page to scroll, the reel lower down).
 // ?slow=1 mounts the 3D 6 s late (?slow=<n>: n s) to look at the loading state: the reel's own
 // poster, its first frame, then the canvas fading in over it and the intro. ?poster=0 turns the
-// poster off (nothing until the canvas fades in). The page renders the reel on the server too.
+// poster off (nothing until the canvas fades in). ?entrance=pop|settle|none: how the Books come in
+// (default pop, the Stack's entrance; settle: a swell from the poster's frame; none: the poster, then the first beat). The page renders the reel on the server too.
 // Not in a build.
 import type { Book } from '#layers/regal/shared/types/book'
 import type { ReelBookEvent } from '#layers/regal/app/utils/reel/context'
@@ -29,6 +30,7 @@ const motion = computed(() => (route.query.motion === 'reduce' ? true : route.qu
 const dark = computed(() => route.query.scheme === 'dark')
 const autoplay = computed(() => route.query.autoplay !== '0')
 const poster = computed(() => route.query.poster !== '0')
+const entrance = computed(() => (['pop', 'settle', 'none'] as const).find(mode => mode === route.query.entrance) ?? 'pop')
 /** ms the 3D is held back: ?slow=1 is 6 s, ?slow=<n> n s. */
 const canvasDelay = computed(() => {
   const slow = Number(route.query.slow ?? 0)
@@ -92,13 +94,14 @@ function onOpen(event: ReelBookEvent) {
           <span>You both read</span><span>{{ count }}</span>
         </div>
         <RegalBooksReel
-          :key="`${canvasDelay}-${poster}`"
+          :key="`${canvasDelay}-${poster}-${entrance}`"
           class="reel-dev__reel"
           :library="library"
           label="Books you both read"
           :reduced-motion="motion"
           :autoplay="autoplay"
           :poster="poster"
+          :entrance="entrance"
           :canvas-delay="canvasDelay"
           :theme="dark ? 'dark' : 'light'"
           @ready="note('ready')"
@@ -218,6 +221,18 @@ function onOpen(event: ReelBookEvent) {
             @click="set({ poster: poster ? '0' : undefined })"
           >
             no poster
+          </button>
+        </div>
+        <div class="reel-dev__row">
+          <span>Entrance</span>
+          <button
+            v-for="mode in (['pop', 'settle', 'none'] as const)"
+            :key="mode"
+            type="button"
+            :aria-pressed="entrance === mode"
+            @click="set({ entrance: mode === 'pop' ? undefined : mode })"
+          >
+            {{ mode }}
           </button>
         </div>
         <ol

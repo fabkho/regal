@@ -57,6 +57,8 @@ import { toHex } from '#layers/regal/app/utils/covers/palette'
 import { ART_HEIGHT, rowFaceInput } from '#layers/regal/app/utils/row/faces'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
 import { reelCameraInto, reelDistance, reelPoseInto, REEL_WRAP_FROM } from '#layers/regal/app/utils/reel/layout'
+import { planReelEntrance } from '#layers/regal/app/utils/reel/entrance'
+import type { EntranceOffset } from '#layers/regal/app/utils/reel/entrance'
 import type { ReelCamera, ReelPose } from '#layers/regal/app/utils/reel/layout'
 import { clothMaterial, COVER_ALBEDO, faceTexture, HEAD_DUST, pageEdgeMaterial, printedMaterial, shadowMaterial } from '#layers/regal/app/utils/reel/materials'
 import { REEL_BOOK, REEL_PX, REEL_SHADOW } from '#layers/regal/app/utils/reel/scene'
@@ -669,6 +671,19 @@ onMounted(() => {
 
 const arcPose: ReelPose = { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, shadow: 0, zIndex: 0 }
 const dolly: ReelCamera = { z: 0, rotateY: 0, rotateX: 0 }
+const entranceOffset: EntranceOffset = { dx: 0, scale: 1 }
+/** The floor shadow's size at rest (m), as the template sets it. */
+const SHADOW_SCALE = { x: REEL_SHADOW.width * REEL_BOOK.width * REEL_PX, y: REEL_SHADOW.depth * REEL_PX }
+
+/** The Books the arc shows at `focus` and where they stand on the stage (px): what the entrance is planned for. */
+function shownAt(focus: number, n: number): { index: number, x: number }[] {
+  const out: { index: number, x: number }[] = []
+  for (let index = 0; index < n; index++) {
+    reelPoseInto(index, focus, n, arcPose)
+    if (arcPose.opacity > 0) out.push({ index, x: arcPose.x })
+  }
+  return out
+}
 const world = new Matrix4()
 const worldPosition = new Vector3()
 const worldQuaternion = new Quaternion()
@@ -742,8 +757,21 @@ onBeforeRender(({ delta }) => {
   reelCameraInto(reduced.value ? 0 : ctx.dolly.value, dolly)
   worldEuler.set(MathUtils.degToRad(-dolly.rotateX), MathUtils.degToRad(dolly.rotateY), 0, 'YXZ')
   worldQuaternion.setFromEuler(worldEuler)
-  worldPosition.set(0, 0, dolly.z * REEL_PX)
+  // The arc's origin stands `rise` above the stage's middle (scene.ts REEL_RISE); the turn is about it.
+  worldPosition.set(0, ctx.rise.value * REEL_PX, dolly.z * REEL_PX)
   world.compose(worldPosition, worldQuaternion, worldScale)
+
+  // The entrance (utils/reel/entrance.ts): planned from the Books this first frame shows, played from the canvas's takeover.
+  const entrance = ctx.entrance
+  let entering = false
+  let entranceTime = -1
+  if (!entrance.done) {
+    if (!entrance.plan) entrance.plan = planReelEntrance(entrance.mode, shownAt(focus, n))
+    entering = true
+    entranceTime = entrance.startedAt < 0 ? -1 : (performance.now() - entrance.startedAt) / 1000
+    // This frame is the last of it (the Books at rest): the next ones draw them as they are.
+    if (entranceTime >= entrance.plan.duration && entrance.startedAt >= 0) entrance.done = true
+  }
 
   let allReady = true
   // Only the dressed Books (around the front): the others have no mesh.
@@ -758,11 +786,18 @@ onBeforeRender(({ delta }) => {
     const motion = motionFor(book.id)
     reelPoseInto(index, focus, n, arcPose)
     const pose = arcPose
-    const shown = pose.opacity > 0
-    if (entry && shown && !entry.ready) allReady = false
+    const offset: EntranceOffset | null = entering ? entrance.plan!.at(index, entranceTime, entranceOffset) : null
+    const shown = pose.opacity > 0 && (!offset || offset.scale > 0.001)
+    const present = pose.opacity > 0
+    if (entry && present && !entry.ready) allReady = false
 
     // CSS (y down) to the scene (y up), px to m; the Cover (+x) turned to the front (-90°).
     basePosition.set(pose.x * REEL_PX, -pose.y * REEL_PX, pose.z * REEL_PX).applyMatrix4(world)
+    if (offset) {
+      basePosition.x += offset.dx
+      const dressed = poses.value[index]!
+      mesh.scale.set(dressed.thickness * offset.scale, dressed.height * offset.scale, dressed.depth * offset.scale)
+    }
     baseQuaternion.copy(worldQuaternion).multiply(partial.setFromAxisAngle(Y_AXIS, MathUtils.degToRad(pose.rotateY) - Math.PI / 2))
 
     const pick = motion.pick.value
@@ -814,6 +849,10 @@ onBeforeRender(({ delta }) => {
       entry.shadow.opacity = strength
       if (shadowMesh.visible) {
         shadowMesh.position.set(pose.x * REEL_PX, -REEL_SHADOW.drop * REEL_PX, pose.z * REEL_PX).applyMatrix4(world)
+        if (offset) {
+          shadowMesh.position.x += offset.dx
+          shadowMesh.scale.set(SHADOW_SCALE.x * offset.scale, SHADOW_SCALE.y * offset.scale, 1)
+        }
         shadowMesh.quaternion.copy(worldQuaternion).multiply(SHADOW_TILT)
       }
     }
@@ -855,7 +894,7 @@ function setMesh(map: Map<string, Mesh>, bookId: string, element: unknown) {
       :name="`shadow:${item.id}`"
       :geometry="shadowGeometry"
       :material="shadowFor(item.pose)"
-      :scale="[REEL_SHADOW.width * REEL_BOOK.width * REEL_PX, REEL_SHADOW.depth * REEL_PX, 1]"
+      :scale="[SHADOW_SCALE.x, SHADOW_SCALE.y, 1]"
       :render-order="-1"
       :visible="false"
     />

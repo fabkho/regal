@@ -84,11 +84,11 @@ export const INTRO_WAIT = 2500
  */
 const VIEW_MARGIN = { left: 0.4, right: 0.15 }
 
-const smoothstep = (u: number) => u * u * (3 - 2 * u)
+export const smoothstep = (u: number) => u * u * (3 - 2 * u)
 const clamp01 = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u)
 
 /** easeOutBack with a small overshoot (the Stack's pop, Meshes.vue presenceLook). */
-function popScale(u: number): number {
+export function popScale(u: number): number {
   if (u >= 1) return 1
   const v = u - 1
   return 1 + 2 * v * v * v + v * v

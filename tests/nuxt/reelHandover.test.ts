@@ -17,6 +17,7 @@ import { reelStartFrame } from '#layers/regal/app/utils/reel/state'
 import { posterBooks, posterWorldTransform } from '#layers/regal/app/utils/reel/poster'
 import { reelCamera } from '#layers/regal/app/utils/reel/layout'
 import { REEL_BEAT } from '#layers/regal/app/utils/reel/timeline'
+import { planReelEntrance } from '#layers/regal/app/utils/reel/entrance'
 
 function libraryOf(count: number): RegalLibraryFile {
   return {
@@ -63,7 +64,8 @@ type CardVm = { ctx: ReelContext, state: ReelState, handed: boolean, posterOn: b
 const mounted: VueWrapper[] = []
 async function mountReel(props: Record<string, unknown> = {}) {
   const wrapper = await mountSuspended(RegalBooksReel, {
-    props: { library: libraryOf(6), ...props } as never,
+    // 'none': the first frame stands in place (the poster), the first look of #91; the default entrance has no poster (below).
+    props: { library: libraryOf(6), entrance: 'none', ...props } as never,
     global: { stubs: { TresCanvas: true } },
     attachTo: document.body,
   }) as VueWrapper
@@ -263,6 +265,67 @@ describe('a Book without a Cover', () => {
     await nextTick()
     expect(front().find('img').exists()).toBe(false)
     expect(front().find('.reel-poster__title-text').text()).toBe('Covered')
+  })
+})
+
+describe('the default entrance (\'pop\', the Stack\'s)', () => {
+  it('draws no poster: the stage is quiet until the canvas has taken over', async () => {
+    const wrapper = await mountReel({ entrance: 'pop' })
+    expect(wrapper.find('[data-reel-poster]').exists()).toBe(false)
+    expect(wrapper.find('.reel-card__stage').exists()).toBe(true)
+    expect(wrapper.find('.reel-card__view').classes()).toContain('reel-card__view--still')
+  })
+
+  it('starts the Books at once when the canvas takes over, and runs the clock only once they are home', async () => {
+    const wrapper = await mountReel({ entrance: 'pop' })
+    inView()
+    await nextTick()
+    const vm = card(wrapper) as unknown as CardVm & { ctx: ReelContext }
+    expect(vm.ctx.entrance).toMatchObject({ mode: 'pop', startedAt: -1, done: false })
+    // The 3D plans the entrance on its first frame (stubbed here): the Stack's, 0.75 s for five Books.
+    vm.ctx.entrance.plan = planReelEntrance('pop', posterBooks(6, -1).map(book => ({ index: book.index, x: book.pose.x })))
+    await frames(wrapper, REEL_BEAT)
+    expect(vm.state.elapsed).toBe(0)
+    vm.ctx.ready()
+    await nextTick()
+    // No fade, no poster to wait for: the Books are on their way this tick.
+    expect(vm.ctx.entrance.startedAt).toBe(clock)
+    expect(vm.handed).toBe(false)
+    expect(wrapper.find('.reel-card__controls').attributes('inert')).toBeDefined()
+    await sleep(400)
+    expect(vm.handed).toBe(false)
+    await sleep(650)
+    expect(vm.handed).toBe(true)
+    expect(wrapper.find('.reel-card__controls').attributes('inert')).toBeUndefined()
+    await frames(wrapper, 100)
+    expect(vm.state.elapsed).toBeGreaterThan(0)
+  })
+
+  it('\'settle\' and \'none\' keep the poster, and \'settle\' starts its swell after the canvas has faded in', async () => {
+    const settle = await mountReel({ entrance: 'settle' })
+    expect(settle.find('[data-reel-poster]').exists()).toBe(true)
+    const vm = card(settle) as unknown as CardVm
+    vm.ctx.ready()
+    await sleep(60)
+    expect(vm.ctx.entrance.startedAt).toBe(-1)
+    await sleep(300)
+    expect(vm.ctx.entrance.startedAt).toBeGreaterThanOrEqual(0)
+    expect(settle.find('[data-reel-poster]').exists()).toBe(false)
+    const none = await mountReel({ entrance: 'none' })
+    expect(card(none).ctx.entrance.done).toBe(true)
+  })
+
+  it('Reduce Motion has no entrance: the poster stands in, the Books just show', async () => {
+    const wrapper = await mountReel({ entrance: 'pop', reducedMotion: true })
+    expect(wrapper.find('[data-reel-poster]').exists()).toBe(true)
+    expect(card(wrapper).ctx.entrance).toMatchObject({ mode: 'none', done: true })
+    // Switched on after mount: the same.
+    const later = await mountReel({ entrance: 'pop', reducedMotion: false })
+    expect(later.find('[data-reel-poster]').exists()).toBe(false)
+    await later.setProps({ reducedMotion: true })
+    await nextTick()
+    expect(card(later).ctx.entrance).toMatchObject({ mode: 'none', done: true })
+    expect(later.find('[data-reel-poster]').exists()).toBe(true)
   })
 })
 

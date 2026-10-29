@@ -6,6 +6,7 @@
 import type { Ref } from 'vue'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import type { Book } from '#layers/regal/shared/types/book'
+import type { ReelEntrance, ReelEntrancePlan } from '#layers/regal/app/utils/reel/entrance'
 
 /** What RegalBooksReel's `focus` and `open` events carry: the Book, its id and its place in the reel. */
 export interface ReelBookEvent {
@@ -21,6 +22,17 @@ export interface ReelBreakout {
   rect: { left: number, top: number, width: number, height: number }
 }
 
+/** The entrance of the Books (utils/reel/entrance.ts): the card sets the mode and the start, ReelBooks plans and plays it. */
+export interface ReelEntranceState {
+  mode: ReelEntrance
+  /** The plan, made on the first frame from the Books it shows. */
+  plan: ReelEntrancePlan | null
+  /** performance.now() when the Books start to come in (the canvas has taken over); -1 before. */
+  startedAt: number
+  /** Every Book is home (or there is none): the Books are drawn as they rest. */
+  done: boolean
+}
+
 export interface ReelContext {
   /** Where the arc stands this frame, in Books (0 = the first in front; not wrapped). */
   focus: { value: number }
@@ -28,6 +40,10 @@ export interface ReelContext {
   dolly: { value: number }
   /** The stage's height (CSS px): the camera's axis is 40 % down it. */
   stageHeight: { value: number }
+  /** How the Books come in once the canvas shows. */
+  entrance: ReelEntranceState
+  /** How far above the stage's middle the arc's origin stands (CSS px, `--regal-reel-rise`; scene.ts `REEL_RISE`). */
+  rise: { value: number }
   /** Called first thing every frame (the card runs the state machine). */
   tick: (ms: number, now: number) => void
   /** A press ended where it began: on Book `index`, or beside every Book (-1). Not while one is out. */

@@ -33,8 +33,12 @@ import { dragAxis, dragFocus, releaseVelocity, trackDrag } from '#layers/regal/a
 import type { DragAxis, DragSample } from '#layers/regal/app/utils/reel/drag'
 import { advance, badgeOpacity, canAutoPlay, closeDetail, dragTo, frontFocus, initialReel, newVisit, openDetail, pauseControl, play, reelStartFrame, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '#layers/regal/app/utils/reel/state'
 import type { ReelMode, ReelState } from '#layers/regal/app/utils/reel/state'
+import { entranceHidesBooks, REEL_ENTRANCE_HOLD } from '#layers/regal/app/utils/reel/entrance'
+import type { ReelEntrance } from '#layers/regal/app/utils/reel/entrance'
+import { coverRequestsAt } from '#layers/regal/app/utils/reel/preload'
+import { preloadImage } from '#layers/regal/app/utils/covers/images'
 import { REEL_BADGE_OUT, REEL_EASE, REEL_MOVE, reelMoveClock, seg } from '#layers/regal/app/utils/reel/timeline'
-import { fillLabel, jumpOffset, REEL_LABELS, REEL_STAGE_HEIGHT, reelShownIndex, rubberFocus, settleOffset } from '#layers/regal/app/utils/reel/scene'
+import { fillLabel, jumpOffset, REEL_LABELS, REEL_RISE, REEL_STAGE_HEIGHT, reelShownIndex, rubberFocus, settleOffset } from '#layers/regal/app/utils/reel/scene'
 import type { ReelLabels, ReelSettle } from '#layers/regal/app/utils/reel/scene'
 import type { ReelBookEvent, ReelContext } from '#layers/regal/app/utils/reel/context'
 
@@ -59,7 +63,9 @@ const props = withDefaults(defineProps<{
   poster?: boolean
   /** Mounts the canvas this many ms later than it would (to look at the poster). */
   canvasDelay?: number
-}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0 })
+  /** How the Books come in once the canvas shows (utils/reel/entrance.ts). */
+  entrance?: ReelEntrance
+}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0, entrance: 'pop' })
 
 const emit = defineEmits<{
   /** The canvas has taken over: its first frame with the faces in view is drawn and fades in over the poster. */
@@ -128,19 +134,47 @@ const posterTime = ref(start.dolly)
 const posterOn = ref(true)
 const handed = ref(false)
 let handoverTimer: ReturnType<typeof setTimeout> | undefined
+let playTimer: ReturnType<typeof setTimeout> | undefined
 
+/**
+ * How the Books come in (utils/reel/entrance.ts): Reduce Motion has none, and then the poster stands
+ * in until the canvas takes over, as in 'none'. 'pop' (the Stack's, the default) has no poster: the stage
+ * is quiet until the canvas has the first Covers, then the Books pop in; 'settle' and 'none' stand in
+ * the poster's frame and take over from it.
+ */
+const entranceMode = computed<ReelEntrance>(() => (reduced.value ? 'none' : props.entrance))
+const posterShown = computed(() => props.poster && posterOn.value && !entranceHidesBooks(entranceMode.value))
+
+/**
+ * The canvas has taken over (`ready`). 'pop' starts at once (the canvas stands empty, no fade), the
+ * others after the canvas has faded in over the poster; the clock (`handed`) runs once the Books are home
+ * and a beat's breath has passed, so the first move never starts under the entrance.
+ */
 function handOver() {
   clearTimeout(handoverTimer)
-  handoverTimer = setTimeout(() => {
+  clearTimeout(playTimer)
+  const mode = entranceMode.value
+  const begin = () => {
     posterOn.value = false
-    handed.value = true
-  }, reduced.value ? 0 : HANDOVER_MS)
+    if (mode === 'none') {
+      handed.value = true
+      return
+    }
+    ctx.entrance.startedAt = performance.now()
+    const duration = ctx.entrance.plan?.duration ?? 0
+    playTimer = setTimeout(() => (handed.value = true), (duration + REEL_ENTRANCE_HOLD) * 1000)
+  }
+  const fade = mode === 'pop' || reduced.value ? 0 : HANDOVER_MS
+  if (fade) handoverTimer = setTimeout(begin, fade)
+  else begin()
 }
 
 const ctx: ReelContext = {
   focus: { value: frontFocus(state) },
   dolly: { value: start.dolly },
   stageHeight: { value: REEL_STAGE_HEIGHT },
+  rise: { value: REEL_RISE },
+  entrance: { mode: entranceMode.value, plan: null, startedAt: -1, done: entranceMode.value === 'none' },
   tick,
   tap,
   caught: { value: false },
@@ -262,6 +296,7 @@ function commit(next: ReelState, options: { from?: number, user?: boolean } = {}
 // A new Library: a new reel.
 watch(() => props.books, () => {
   if (pickedId.value) putAway()
+  if (!ctx.entrance.done) ctx.entrance.plan = null
   state = initialState()
   // The first frame of the new Library: where its round begins, the camera where that clock starts.
   ctx.dolly.value = startFrame().dolly
@@ -273,6 +308,19 @@ watch(() => props.books, () => {
 })
 
 watch(reduced, value => commit(setReduced(state, value)))
+
+// Reduce Motion switched on: no entrance (the Books are there, and the clock may run).
+watch(entranceMode, (mode) => {
+  ctx.entrance.mode = mode
+  if (mode !== 'none') return
+  ctx.entrance.done = true
+  if (ready.value) {
+    clearTimeout(handoverTimer)
+    clearTimeout(playTimer)
+    posterOn.value = false
+    handed.value = true
+  }
+})
 
 // --- Taps, keys, the pause button ----------------------------------------------------------
 
@@ -499,6 +547,9 @@ function readTheme() {
     ? parsed.hex
     : backgroundOf(root.value, ui.scheme.value === 'dark' ? '#1F1E1B' : '#F5F2EB')
   ctx.veil.opacity = veilOpacity(style?.getPropertyValue('--regal-veil-opacity'), VEIL_OPACITY_FULL)
+  // The arc's rise (the poster's CSS reads the same token).
+  const rise = Number.parseFloat(style?.getPropertyValue('--regal-reel-rise') ?? '')
+  ctx.rise.value = Number.isFinite(rise) ? rise : REEL_RISE
 }
 watch([ui.scheme, ui.unstyled, ui.tokens], readTheme, { flush: 'post' })
 /** The floor shadows' strength: 1 in the light theme, 0 in the dark (the canvas's and the poster's). */
@@ -530,6 +581,9 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
+  // The Covers the first frame shows are asked for now (the one in front first): the canvas takes these bytes, so
+  // nothing waits for the 3D to come up before a Cover starts to load (a host may have asked already: preloadReelCovers).
+  for (const request of coverRequestsAt(props.books, props.facesOf, start.focus)) void preloadImage(request.url, request.priority)
   // The 3D (the renderer, three's setup) comes up in a task of its own, after the card's hydration.
   canvasTimer = setTimeout(() => (canvasUp.value = true), props.canvasDelay)
   observer = new IntersectionObserver(([entry]) => {
@@ -571,6 +625,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKey)
   clearTimeout(canvasTimer)
   clearTimeout(handoverTimer)
+  clearTimeout(playTimer)
   clearTimeout(landing)
   clearTimeout(openTimer)
   if (broken.value) document.documentElement.style.overflow = ''
@@ -619,7 +674,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
     >
       <!-- Its own first frame, under the canvas: the same Books where the canvas will draw them. -->
       <ReelPoster
-        v-if="poster && posterOn"
+        v-if="posterShown"
         :books="books"
         :faces-of="facesOf"
         :focus="posterFocus"
@@ -633,7 +688,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
         <div
           v-bind="surface"
           class="reel-card__view"
-          :class="{ 'reel-card__view--out': broken, 'reel-card__view--ready': ready, 'reel-card__view--still': reduced }"
+          :class="{ 'reel-card__view--out': broken, 'reel-card__view--ready': ready, 'reel-card__view--live': handed, 'reel-card__view--still': reduced || entranceMode === 'pop' }"
           :style="{ touchAction }"
           :aria-hidden="broken && pickedId ? 'true' : undefined"
           @pointerdown="onPointerDown"
@@ -804,8 +859,8 @@ const ariaLabel = computed(() => props.label || words.value.reel)
   z-index: var(--regal-reel-z-index, 40);
 }
 
-.reel-card__view:not(.reel-card__view--ready) {
-  /* Until the canvas has taken over there is nothing to press: the poster stands in (and the page scrolls). */
+.reel-card__view:not(.reel-card__view--live) {
+  /* Until the canvas has taken over and the Books are home there is nothing to press: the poster stands in (and the page scrolls). */
   pointer-events: none;
 }
 
@@ -829,8 +884,8 @@ const ariaLabel = computed(() => props.label || words.value.reel)
 .reel-card__focus {
   position: relative;
   z-index: 1;
-  margin-top: calc(-1 * var(--regal-reel-overlap, 46px));
-  min-height: var(--regal-reel-overlap, 46px);
+  margin-top: calc(-1 * var(--regal-reel-overlap, calc(46px + var(--regal-reel-rise, 40px))));
+  min-height: var(--regal-reel-overlap, calc(46px + var(--regal-reel-rise, 40px)));
   opacity: var(--regal-reel-badge, 1);
   text-align: center;
   pointer-events: none;

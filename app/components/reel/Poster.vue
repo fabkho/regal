@@ -34,6 +34,8 @@ interface Item {
   shadowOpacity: number
   shade: number
   front: string | null
+  /** The Book in front: its Cover is asked for first. */
+  inFront: boolean
   color: string
   spineImage: string | undefined
   spine: boolean
@@ -49,7 +51,7 @@ const cssUrl = (url: string) => `url("${url.replace(/["\\]/g, '\\$&')}")`
 /** The ink that reads on a colour. */
 const inkOn = (hex: string) => toHex(readableOn(fromHex(hex)))
 
-const items = computed<Item[]>(() => posterBooks(props.books.length, props.focus).map(({ index, transform, shadowTransform, shadowOpacity, shade }) => {
+const items = computed<Item[]>(() => posterBooks(props.books.length, props.focus).map(({ index, pose, transform, shadowTransform, shadowOpacity, shade }) => {
   const book = props.books[index]!
   const faces = props.facesOf(book.id)
   const color = faces?.flat ? toHex(faces.flat) : CLOTH_COLORS[hashString(book.id) % CLOTH_COLORS.length]!
@@ -63,6 +65,7 @@ const items = computed<Item[]>(() => posterBooks(props.books.length, props.focus
     shadowOpacity,
     shade,
     front: faces?.pileFront ?? faces?.front ?? null,
+    inFront: Math.abs(pose.distance) < 0.5,
     color,
     spineImage: faces?.spine ? cssUrl(faces.spine) : undefined,
     spine: Boolean(faces?.spine),
@@ -129,6 +132,9 @@ const size = {
               v-if="item.front && !failed.has(item.id)"
               :src="item.front"
               :data-cover="item.id"
+              :fetchpriority="item.inFront ? 'high' : 'auto'"
+              crossorigin="anonymous"
+              loading="eager"
               alt=""
               decoding="async"
               draggable="false"
@@ -189,7 +195,8 @@ const size = {
 
 .reel-poster__world {
   position: absolute;
-  top: 50%;
+  /* The arc's origin stands `--regal-reel-rise` above the stage's middle (scene.ts REEL_RISE). */
+  top: calc(50% - var(--regal-reel-rise, 40px));
   left: 50%;
   width: 0;
   height: 0;

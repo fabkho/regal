@@ -29,6 +29,7 @@ import type { ReelLabels } from '#layers/regal/app/utils/reel/scene'
 import ReelActions from '#layers/regal/app/components/reel/Actions.vue'
 import type ReelCard from '#layers/regal/app/components/reel/Card.vue'
 import type { ReelBookEvent } from '#layers/regal/app/utils/reel/context'
+import type { ReelEntrance } from '#layers/regal/app/utils/reel/entrance'
 
 const props = withDefaults(defineProps<{
   /**
@@ -61,7 +62,15 @@ const props = withDefaults(defineProps<{
   poster?: boolean
   /** Mounts the 3D this many ms later than it would (ms): to look at the poster, e.g. `/dev/reel?slow=1`. */
   canvasDelay?: number
-}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0 })
+  /**
+   * How the Books come in once the canvas shows (utils/reel/entrance.ts). `'pop'` (default): the Stack's
+   * entrance, exactly: the stage is quiet until the first Covers are in, then the Books pop in cascading from
+   * the left, then it plays. `'settle'`: the first frame stands in place and the Books swell and settle in
+   * the same cascade. `'none'`: the first frame stands in place and the first beat is the intro.
+   * Reduce Motion: none.
+   */
+  entrance?: ReelEntrance
+}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0, entrance: 'pop' })
 
 const emit = defineEmits<{
   /** The first frame with the faces of the Books in view is drawn (show the canvas over a poster now). */
@@ -154,6 +163,7 @@ const { rootAttrs } = provideRegalUi({
       :accessible-list="props.accessibleList"
       :poster="props.poster"
       :canvas-delay="props.canvasDelay"
+      :entrance="props.entrance"
       @ready="emit('ready')"
       @focus="event => emit('focus', event)"
       @manual="emit('manual')"
