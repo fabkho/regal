@@ -57,6 +57,8 @@ import { toHex } from '#layers/regal/app/utils/covers/palette'
 import { ART_HEIGHT, rowFaceInput } from '#layers/regal/app/utils/row/faces'
 import type { ReelContext } from '#layers/regal/app/utils/reel/context'
 import { reelCameraInto, reelDistance, reelPoseInto, REEL_WRAP_FROM } from '#layers/regal/app/utils/reel/layout'
+import { edgeLook } from '#layers/regal/app/utils/reel/edge'
+import type { EdgeLook } from '#layers/regal/app/utils/reel/edge'
 import { planReelEntrance } from '#layers/regal/app/utils/reel/entrance'
 import type { EntranceOffset } from '#layers/regal/app/utils/reel/entrance'
 import type { ReelCamera, ReelPose } from '#layers/regal/app/utils/reel/layout'
@@ -94,6 +96,8 @@ const shadowTexture = shadowCanvasTexture()
 
 interface BookMaterials {
   faces: Material[]
+  /** What the arc's edge has faded the Book to (1: fully there). */
+  opacity: number
   cover: MeshPhysicalMaterial
   back: MeshPhysicalMaterial
   spine: MeshPhysicalMaterial
@@ -213,6 +217,7 @@ function materialsFor(pose: BookPose): Material[] {
       set: null, loaded: null, drawnFront: null, fullCover: null, ready: false, backDrawn: false,
       aborted: new AbortController(),
       faces: [cover, back, head, tail, spine, fore],
+      opacity: 1,
     }
     materialsByBook.set(pose.bookId, entry)
     // Its faces load and draw as soon as it is dressed.
@@ -669,9 +674,17 @@ onMounted(() => {
 
 // --- Per frame -------------------------------------------------------------------------
 
-const arcPose: ReelPose = { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, shadow: 0, zIndex: 0 }
+const arcPose: ReelPose = { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, edge: 0, shadow: 0, zIndex: 0 }
 const dolly: ReelCamera = { z: 0, rotateY: 0, rotateX: 0 }
 const entranceOffset: EntranceOffset = { dx: 0, scale: 1 }
+const edgeScratch: EdgeLook = { opacity: 1, scale: 1, sink: 0 }
+
+/** Fades a Book's faces (they all blend already, see materials.ts). */
+function setOpacity(entry: BookMaterials, opacity: number) {
+  if (entry.opacity === opacity) return
+  entry.opacity = opacity
+  for (const material of entry.faces) material.opacity = opacity
+}
 /** The floor shadow's size at rest (m), as the template sets it. */
 const SHADOW_SCALE = { x: REEL_SHADOW.width * REEL_BOOK.width * REEL_PX, y: REEL_SHADOW.depth * REEL_PX }
 
@@ -770,7 +783,10 @@ onBeforeRender(({ delta }) => {
     entering = true
     entranceTime = entrance.startedAt < 0 ? -1 : (performance.now() - entrance.startedAt) / 1000
     // This frame is the last of it (the Books at rest): the next ones draw them as they are.
-    if (entranceTime >= entrance.plan.duration && entrance.startedAt >= 0) entrance.done = true
+    if (entranceTime >= entrance.plan.duration && entrance.startedAt >= 0) {
+      entrance.done = true
+      entrance.doneAt = performance.now()
+    }
   }
 
   let allReady = true
@@ -787,17 +803,21 @@ onBeforeRender(({ delta }) => {
     reelPoseInto(index, focus, n, arcPose)
     const pose = arcPose
     const offset: EntranceOffset | null = entering ? entrance.plan!.at(index, entranceTime, entranceOffset) : null
-    const shown = pose.opacity > 0 && (!offset || offset.scale > 0.001)
+    // The arc's edge: a Book coming in or going out is as much there as its distance says; one taken out is all there.
+    const out = motion.pick.value > 0
+    const look = out ? edgeLook('none', 1, edgeScratch) : edgeLook(ctx.edge.mode, pose.edge, edgeScratch)
+    pose.y += look.sink
+    const shown = pose.opacity > 0 && look.opacity > 0.003 && (!offset || offset.scale > 0.001)
+    const scale = look.scale * (offset ? offset.scale : 1)
     const present = pose.opacity > 0
     if (entry && present && !entry.ready) allReady = false
 
     // CSS (y down) to the scene (y up), px to m; the Cover (+x) turned to the front (-90°).
     basePosition.set(pose.x * REEL_PX, -pose.y * REEL_PX, pose.z * REEL_PX).applyMatrix4(world)
-    if (offset) {
-      basePosition.x += offset.dx
-      const dressed = poses.value[index]!
-      mesh.scale.set(dressed.thickness * offset.scale, dressed.height * offset.scale, dressed.depth * offset.scale)
-    }
+    if (offset) basePosition.x += offset.dx
+    const dressed = poses.value[index]!
+    mesh.scale.set(dressed.thickness * scale, dressed.height * scale, dressed.depth * scale)
+    if (entry) setOpacity(entry, look.opacity)
     baseQuaternion.copy(worldQuaternion).multiply(partial.setFromAxisAngle(Y_AXIS, MathUtils.degToRad(pose.rotateY) - Math.PI / 2))
 
     const pick = motion.pick.value
@@ -844,15 +864,13 @@ onBeforeRender(({ delta }) => {
     }
 
     if (shadowMesh && entry) {
-      const strength = shown ? pose.shadow * ctx.floorShadow.value * (1 - Math.min(1, pick * 2)) : 0
+      const strength = shown ? pose.shadow * look.opacity * ctx.floorShadow.value * (1 - Math.min(1, pick * 2)) : 0
       shadowMesh.visible = strength > 0.001
       entry.shadow.opacity = strength
       if (shadowMesh.visible) {
         shadowMesh.position.set(pose.x * REEL_PX, -REEL_SHADOW.drop * REEL_PX, pose.z * REEL_PX).applyMatrix4(world)
-        if (offset) {
-          shadowMesh.position.x += offset.dx
-          shadowMesh.scale.set(SHADOW_SCALE.x * offset.scale, SHADOW_SCALE.y * offset.scale, 1)
-        }
+        if (offset) shadowMesh.position.x += offset.dx
+        shadowMesh.scale.set(SHADOW_SCALE.x * scale, SHADOW_SCALE.y * scale, 1)
         shadowMesh.quaternion.copy(worldQuaternion).multiply(SHADOW_TILT)
       }
     }

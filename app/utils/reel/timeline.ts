@@ -12,6 +12,12 @@ export const REEL_MOVE = 800
 export const REEL_BADGE_IN = 250
 /** The pills and caption go out over `exit`, this long before the next beat (ms): `seg(local, BEAT - 200, BEAT)`. */
 export const REEL_BADGE_OUT = 200
+/**
+ * The first Book's hold before the first move (ms), counted from when the clock starts: the clock starts
+ * `REEL_ENTRANCE_HOLD` (200 ms, entrance.ts) after the entrance has finished, so from the moment all the Books are
+ * home the first Book stands a full beat (3200 ms) in front, as every other does, before the arc moves on.
+ */
+export const REEL_OPENING_HOLD = REEL_BEAT - 200
 /** The dolly's period (ms): three beats, `BEAT * 3` in index.html. */
 export const REEL_DOLLY_PERIOD = REEL_BEAT * 3
 /** The camera's sway either side (deg): `sway * 4`. */

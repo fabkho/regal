@@ -159,6 +159,8 @@ export interface ReelLabels {
   showFront: string
   /** The details' put back action. */
   putBack: string
+  /** The loading indicator's name (read out while the Books are waited for). */
+  loading: string
 }
 
 export const REEL_LABELS: Readonly<ReelLabels> = Object.freeze({
@@ -172,6 +174,7 @@ export const REEL_LABELS: Readonly<ReelLabels> = Object.freeze({
   showBack: 'Show back',
   showFront: 'Show front',
   putBack: 'Put back',
+  loading: 'Loading books',
 })
 
 /** Fills `{n}` and `{count}` (and any other `{key}`) in a label. */

@@ -39,7 +39,8 @@ export function faceTexture(canvas: HTMLCanvasElement): CanvasTexture {
 
 /** A Book's cloth (its Cover until the front loads, and a plain face's colour). */
 export function clothMaterial(color: string): MeshPhysicalMaterial {
-  const material = new MeshPhysicalMaterial({ roughness: 0.72, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 })
+  // Every Book material blends from the start (opacity 1 until the arc's edge fades it): flipping `transparent` later would recompile its program.
+  const material = new MeshPhysicalMaterial({ transparent: true, roughness: 0.72, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 })
   material.userData.cloth = color
   material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
   return material
@@ -47,12 +48,13 @@ export function clothMaterial(color: string): MeshPhysicalMaterial {
 
 /** A printed face: the Spine, the back (and the front once it has a Cover, see Books.vue `printCover`). */
 export function printedMaterial(texture: CanvasTexture): MeshPhysicalMaterial {
-  return new MeshPhysicalMaterial({ map: texture, color: new Color(1, 1, 1).multiplyScalar(FACE_ALBEDO), roughness: 0.68, metalness: 0, clearcoat: 0.15, clearcoatRoughness: 0.55, envMapIntensity: 0.35 })
+  return new MeshPhysicalMaterial({ transparent: true, map: texture, color: new Color(1, 1, 1).multiplyScalar(FACE_ALBEDO), roughness: 0.68, metalness: 0, clearcoat: 0.15, clearcoatRoughness: 0.55, envMapIntensity: 0.35 })
 }
 
 /** One page edge (head, tail, fore edge): paper with a bumped grain. */
 export function pageEdgeMaterial(texture: CanvasTexture, dust = 1): MeshStandardMaterial {
   return new MeshStandardMaterial({
+    transparent: true,
     map: texture,
     bumpMap: texture,
     bumpScale: PAGE_BUMP,

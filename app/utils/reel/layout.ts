@@ -20,6 +20,12 @@ export const REEL_DEPTH = 120
 export const REEL_DEPTH_STEP = 40
 /** Books this far (in Books) from the front are hidden. */
 export const REEL_FADE_AT = 2.6
+/**
+ * Books this far (in Books) from the front or nearer are fully there; between this and REEL_FADE_AT a Book
+ * is coming in or going out at the arc's edge (`ReelPose.edge`, 1 to 0). At rest (whole Books in front) the
+ * Books stand 0, 1 and 2 away: all fully there.
+ */
+export const REEL_EDGE_FROM = 2.1
 /** The arc's lift (px, up is negative). */
 export const REEL_LIFT = -10
 /** Rings only from this many Books: with 2 or 3 there is no wrap (the arc has ends). */
@@ -38,6 +44,12 @@ export interface ReelPose {
   rotateY: number
   /** 0 or 1: hidden Books are 0 (the prototype's hard cut at REEL_FADE_AT). */
   opacity: number
+  /**
+   * How much of the Book is there at the arc's edge, 1 (fully) to 0 (gone): continuous with the arc's position
+   * (the distance from REEL_EDGE_FROM to REEL_FADE_AT), so it scrubs with a swipe. What a Book looks like at
+   * the edge is edge.ts' (`ReelEdge`).
+   */
+  edge: number
   /** The floor shadow's opacity (0..1). */
   shadow: number
   zIndex: number
@@ -57,7 +69,7 @@ export function reelDistance(index: number, focus: number, n: number): number {
 
 /** The pose of Book `index` for the arc at `focus` (n Books). */
 export function reelPose(index: number, focus: number, n: number): ReelPose {
-  return reelPoseInto(index, focus, n, { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, shadow: 0, zIndex: 0 })
+  return reelPoseInto(index, focus, n, { distance: 0, x: 0, y: 0, z: 0, rotateY: 0, opacity: 0, edge: 0, shadow: 0, zIndex: 0 })
 }
 
 /** `reelPose`, written into `out` (the reel poses its Books every frame without allocating). */
@@ -72,6 +84,7 @@ export function reelPoseInto(index: number, focus: number, n: number, out: ReelP
   out.z = -Math.min(ad, 1) * REEL_DEPTH - Math.max(0, ad - 1) * REEL_DEPTH_STEP + 0
   out.rotateY = -clamp(d, -1, 1) * REEL_TURN - s * clamp(ad - 1, 0, 2) * REEL_TURN_STEP + 0
   out.opacity = hidden ? 0 : 1
+  out.edge = hidden ? 0 : clamp((REEL_FADE_AT - ad) / (REEL_FADE_AT - REEL_EDGE_FROM))
   out.shadow = hidden ? 0 : 1 - ad * 0.3
   out.zIndex = 100 - Math.round(ad * 10)
   return out

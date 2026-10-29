@@ -7,6 +7,7 @@ import type { Ref } from 'vue'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import type { Book } from '#layers/regal/shared/types/book'
 import type { ReelEntrance, ReelEntrancePlan } from '#layers/regal/app/utils/reel/entrance'
+import type { ReelEdge } from '#layers/regal/app/utils/reel/edge'
 
 /** What RegalBooksReel's `focus` and `open` events carry: the Book, its id and its place in the reel. */
 export interface ReelBookEvent {
@@ -31,6 +32,8 @@ export interface ReelEntranceState {
   startedAt: number
   /** Every Book is home (or there is none): the Books are drawn as they rest. */
   done: boolean
+  /** performance.now() of the frame that landed the last Book; -1 before. */
+  doneAt: number
 }
 
 export interface ReelContext {
@@ -40,6 +43,8 @@ export interface ReelContext {
   dolly: { value: number }
   /** The stage's height (CSS px): the camera's axis is 40 % down it. */
   stageHeight: { value: number }
+  /** How a Book comes in and goes out at the arc's edge (utils/reel/edge.ts). */
+  edge: { mode: ReelEdge }
   /** How the Books come in once the canvas shows. */
   entrance: ReelEntranceState
   /** How far above the stage's middle the arc's origin stands (CSS px, `--regal-reel-rise`; scene.ts `REEL_RISE`). */

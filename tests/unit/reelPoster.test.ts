@@ -11,7 +11,7 @@ import type { ReelCamera } from '../../app/utils/reel/layout'
 import { posterBooks, posterBookTransform, posterShade, posterShadowTransform, posterWorldTransform, projectPosterPoint } from '../../app/utils/reel/poster'
 import { reelShownIndex, REEL_AXIS_Y, REEL_BOOK, REEL_PERSPECTIVE, REEL_PX, REEL_RISE, REEL_SHADOW, reelWindow } from '../../app/utils/reel/scene'
 import { advance, enterView, frontFocus, frontIndex, initialReel, reelStartFrame, setReduced } from '../../app/utils/reel/state'
-import { REEL_BEAT, REEL_MOVE } from '../../app/utils/reel/timeline'
+import { REEL_BEAT, REEL_MOVE, REEL_OPENING_HOLD } from '../../app/utils/reel/timeline'
 
 const stage = { width: 390, height: 330 }
 
@@ -164,7 +164,7 @@ describe('the first frame is where the auto-play begins (no jump when the intro 
       const playing = enterView({ ...initialReel(n), visible: true })
       expect(playing.mode).toBe('playing')
       expect(reelShownIndex(frontFocus(playing), n, true)).toBe(0)
-      expect(frontIndex(advance(playing, REEL_MOVE + 1))).toBe(1)
+      expect(frontIndex(advance(playing, REEL_OPENING_HOLD + REEL_MOVE + 1))).toBe(1)
     }
   })
 

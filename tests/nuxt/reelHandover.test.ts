@@ -16,7 +16,7 @@ import type { ReelState } from '#layers/regal/app/utils/reel/state'
 import { reelStartFrame } from '#layers/regal/app/utils/reel/state'
 import { posterBooks, posterWorldTransform } from '#layers/regal/app/utils/reel/poster'
 import { reelCamera } from '#layers/regal/app/utils/reel/layout'
-import { REEL_BEAT } from '#layers/regal/app/utils/reel/timeline'
+import { REEL_BEAT, REEL_OPENING_HOLD } from '#layers/regal/app/utils/reel/timeline'
 import { planReelEntrance } from '#layers/regal/app/utils/reel/entrance'
 
 function libraryOf(count: number): RegalLibraryFile {
@@ -136,13 +136,14 @@ describe('the poster before the canvas', () => {
     await frames(wrapper, 100)
     await sleep(340)
     await frames(wrapper, 16)
-    // Playing from the first frame: still Book 0 while its caption goes out (200 ms), the first move already under way.
+    // Playing from the first frame: Book 0 stays, caption and dot, for its whole hold (the lead)...
     expect([caption(), lit(), wrapper.find('.reel-card').attributes('data-front')]).toEqual(['Handover 1', 0, '0'])
-    await frames(wrapper, 150)
-    expect(card(wrapper).ctx.focus.value).toBeGreaterThan(0)
+    await frames(wrapper, REEL_OPENING_HOLD - 400)
+    expect(card(wrapper).ctx.focus.value).toBe(0)
     expect([caption(), lit()]).toEqual(['Handover 1', 0])
-    // Then the second Book's, while the captions are out.
-    await frames(wrapper, 300)
+    // ... then the arc moves on and the second Book's caption is in (while the captions are out).
+    await frames(wrapper, 600)
+    expect(card(wrapper).ctx.focus.value).toBeGreaterThan(0)
     expect([caption(), lit()]).toEqual(['Handover 2', 1])
   })
 
@@ -177,10 +178,12 @@ describe('the poster before the canvas', () => {
     await nextTick()
     expect(wrapper.find('[data-reel-poster]').exists()).toBe(false)
     expect(vm.handed).toBe(true)
-    // The intro: the arc's first move, from the poster's frame.
+    // The clock runs from the poster's frame; the first Book is held (its whole beat) and then the first move.
     expect(first).toBe(0)
     await frames(wrapper, 100)
     expect(vm.state.elapsed).toBeGreaterThan(0)
+    expect(vm.ctx.focus.value).toBe(first)
+    await frames(wrapper, REEL_OPENING_HOLD)
     expect(vm.ctx.focus.value).toBeGreaterThan(first)
   })
 
@@ -312,19 +315,29 @@ describe('the default entrance (\'pop\', the Stack\'s)', () => {
     vm.ctx.entrance.plan = planReelEntrance('pop', posterBooks(6, 0).map(book => ({ index: book.index, x: book.pose.x })))
     await frames(wrapper, REEL_BEAT)
     expect(vm.state.elapsed).toBe(0)
+    // The Covers came late (the 600 ms cap): the canvas takes over only now.
+    await sleep(700)
     vm.ctx.ready()
     await nextTick()
     // No fade, no poster to wait for: the Books are on their way this tick.
     expect(vm.ctx.entrance.startedAt).toBe(clock)
     expect(vm.handed).toBe(false)
     expect(wrapper.find('.reel-card__controls').attributes('inert')).toBeDefined()
-    await sleep(400)
+    // The clock waits for the Books to land, however long that takes (ReelBooks marks it done): not for a timer.
+    await frames(wrapper, 2000)
     expect(vm.handed).toBe(false)
-    await sleep(650)
-    expect(vm.handed).toBe(true)
-    expect(wrapper.find('.reel-card__controls').attributes('inert')).toBeUndefined()
+    expect(vm.state.elapsed).toBe(0)
+    vm.ctx.entrance.done = true
     await frames(wrapper, 100)
-    expect(vm.state.elapsed).toBeGreaterThan(0)
+    // Then a short breath, and the first Book's whole beat starts.
+    expect(vm.handed).toBe(false)
+    await frames(wrapper, 300)
+    expect(vm.handed).toBe(true)
+    expect(wrapper.find('.reel-controls, .reel-card__controls').attributes('inert')).toBeUndefined()
+    const started = vm.state.elapsed
+    await frames(wrapper, 100)
+    expect(vm.state.elapsed).toBeGreaterThan(started)
+    expect(vm.ctx.focus.value).toBe(0)
   })
 
   it('\'settle\' and \'none\' keep the poster, and \'settle\' starts its swell after the canvas has faded in', async () => {
@@ -352,6 +365,52 @@ describe('the default entrance (\'pop\', the Stack\'s)', () => {
     await nextTick()
     expect(card(later).ctx.entrance).toMatchObject({ mode: 'none', done: true })
     expect(later.find('[data-reel-poster]').exists()).toBe(true)
+  })
+})
+
+describe('the loading ring (the pop entrance\'s wait)', () => {
+  it('shows only after a moment of waiting, named for assistive technology, and fades out as the Books pop in', async () => {
+    const wrapper = await mountReel({ entrance: 'pop', labels: { loading: 'Bücher werden geladen' } })
+    expect(wrapper.find('.reel-card__loading').exists()).toBe(false)
+    await sleep(120)
+    expect(wrapper.find('.reel-card__loading').exists()).toBe(false)
+    await sleep(220)
+    const ring = wrapper.find('.reel-card__loading')
+    expect(ring.exists()).toBe(true)
+    expect(ring.attributes('role')).toBe('status')
+    expect(ring.text()).toBe('Bücher werden geladen')
+    expect(ring.find('.reel-card__spinner').attributes('aria-hidden')).toBe('true')
+    expect(ring.classes()).not.toContain('reel-card__loading--out')
+    card(wrapper).ctx.ready()
+    await nextTick()
+    // Out with the pop: it fades, then it is gone.
+    expect(wrapper.find('.reel-card__loading').classes()).toContain('reel-card__loading--out')
+    await sleep(260)
+    expect(wrapper.find('.reel-card__loading').exists()).toBe(false)
+  })
+
+  it('never flashes on a fast load, nor stands in the other entrances', async () => {
+    const fast = await mountReel({ entrance: 'pop' })
+    card(fast).ctx.ready()
+    await sleep(320)
+    expect(fast.find('.reel-card__loading').exists()).toBe(false)
+    const poster = await mountReel({ entrance: 'none' })
+    await sleep(320)
+    expect(poster.find('.reel-card__loading').exists()).toBe(false)
+  })
+
+  it('has default words, and stands still (no turn) when Reduce Motion is learned while it shows; Reduce Motion known: the poster stands in, no ring', async () => {
+    const wrapper = await mountReel({ entrance: 'pop', reducedMotion: false })
+    await sleep(320)
+    expect(wrapper.find('.reel-card__loading').text()).toBe('Loading books')
+    expect(wrapper.find('.reel-card__loading').classes()).not.toContain('reel-card__loading--still')
+    await wrapper.setProps({ reducedMotion: true })
+    await nextTick()
+    expect(wrapper.find('.reel-card__loading').classes()).toContain('reel-card__loading--still')
+    // Reduce Motion: the poster stands in instead, so no ring then at all (nothing waits for an entrance).
+    const reduced = await mountReel({ entrance: 'pop', reducedMotion: true })
+    await sleep(320)
+    expect(reduced.find('.reel-card__loading').exists()).toBe(false)
   })
 })
 

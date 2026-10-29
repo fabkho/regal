@@ -9,6 +9,9 @@
 // poster, its first frame, then the canvas fading in over it and the intro. ?poster=0 turns the
 // poster off (nothing until the canvas fades in). ?entrance=pop|settle|none: how the Books come in
 // (default pop, the Stack's entrance; settle: a swell from the poster's frame; none: the poster, then the first beat). The page renders the reel on the server too.
+// ?edge=fade|fadeScale|sink|none: how a Book comes in and goes out at the arc's edge (default fadeScale);
+// scrub it with a swipe (the edge follows the arc, it is not a timed tween). With ?slow=1 the 3D is late:
+// the empty stage shows the loading ring after a moment.
 // Not in a build.
 import type { Book } from '#layers/regal/shared/types/book'
 import type { ReelBookEvent } from '#layers/regal/app/utils/reel/context'
@@ -30,6 +33,7 @@ const motion = computed(() => (route.query.motion === 'reduce' ? true : route.qu
 const dark = computed(() => route.query.scheme === 'dark')
 const autoplay = computed(() => route.query.autoplay !== '0')
 const poster = computed(() => route.query.poster !== '0')
+const edge = computed(() => (['fade', 'fadeScale', 'sink', 'none'] as const).find(mode => mode === route.query.edge) ?? 'fadeScale')
 const entrance = computed(() => (['pop', 'settle', 'none'] as const).find(mode => mode === route.query.entrance) ?? 'pop')
 /** ms the 3D is held back: ?slow=1 is 6 s, ?slow=<n> n s. */
 const canvasDelay = computed(() => {
@@ -102,6 +106,7 @@ function onOpen(event: ReelBookEvent) {
           :autoplay="autoplay"
           :poster="poster"
           :entrance="entrance"
+          :edge="edge"
           :canvas-delay="canvasDelay"
           :theme="dark ? 'dark' : 'light'"
           @ready="note('ready')"
@@ -221,6 +226,18 @@ function onOpen(event: ReelBookEvent) {
             @click="set({ poster: poster ? '0' : undefined })"
           >
             no poster
+          </button>
+        </div>
+        <div class="reel-dev__row">
+          <span>Edge</span>
+          <button
+            v-for="mode in (['fade', 'fadeScale', 'sink', 'none'] as const)"
+            :key="mode"
+            type="button"
+            :aria-pressed="edge === mode"
+            @click="set({ edge: mode === 'fadeScale' ? undefined : mode })"
+          >
+            {{ mode }}
           </button>
         </div>
         <div class="reel-dev__row">

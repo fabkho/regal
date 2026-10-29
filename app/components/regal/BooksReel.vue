@@ -30,6 +30,8 @@ import ReelActions from '#layers/regal/app/components/reel/Actions.vue'
 import type ReelCard from '#layers/regal/app/components/reel/Card.vue'
 import type { ReelBookEvent } from '#layers/regal/app/utils/reel/context'
 import type { ReelEntrance } from '#layers/regal/app/utils/reel/entrance'
+import { REEL_EDGE_DEFAULT } from '#layers/regal/app/utils/reel/edge'
+import type { ReelEdge } from '#layers/regal/app/utils/reel/edge'
 
 const props = withDefaults(defineProps<{
   /**
@@ -70,7 +72,13 @@ const props = withDefaults(defineProps<{
    * Reduce Motion: none.
    */
   entrance?: ReelEntrance
-}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0, entrance: 'pop' })
+  /**
+   * How a Book comes in and goes out at the arc's edge (utils/reel/edge.ts), following the arc's position
+   * (it scrubs with a swipe): `'fadeScale'` (default) fades and grows from 0.85, `'fade'`, `'sink'` (fades and
+   * rises out of the floor), `'none'` (the prototype's hard cut).
+   */
+  edge?: ReelEdge
+}>(), { label: '', labels: () => ({}), reducedMotion: undefined, autoplay: true, theme: undefined, unstyled: false, rotate: 'turntable', accessibleList: true, poster: true, canvasDelay: 0, entrance: 'pop', edge: REEL_EDGE_DEFAULT })
 
 const emit = defineEmits<{
   /** The first frame with the faces of the Books in view is drawn (show the canvas over a poster now). */
@@ -164,6 +172,7 @@ const { rootAttrs } = provideRegalUi({
       :poster="props.poster"
       :canvas-delay="props.canvasDelay"
       :entrance="props.entrance"
+      :edge="props.edge"
       @ready="emit('ready')"
       @focus="event => emit('focus', event)"
       @manual="emit('manual')"

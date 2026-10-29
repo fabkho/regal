@@ -4,7 +4,7 @@ import type { DragSample } from '../../app/utils/reel/drag'
 import { reelCamera, reelDistance, reelLayout, reelPose, REEL_FADE_AT, REEL_SPACING, REEL_STEP, REEL_TURN } from '../../app/utils/reel/layout'
 import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '../../app/utils/reel/state'
 import type { ReelState } from '../../app/utils/reel/state'
-import { clamp, REEL_BADGE_IN, REEL_BEAT, REEL_CAMERA_Z, REEL_DOLLY_PX, REEL_EASE, REEL_MOVE, REEL_SNAP_MS, reelPhase, reelTotal, seg, wholeBook } from '../../app/utils/reel/timeline'
+import { clamp, REEL_OPENING_HOLD, REEL_BADGE_IN, REEL_BEAT, REEL_CAMERA_Z, REEL_DOLLY_PX, REEL_EASE, REEL_MOVE, REEL_SNAP_MS, reelPhase, reelTotal, seg, wholeBook } from '../../app/utils/reel/timeline'
 
 /** Every pose in a layout must be a finite number (no NaN from the wrap or the zero Book). */
 function expectFinite(poses: ReturnType<typeof reelLayout>) {
@@ -193,7 +193,7 @@ describe('state (section H table)', () => {
   it('auto-plays for one round, then rests in Manual on the last Book', () => {
     let s = enterView(twelve())
     // The first Book is in front at the start: n - 1 beats take the arc to the last one.
-    s = advance(s, reelTotal(11) - 1)
+    s = advance(s, REEL_OPENING_HOLD + reelTotal(11) - 1)
     expect(s.mode).toBe('playing')
     s = advance(s, 1)
     expect(s.mode).toBe('manual')
@@ -203,7 +203,7 @@ describe('state (section H table)', () => {
 
   it('tells the beat from the clock, so a phase is exact at every ms', () => {
     let s = enterView(twelve())
-    s = advance(s, REEL_BEAT + 100)
+    s = advance(s, REEL_OPENING_HOLD + REEL_BEAT + 100)
     expect(frontFocus(s)).toBeCloseTo(reelPhase(2 * REEL_BEAT + 100).focus, 10)
     expect(frontIndex(s)).toBe(1)
   })
@@ -345,7 +345,7 @@ describe('state: live position, wrap, visibility, reduced', () => {
     expect(s.mode).toBe('playing')
     expect(frontIndex(s)).toBe(0)
     expect(frontFocus(s)).toBeCloseTo(0, 10)
-    s = advance(s, REEL_BEAT)
+    s = advance(s, REEL_OPENING_HOLD + REEL_BEAT)
     expect(s.mode).toBe('manual')
     expect(frontFocus(s)).toBe(1)
   })
@@ -376,7 +376,7 @@ describe('state: live position, wrap, visibility, reduced', () => {
 
   it('Reduce Motion mid-visit takes a Playing reel over; off again, it may auto-play after a new visit', () => {
     const playing = enterView(createReel(12))
-    const reduced = setReduced(advance(playing, 1200), true)
+    const reduced = setReduced(advance(playing, REEL_OPENING_HOLD + 1200), true)
     expect(reduced.mode).toBe('manual')
     // The first move (Book 0 to Book 1) is over by 1.2 s: it rests on Book 1.
     expect(frontFocus(reduced)).toBeCloseTo(1, 10)
@@ -394,8 +394,10 @@ describe('state: live position, wrap, visibility, reduced', () => {
 
   it('the caption stays after a takeover: badge is 1 in Manual and Detail', () => {
     const playing = enterView(createReel(12))
-    expect(badgeOpacity(playing)).toBeLessThan(1)
-    const manual = takeOver(advance(playing, 1500))
+    // The first Book's hold has its caption in; it goes out before the first move, and is out in the next beat's move.
+    expect(badgeOpacity(playing)).toBe(1)
+    expect(badgeOpacity(advance(playing, REEL_OPENING_HOLD + 100))).toBeLessThan(1)
+    const manual = takeOver(advance(playing, REEL_OPENING_HOLD + 1500))
     expect(badgeOpacity(manual)).toBe(1)
     expect(badgeOpacity(openDetail(manual))).toBe(1)
   })
@@ -435,7 +437,7 @@ describe('state: glides, catches and live reads', () => {
   it('a real catch mid-move: a drag starts while the beat is moving and takes the arc where it is', () => {
     const playing = enterView(createReel(12))
     // The clock opens at one beat (the first Book in front): half a move in is a beat and half a move.
-    const midMove = advance(playing, REEL_MOVE / 2)
+    const midMove = advance(playing, REEL_OPENING_HOLD + REEL_MOVE / 2)
     const expected = reelPhase(REEL_BEAT + REEL_MOVE / 2).focus
     expect(frontFocus(midMove)).toBeCloseTo(expected, 10)
     const caught = takeOver(midMove)
