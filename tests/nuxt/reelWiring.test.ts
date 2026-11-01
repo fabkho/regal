@@ -351,6 +351,32 @@ describe('takeovers', () => {
   })
 })
 
+describe('touch-action (fabkho/libellus: a vertical swipe on "You both read" did not scroll the page)', () => {
+  // touch-action is the intersection of the element under the finger and its ancestors: the
+  // canvas's own (TresCanvas sets an inline `touch-action: none`) must be the view's too.
+  const touchActions = () => {
+    const view = document.body.querySelector<HTMLElement>('.reel-card__view')!
+    const canvas = view.querySelector<HTMLElement>('.reel-card__canvas')!
+    return { view: view.style.touchAction, canvas: canvas.style.touchAction }
+  }
+
+  it('the view and its canvas pan vertically, none only while a Book is out', async () => {
+    const wrapper = await mountReel()
+    inView(true)
+    await frames(wrapper, 400)
+    await vi.waitFor(() => expect(document.body.querySelector('.reel-card__canvas')).not.toBeNull())
+    expect(touchActions()).toEqual({ view: 'pan-y', canvas: 'pan-y' })
+    // Reduce Motion: the Book lands back at once (no 880 ms wait in the test).
+    setReduceMotion(true)
+    await takeOut(wrapper, 'Wired 3')
+    expect(attr(wrapper, 'data-picked')).toBe('fx-wire-3')
+    expect(touchActions()).toEqual({ view: 'none', canvas: 'none' })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await vi.waitFor(() => expect(touchActions()).toEqual({ view: 'pan-y', canvas: 'pan-y' }))
+    expect(document.documentElement.style.overflow).toBe('')
+  })
+})
+
 describe('the history entry of a Book out', () => {
   it('Back puts the Book back into the reel', async () => {
     const wrapper = await mountReel({ autoplay: false })

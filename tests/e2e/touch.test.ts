@@ -94,7 +94,43 @@ function dragStack(page: Page, buttons: number) {
   }, buttons)
 }
 
-describe('touch on a phone: the row and the Stack', async () => {
+async function openReel(page: Page) {
+  await page.goto(url('/playground?c=reel'), { waitUntil: 'networkidle' })
+  // Live: the canvas has taken over and the clock runs (before that the view lets every touch through).
+  await page.locator('.reel-card__view--live canvas').waitFor({ state: 'attached', timeout: 60_000 })
+  await page.waitForTimeout(500)
+}
+
+function reelTouch(page: Page) {
+  return page.evaluate(() => {
+    const view = document.querySelector<HTMLElement>('.reel-card__view')!
+    return { view: getComputedStyle(view).touchAction, canvas: getComputedStyle(view.querySelector('canvas')!).touchAction }
+  })
+}
+
+/**
+ * A real touch swipe (Chromium only: CDP) by (dx, dy) from the middle of the reel's stage; how
+ * far the page scrolled and the Book in front before and after.
+ */
+async function swipeReel(page: Page, dx: number, dy: number) {
+  const box = (await page.locator('.reel-card__stage').boundingBox())!
+  const cdp = await page.context().newCDPSession(page)
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  const read = () => page.evaluate(() => ({ scrollY: window.scrollY, front: document.querySelector<HTMLElement>('.reel-card')!.dataset.front }))
+  const before = await read()
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  for (let step = 1; step <= 15; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * step / 15, y: y + dy * step / 15 }] })
+    await page.waitForTimeout(16)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(800)
+  const after = await read()
+  return { scrolled: after.scrollY - before.scrollY, front: [before.front, after.front] }
+}
+
+describe('touch on a phone: the row, the Stack and the reel', async () => {
   await setup({ rootDir: fileURLToPath(new URL('../..', import.meta.url)) })
 
   afterAll(async () => {
@@ -132,5 +168,24 @@ describe('touch on a phone: the row and the Stack', async () => {
 
     await openStack(android)
     expect(await dragStack(android, 1)).toEqual({ moved: true, touchmoveCancelled: true })
+  })
+
+  it('the reel: a vertical swipe that starts on it scrolls the page, a sideways one moves the arc', async () => {
+    // fabkho/libellus "You both read": TresCanvas's inline `touch-action: none` on the <canvas>
+    // beat the view's pan-y, so on Android Chrome the page did not scroll from the reel.
+    const android = await phone(chromium, 'Pixel 7')
+    await openReel(android)
+    expect(await reelTouch(android)).toEqual({ view: 'pan-y', canvas: 'pan-y' })
+    expect((await swipeReel(android, 0, -200)).scrolled).toBeGreaterThan(80)
+    const sideways = await swipeReel(android, -200, 0)
+    expect(sideways.scrolled).toBe(0)
+    expect(sideways.front[1]).not.toBe(sideways.front[0])
+    // After the sideways swipe (Manual) the page still scrolls from the reel.
+    expect((await swipeReel(android, 0, 200)).scrolled).toBeLessThan(-80)
+
+    // WebKit has no touch swipe here: what the page asks of it is the same.
+    const iphone = await phone(webkit, 'iPhone 15')
+    await openReel(iphone)
+    expect(await reelTouch(iphone)).toEqual({ view: 'pan-y', canvas: 'pan-y' })
   })
 })
