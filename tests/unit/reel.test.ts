@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bookTicks, dragFocus, glideFocus, REEL_DRAG_PX_PER_BOOK, releaseGlide, releaseVelocity, trackDrag } from '../../app/utils/reel/drag'
+import { bookTicks, dragFocus, glideFocus, REEL_DRAG_PX_PER_BOOK, reelTouchAction, releaseGlide, releaseVelocity, trackDrag } from '../../app/utils/reel/drag'
 import type { DragSample } from '../../app/utils/reel/drag'
 import { reelCamera, reelDistance, reelLayout, reelPose, REEL_FADE_AT, REEL_SPACING, REEL_STEP, REEL_TURN } from '../../app/utils/reel/layout'
 import { advance, badgeOpacity, canAutoPlay, closeDetail, createReel, dragTo, enterView, frontFocus, frontIndex, newVisit, openDetail, pauseControl, play, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '../../app/utils/reel/state'
@@ -564,5 +564,17 @@ describe('drag (Regal row drag, reused)', () => {
     const samples: DragSample[] = []
     for (let t = 0; t <= 100; t += 8) trackDrag(samples, t, t)
     expect(releaseVelocity(samples, 100)).toBeCloseTo(1000, -1)
+  })
+})
+
+describe('touch-action (a vertical swipe on the reel scrolls the page)', () => {
+  it('leaves the page its vertical pan unless a Book is out and broken out', () => {
+    expect(reelTouchAction({ picked: false, broken: false })).toBe('pan-y')
+    // Putting the Book back: broken out until it has landed, but nothing to turn any more.
+    expect(reelTouchAction({ picked: false, broken: true })).toBe('pan-y')
+    // Taken out, before it breaks out.
+    expect(reelTouchAction({ picked: true, broken: false })).toBe('pan-y')
+    // Out and over the page: every move turns it.
+    expect(reelTouchAction({ picked: true, broken: true })).toBe('none')
   })
 })

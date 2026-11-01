@@ -78,3 +78,19 @@ export function glideFocus(glide: ReelGlide, elapsed: number): { focus: number, 
   if (at.done) return { focus: glide.to, done: true }
   return { focus: glide.from - at.offset / glide.pxPerBook, done: false }
 }
+
+/**
+ * The `touch-action` of the reel's view and its canvas for a finger. The reel
+ * drags itself sideways (Card.vue's pointer handlers), so it keeps only the
+ * page's vertical pan: a swipe up or down that starts on the reel scrolls the
+ * page. Broken out with a Book taken out, the Book has the screen and every
+ * move turns it: nothing pans.
+ *
+ * Both elements need it: touch-action is the intersection of the element under
+ * the finger and its ancestors, and TresCanvas gives its <canvas> an inline
+ * `touch-action: none` (three's orbit controls want every move), which beat the
+ * view's `pan-y` and swallowed every vertical swipe on Android Chrome.
+ */
+export function reelTouchAction(state: { picked: boolean, broken: boolean }): 'none' | 'pan-y' {
+  return state.picked && state.broken ? 'none' : 'pan-y'
+}

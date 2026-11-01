@@ -29,7 +29,7 @@ import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { sheetMaxHeight, showsSheet } from '#layers/regal/app/utils/books/sheet'
 import { backgroundOf, parseCssColor } from '#layers/regal/app/utils/theme/color'
 import { floorShadowStrength, VEIL_OPACITY_FULL, veilOpacity } from '#layers/regal/app/utils/theme/tokens'
-import { dragAxis, dragFocus, releaseVelocity, trackDrag } from '#layers/regal/app/utils/reel/drag'
+import { dragAxis, dragFocus, reelTouchAction, releaseVelocity, trackDrag } from '#layers/regal/app/utils/reel/drag'
 import type { DragAxis, DragSample } from '#layers/regal/app/utils/reel/drag'
 import { advance, badgeOpacity, canAutoPlay, closeDetail, dollyClock, dragTo, frontFocus, initialReel, newVisit, playClock, openDetail, pauseControl, play, reelStartFrame, release, setReduced, setVisible, settleOnBook, step, takeOver, tapBook } from '#layers/regal/app/utils/reel/state'
 import type { ReelMode, ReelState } from '#layers/regal/app/utils/reel/state'
@@ -664,7 +664,8 @@ onBeforeUnmount(() => {
 // --- Template bits ---------------------------------------------------------------------
 
 const dpr = computed<[number, number]>(() => [1, quality.value.maxDpr])
-const touchAction = computed(() => (pickedId.value && broken.value ? 'none' : 'pan-y'))
+/** The view's and the canvas's (TresCanvas sets `none` on its <canvas>, which would block the page's scroll). */
+const touchAction = computed(() => reelTouchAction({ picked: !!pickedId.value, broken: broken.value }))
 const slideText = computed(() => {
   const book = shownBook.value
   if (!book) return ''
@@ -738,6 +739,7 @@ const ariaLabel = computed(() => props.label || words.value.reel)
             <TresCanvas
               v-if="canvasUp"
               class="reel-card__canvas"
+              :style="{ touchAction }"
               :alpha="true"
               :clear-alpha="0"
               :premultiplied-alpha="true"
