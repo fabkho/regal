@@ -6,15 +6,14 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { BOOKCASE_SIZE } from '#layers/regal/app/utils/bookcase/shelves'
 import { BOOKCASE_SPACING } from '#layers/regal/app/utils/bookcase/layout'
 import {
-  AMBIENT_LIGHT,
   BOUNCE_LIGHT,
   CAMERA,
   CONTROLS,
-  FILL_LIGHT,
   FLOOR_SHADOW,
   KEY_LIGHT,
   TARGET_BOUNDS,
 } from '#layers/regal/app/utils/bookcase/scene'
+import { SCENE_LIGHTS } from '#layers/regal/app/utils/stage/lighting'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 
 const props = withDefaults(defineProps<{
@@ -32,6 +31,10 @@ const props = withDefaults(defineProps<{
 const bookcaseOffsets = computed(() =>
   Array.from({ length: Math.max(1, props.bookcaseCount) }, (_, index) => index * BOOKCASE_SPACING),
 )
+/** Dev only: ?light= previews a lighting variant; production always shows today (composables/useSceneLight.ts). */
+const sceneLight = useSceneLight()
+const rig = computed(() => SCENE_LIGHTS[sceneLight.value].bookcase)
+const environment = computed(() => SCENE_LIGHTS[sceneLight.value].environment)
 
 const emit = defineEmits<{ loaded: [] }>()
 
@@ -99,25 +102,25 @@ function clampTarget(controls: OrbitControlsImpl) {
     @change="clampTarget"
   />
 
-  <BookcaseEnvironment />
+  <BookcaseEnvironment :intensity="environment" />
 
   <TresAmbientLight
-    :color="AMBIENT_LIGHT.color"
-    :intensity="AMBIENT_LIGHT.intensity"
+    :color="rig.ambient.color"
+    :intensity="rig.ambient.intensity"
   />
   <TresHemisphereLight
-    :args="[FILL_LIGHT.color, FILL_LIGHT.groundColor, FILL_LIGHT.intensity]"
+    :args="[rig.fill.color, rig.fill.groundColor, rig.fill.intensity]"
   />
   <TresDirectionalLight
     ref="keyLight"
-    :color="KEY_LIGHT.color"
-    :intensity="KEY_LIGHT.intensity"
+    :color="rig.key.color"
+    :intensity="rig.key.intensity"
     :position="KEY_LIGHT.position"
     cast-shadow
   />
   <TresDirectionalLight
-    :color="BOUNCE_LIGHT.color"
-    :intensity="BOUNCE_LIGHT.intensity"
+    :color="rig.bounce.color"
+    :intensity="rig.bounce.intensity"
     :position="BOUNCE_LIGHT.position"
   />
 
