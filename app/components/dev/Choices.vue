@@ -6,6 +6,8 @@
 import { readYears } from '#layers/regal/app/utils/stack/view'
 import { hapticsTuning, patternParam, PULSE_CHOICES, PULSES, tickRun, vibrates } from '#layers/regal/app/utils/books/haptics'
 import type { Pulse } from '#layers/regal/app/utils/books/haptics'
+import { SCENE_LIGHTS, sceneLightTuning } from '#layers/regal/app/utils/stage/lighting'
+import type { SceneLight } from '#layers/regal/app/utils/stage/lighting'
 
 const { books } = useLibrary()
 const mode = useViewMode()
@@ -43,6 +45,7 @@ function yearNow() {
 const route = useRoute()
 const router = useRouter()
 const haptics = computed(() => hapticsTuning(route.query))
+const light = computed<SceneLight>(() => sceneLightTuning(route.query))
 const HAPTIC_KINDS: { kind: Pulse, param: string, title: string }[] = [
   { kind: 'tick', param: 'hapticTick', title: 'Scroll tick (per Book on the focus line)' },
   { kind: 'out', param: 'hapticOut', title: 'Taking a Book out' },
@@ -116,6 +119,34 @@ function choosePulse(kind: Pulse, param: string, steps: readonly number[]) {
           >
             New year ({{ stackView.year ?? 'all years' }} → {{ nextYear }})
           </button>
+        </p>
+      </section>
+      <section class="choices__section">
+        <h3 class="choices__heading">
+          Light
+        </h3>
+        <p class="choices__hint">
+          Three treatments of the same rig, so the book colours can be judged by looking. Applies at once (kept in the URL).
+        </p>
+        <div
+          class="choices__options"
+          role="group"
+          aria-label="Scene light"
+        >
+          <button
+            v-for="(spec, key) in SCENE_LIGHTS"
+            :key="key"
+            type="button"
+            class="choices__option"
+            :aria-pressed="light === key"
+            :title="spec.hint"
+            @click="setQuery({ light: key === 'today' ? undefined : key })"
+          >
+            {{ spec.label }}
+          </button>
+        </div>
+        <p class="choices__hint">
+          {{ SCENE_LIGHTS[light].hint }}
         </p>
       </section>
 
