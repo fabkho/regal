@@ -37,6 +37,8 @@ import { averageColor, drawBack, drawSpine, spineFontsReady } from '#layers/rega
 import type { FaceInput } from '#layers/regal/app/utils/covers/bookFaces'
 import { loadCover, loadFullCover, prefetchFullCover, releaseFullCover } from '#layers/regal/app/utils/covers/coverTextures'
 import { isPhotoFace } from '#layers/regal/app/utils/covers/bookAssets'
+import { glossFor } from '#layers/regal/app/utils/stage/lighting'
+import type { GlossedFace, MaterialGloss } from '#layers/regal/app/utils/stage/lighting'
 import type { AssetFaces } from '#layers/regal/app/utils/covers/bookAssets'
 import { decodeImage, fetchImage, loadPicture } from '#layers/regal/app/utils/covers/images'
 import type { Picture } from '#layers/regal/app/utils/covers/images'
@@ -91,10 +93,15 @@ const HEAD_DUST = 0.9
 /** How strongly the sheet lines catch the light. */
 const PAGE_BUMP = 0.5
 
-interface Gloss { clearcoat: number, clearcoatRoughness: number, envMapIntensity: number }
-const CLOTH_GLOSS: Gloss = { clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.35 }
-const PRINTED_GLOSS: Gloss = { clearcoat: 0.15, clearcoatRoughness: 0.55, envMapIntensity: 0.35 }
-const COVER_GLOSS: Gloss = { clearcoat: 0.35, clearcoatRoughness: 0.35, envMapIntensity: 0.35 }
+/**
+ * A face's gloss (utils/stage/lighting.ts): the clearcoat and
+ * environment reflection that turn the image-based light into a hard patch on
+ * a cover. Dev only, ?gloss= scales them; outside the dev server the grid
+ * reads 'today', whose scales are 1 and whose roughness is the shipped one, so
+ * these are exactly the numbers this file has always used.
+ */
+type Gloss = MaterialGloss
+const glossGrid = useLightingGrid()
 /** What a hovered Book gains: a varnish catching the light. */
 const HOVER_GLOSS: Gloss = { clearcoat: 0.55, clearcoatRoughness: -0.3, envMapIntensity: 0.9 }
 
@@ -177,8 +184,19 @@ const rendered = computed(() => {
   return [...props.poses, ...extra.value.filter(pose => !inPoses.has(pose.bookId))]
 })
 
+/** Dresses one face for the grid's ?gloss=, remembering which face it is so a new choice can rebase it. */
+function setFaceGloss(material: MeshPhysicalMaterial, face: GlossedFace) {
+  const gloss = glossFor(face, glossGrid.value.gloss)
+  material.userData.glossFace = face
+  setGloss(material, gloss)
+}
+
+/** A face's numbers, before the hover's shine is mixed in. */
 function setGloss(material: MeshPhysicalMaterial, gloss: Gloss) {
   material.userData.gloss = gloss
+  // three drops clearcoat from the shader when it is 0, so crossing zero (the
+  // ?gloss=none choice) has to rebuild the program, not just set the number.
+  if ((material.clearcoat > 0) !== (gloss.clearcoat > 0)) material.needsUpdate = true
   material.clearcoat = gloss.clearcoat
   material.clearcoatRoughness = gloss.clearcoatRoughness
   material.envMapIntensity = gloss.envMapIntensity
@@ -186,7 +204,10 @@ function setGloss(material: MeshPhysicalMaterial, gloss: Gloss) {
 
 function applyShine(material: MeshPhysicalMaterial, amount: number) {
   const base = material.userData.gloss as Gloss
-  material.clearcoat = base.clearcoat + HOVER_GLOSS.clearcoat * amount
+  const clearcoat = base.clearcoat + HOVER_GLOSS.clearcoat * amount
+  // A face with no clearcoat (the ?gloss=none choice) gets one back on hover: the shader has to be built again.
+  if ((material.clearcoat > 0) !== (clearcoat > 0)) material.needsUpdate = true
+  material.clearcoat = clearcoat
   material.clearcoatRoughness = MathUtils.clamp(base.clearcoatRoughness + HOVER_GLOSS.clearcoatRoughness * amount, 0.05, 1)
   material.envMapIntensity = base.envMapIntensity + HOVER_GLOSS.envMapIntensity * amount
 }
@@ -195,7 +216,7 @@ function cloth(color: string): MeshPhysicalMaterial {
   const material = new MeshPhysicalMaterial({ roughness: 0.72, metalness: 0 })
   material.userData.cloth = color
   material.color.set(color).multiplyScalar(CLOTH_ALBEDO)
-  setGloss(material, CLOTH_GLOSS)
+  setFaceGloss(material, 'cloth')
   return material
 }
 
@@ -206,7 +227,7 @@ function printed(texture: CanvasTexture): MeshPhysicalMaterial {
     roughness: 0.68,
     metalness: 0,
   })
-  setGloss(material, PRINTED_GLOSS)
+  setFaceGloss(material, 'printed')
   return material
 }
 
@@ -582,6 +603,21 @@ function drawPending() {
   while (drawQueue.length && performance.now() - started < DRAW_BUDGET_MS) drawQueue.shift()!.run()
 }
 
+/**
+ * A new ?gloss= choice (dev drawer, no reload) rebases every face that is on
+ * screen on its shipped face (cloth, printed or cover), so the trail of a
+ * hover that has settled back to 0 comes along. Production never fires it: the
+ * grid reads 'today' there.
+ */
+watch(() => glossGrid.value.gloss, () => {
+  for (const entry of materialsByBook.values()) {
+    for (const material of [entry.cover, entry.spine, entry.back]) {
+      const face = material.userData.glossFace as GlossedFace | undefined
+      if (face) setFaceGloss(material, face)
+    }
+  }
+})
+
 watch(() => props.poses, (poses) => {
   let top: BookPose | null = null
   for (const pose of poses) {
@@ -765,7 +801,7 @@ function printCover(entry: BookMaterials, texture: Texture) {
   entry.cover.map = texture
   entry.cover.color = new Color(1, 1, 1).multiplyScalar(COVER_ALBEDO)
   entry.cover.roughness = 0.5
-  setGloss(entry.cover, COVER_GLOSS)
+  setFaceGloss(entry.cover, 'cover')
   entry.cover.needsUpdate = true
 }
 
@@ -908,7 +944,7 @@ function clothCover(entry: BookMaterials) {
   entry.cover.map = null
   entry.cover.color.copy(plain.color)
   entry.cover.roughness = plain.roughness
-  setGloss(entry.cover, CLOTH_GLOSS)
+  setFaceGloss(entry.cover, 'cloth')
   entry.cover.needsUpdate = true
   plain.dispose()
 }
