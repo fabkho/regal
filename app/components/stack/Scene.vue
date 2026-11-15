@@ -3,11 +3,15 @@
 // camera looks slightly down at the pile; the wheel, dragging and the arrow
 // keys scroll smoothly up and down it (a flicked finger glides on, its feel in
 // utils/stack/touchScroll.ts). Scrolling pauses while a Book is out. The
-// scroll goes to the Books' scroll highlight.
+// scroll goes to the Books' scroll highlight. Its lights repeat the Bookcase's
+// rig with different numbers, inlined (key [-1.1, 1.4, 1.6] at 2.2, bounce
+// [1.4, 0.3, 1.8] at 0.6, hemi 0.9, ambient 0.35) — a lighting change has to
+// be made twice; dev-only ?light= moves the key and bounce (see below).
 import type { DirectionalLight, Group, PerspectiveCamera } from 'three'
 import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
 import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
+import { SCENE_LIGHTS } from '#layers/regal/app/utils/stage/lighting'
 import { focusLine, STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
@@ -53,6 +57,9 @@ const quality = useRenderQuality()
 // drop the branch and its import: they always use TOUCH_FEEL.
 const route = import.meta.dev ? useRoute() : null
 const feel = (): Readonly<TouchFeel> => (import.meta.dev ? tunedFeel(route!.query) : TOUCH_FEEL)
+/** Dev only: ?light= moves the key and bounce to a tested position; intensities stay the Stack's (composables/useSceneLight.ts). */
+const sceneLight = useSceneLight()
+const lightRig = computed(() => SCENE_LIGHTS[sceneLight.value].stack)
 
 const cameraRef = shallowRef<PerspectiveCamera | null>(null)
 const rig = shallowRef<Group | null>(null)
@@ -338,13 +345,13 @@ onBeforeRender(({ delta }) => {
       ref="keyLight"
       color="#FFE0B2"
       :intensity="2.2"
-      :position="[-1.1, 1.4, 1.6]"
+      :position="lightRig.key.position"
       cast-shadow
     />
     <TresDirectionalLight
       color="#FFD9AE"
       :intensity="0.6"
-      :position="[1.4, 0.3, 1.8]"
+      :position="lightRig.bounce.position"
     />
   </TresGroup>
 
