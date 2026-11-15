@@ -6,9 +6,11 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { BOOKCASE_SIZE } from '#layers/regal/app/utils/bookcase/shelves'
 import { BOOKCASE_SPACING } from '#layers/regal/app/utils/bookcase/layout'
 import {
+  AMBIENT_LIGHT,
   BOUNCE_LIGHT,
   CAMERA,
   CONTROLS,
+  FILL_LIGHT,
   FLOOR_SHADOW,
   KEY_LIGHT,
   TARGET_BOUNDS,
@@ -31,10 +33,9 @@ const props = withDefaults(defineProps<{
 const bookcaseOffsets = computed(() =>
   Array.from({ length: Math.max(1, props.bookcaseCount) }, (_, index) => index * BOOKCASE_SPACING),
 )
-/** Dev only: ?light= previews a lighting variant; production always shows today (composables/useSceneLight.ts). */
+/** Dev only: ?light= moves the key and bounce to a tested position; colour and intensity stay the shipped rig's (composables/useSceneLight.ts). */
 const sceneLight = useSceneLight()
 const rig = computed(() => SCENE_LIGHTS[sceneLight.value].bookcase)
-const environment = computed(() => SCENE_LIGHTS[sceneLight.value].environment)
 
 const emit = defineEmits<{ loaded: [] }>()
 
@@ -102,26 +103,26 @@ function clampTarget(controls: OrbitControlsImpl) {
     @change="clampTarget"
   />
 
-  <BookcaseEnvironment :intensity="environment" />
+  <BookcaseEnvironment />
 
   <TresAmbientLight
-    :color="rig.ambient.color"
-    :intensity="rig.ambient.intensity"
+    :color="AMBIENT_LIGHT.color"
+    :intensity="AMBIENT_LIGHT.intensity"
   />
   <TresHemisphereLight
-    :args="[rig.fill.color, rig.fill.groundColor, rig.fill.intensity]"
+    :args="[FILL_LIGHT.color, FILL_LIGHT.groundColor, FILL_LIGHT.intensity]"
   />
   <TresDirectionalLight
     ref="keyLight"
-    :color="rig.key.color"
-    :intensity="rig.key.intensity"
-    :position="KEY_LIGHT.position"
+    :color="KEY_LIGHT.color"
+    :intensity="KEY_LIGHT.intensity"
+    :position="rig.key.position"
     cast-shadow
   />
   <TresDirectionalLight
-    :color="rig.bounce.color"
-    :intensity="rig.bounce.intensity"
-    :position="BOUNCE_LIGHT.position"
+    :color="BOUNCE_LIGHT.color"
+    :intensity="BOUNCE_LIGHT.intensity"
+    :position="rig.bounce.position"
   />
 
   <BookcaseModel
