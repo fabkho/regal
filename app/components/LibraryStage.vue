@@ -5,6 +5,7 @@
 // Pick interaction.
 import { ACESFilmicToneMapping, SRGBColorSpace, VSMShadowMap } from 'three'
 import { TONE_MAPPING_EXPOSURE } from '#layers/regal/app/utils/bookcase/scene'
+import { BRIGHTNESS_STEPS } from '#layers/regal/app/utils/stage/lighting'
 import { layoutLibrary } from '#layers/regal/app/utils/bookcase/layout'
 import { layoutStack } from '#layers/regal/app/utils/stack/layout'
 import { applyStackView, resolveGrouping, stackGroups } from '#layers/regal/app/utils/stack/view'
@@ -37,6 +38,14 @@ const debugSlots = computed(() => debug.value.includes('slots'))
 const debugPick = computed(() => debug.value.includes('pick'))
 /** ?debug=loads logs the faces the pile shows as they change (window.__regalLoads, see BooksMeshes). */
 const debugLoads = computed(() => debug.value.includes('loads'))
+
+/**
+ * Dev only (utils/stage/lighting.ts): ?bright= scales the exposure on top of
+ * the shipped TONE_MAPPING_EXPOSURE. Outside the dev server the grid reads
+ * 'today', whose multiplier is 1, so the canvas gets the shipped number.
+ */
+const grid = useLightingGrid()
+const exposure = computed(() => TONE_MAPPING_EXPOSURE * BRIGHTNESS_STEPS[grid.value.bright].exposure)
 
 const { books, assets, source, error } = useLibrary()
 const { pickedId, pick, putAway } = useBookPick()
@@ -176,7 +185,7 @@ watch(books, (list) => {
         shadows
         :shadow-map-type="VSMShadowMap"
         :tone-mapping="ACESFilmicToneMapping"
-        :tone-mapping-exposure="TONE_MAPPING_EXPOSURE"
+        :tone-mapping-exposure="exposure"
         :output-color-space="SRGBColorSpace"
         :dpr="[1, stageDpr || quality.maxDpr]"
       >

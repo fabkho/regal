@@ -15,6 +15,7 @@ import {
   KEY_LIGHT,
   TARGET_BOUNDS,
 } from '#layers/regal/app/utils/bookcase/scene'
+import { ambientIntensity, BRIGHTNESS_STEPS, keyIntensity, LIGHT_POSITIONS } from '#layers/regal/app/utils/stage/lighting'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 
 const props = withDefaults(defineProps<{
@@ -34,6 +35,19 @@ const bookcaseOffsets = computed(() =>
 )
 
 const emit = defineEmits<{ loaded: [] }>()
+
+/**
+ * Dev only (utils/stage/lighting.ts): ?light= moves the key and bounce to a
+ * tested position, ?bright= scales the key, the exposure and the ambient.
+ * Outside the dev server both read 'today', which gives back the numbers
+ * imported above unchanged (a scale of 1, an offset of 0, the shipped
+ * positions), so a production build draws exactly what it drew before.
+ */
+const grid = useLightingGrid()
+const bright = computed(() => BRIGHTNESS_STEPS[grid.value.bright])
+const lightPlace = computed(() => LIGHT_POSITIONS[grid.value.light].bookcase)
+const keyStrength = computed(() => keyIntensity(KEY_LIGHT.intensity, bright.value))
+const ambientStrength = computed(() => ambientIntensity(AMBIENT_LIGHT.intensity, bright.value))
 
 const reducedMotion = usePreferredReducedMotion()
 const damping = computed(() => reducedMotion.value !== 'reduce')
@@ -103,7 +117,7 @@ function clampTarget(controls: OrbitControlsImpl) {
 
   <TresAmbientLight
     :color="AMBIENT_LIGHT.color"
-    :intensity="AMBIENT_LIGHT.intensity"
+    :intensity="ambientStrength"
   />
   <TresHemisphereLight
     :args="[FILL_LIGHT.color, FILL_LIGHT.groundColor, FILL_LIGHT.intensity]"
@@ -111,14 +125,14 @@ function clampTarget(controls: OrbitControlsImpl) {
   <TresDirectionalLight
     ref="keyLight"
     :color="KEY_LIGHT.color"
-    :intensity="KEY_LIGHT.intensity"
-    :position="KEY_LIGHT.position"
+    :intensity="keyStrength"
+    :position="lightPlace.key"
     cast-shadow
   />
   <TresDirectionalLight
     :color="BOUNCE_LIGHT.color"
     :intensity="BOUNCE_LIGHT.intensity"
-    :position="BOUNCE_LIGHT.position"
+    :position="lightPlace.bounce"
   />
 
   <BookcaseModel

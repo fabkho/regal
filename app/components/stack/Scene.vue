@@ -9,6 +9,7 @@ import { useLoop, useTres } from '@tresjs/core'
 import { MathUtils } from 'three'
 import { FLOOR_SHADOW } from '#layers/regal/app/utils/bookcase/scene'
 import { focusLine, STACK_SCROLL } from '#layers/regal/app/utils/stack/scrollHighlight'
+import { ambientIntensity, BRIGHTNESS_STEPS, keyIntensity, LIGHT_POSITIONS } from '#layers/regal/app/utils/stage/lighting'
 import { shadowFor } from '#layers/regal/app/utils/stage/quality'
 import type { StackScroll } from '#layers/regal/app/utils/stack/scrollHighlight'
 import { dragHeld, glideStep, holdTouchMove, releaseSpeed, startGlide, TOUCH_FEEL, trackTouch, tunedFeel } from '#layers/regal/app/utils/stack/touchScroll'
@@ -23,6 +24,10 @@ const props = defineProps<{
   floorShadow?: number
 }>()
 const emit = defineEmits<{ ready: [] }>()
+
+/** The pile's own rig, inlined here (not bookcase/scene.ts): key 2.2, hemi 0.9, ambient 0.35. */
+const STACK_KEY_INTENSITY = 2.2
+const STACK_AMBIENT_INTENSITY = 0.35
 
 /** Camera distance from the pile and how far above the viewed point it sits. */
 const CAMERA_DISTANCE = 1.15
@@ -53,6 +58,20 @@ const quality = useRenderQuality()
 // drop the branch and its import: they always use TOUCH_FEEL.
 const route = import.meta.dev ? useRoute() : null
 const feel = (): Readonly<TouchFeel> => (import.meta.dev ? tunedFeel(route!.query) : TOUCH_FEEL)
+
+/**
+ * Dev only (utils/stage/lighting.ts): ?light= moves the key and bounce to a
+ * position tuned for the pile, ?bright= scales the key and the ambient. The
+ * pile keeps no environment (three's scene.environment is only set on the
+ * Bookcase stage), so ?gloss='s envMapIntensity and ?env= have nothing to work
+ * on here. Outside the dev server both read 'today': the inlined shipped
+ * numbers come back unchanged.
+ */
+const grid = useLightingGrid()
+const bright = computed(() => BRIGHTNESS_STEPS[grid.value.bright])
+const lightPlace = computed(() => LIGHT_POSITIONS[grid.value.light].stack)
+const keyStrength = computed(() => keyIntensity(STACK_KEY_INTENSITY, bright.value))
+const ambientStrength = computed(() => ambientIntensity(STACK_AMBIENT_INTENSITY, bright.value))
 
 const cameraRef = shallowRef<PerspectiveCamera | null>(null)
 const rig = shallowRef<Group | null>(null)
@@ -331,20 +350,20 @@ onBeforeRender(({ delta }) => {
   />
   <TresAmbientLight
     color="#FFE9CE"
-    :intensity="0.35"
+    :intensity="ambientStrength"
   />
   <TresGroup ref="rig">
     <TresDirectionalLight
       ref="keyLight"
       color="#FFE0B2"
-      :intensity="2.2"
-      :position="[-1.1, 1.4, 1.6]"
+      :intensity="keyStrength"
+      :position="lightPlace.key"
       cast-shadow
     />
     <TresDirectionalLight
       color="#FFD9AE"
       :intensity="0.6"
-      :position="[1.4, 0.3, 1.8]"
+      :position="lightPlace.bounce"
     />
   </TresGroup>
 
